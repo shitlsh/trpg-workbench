@@ -39,7 +39,9 @@ export interface Workspace {
   name: string;
   description: string | null;
   workspace_path: string;
-  default_model_profile_id: string | null;
+  default_llm_profile_id: string | null;
+  rules_llm_profile_id: string | null;
+  embedding_profile_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -54,43 +56,117 @@ export interface UpdateWorkspaceRequest {
   name?: string;
   description?: string;
   rule_set_id?: string;
-  default_model_profile_id?: string | null;
+  default_llm_profile_id?: string | null;
+  rules_llm_profile_id?: string | null;
+  embedding_profile_id?: string | null;
 }
 
-// ─── ModelProfile ─────────────────────────────────────────────────────────────
+// ─── M6: LLM Profiles ─────────────────────────────────────────────────────────
 
-export type ProviderType = "openai" | "anthropic" | "google" | "openrouter" | "custom";
+export type LLMProviderType = "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
 
-export interface ModelProfile {
+export interface LLMProfile {
   id: string;
   name: string;
-  provider_type: ProviderType;
+  provider_type: LLMProviderType;
   base_url: string | null;
   model_name: string;
   temperature: number;
   max_tokens: number;
+  supports_json_mode: boolean;
+  supports_tools: boolean;
+  timeout_seconds: number;
+  has_api_key: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export interface CreateModelProfileRequest {
+export interface CreateLLMProfileRequest {
   name: string;
-  provider_type: ProviderType;
+  provider_type: LLMProviderType;
   model_name: string;
-  base_url?: string;
-  api_key: string;
-  temperature?: number;
-  max_tokens?: number;
-}
-
-export interface UpdateModelProfileRequest {
-  name?: string;
-  provider_type?: ProviderType;
-  model_name?: string;
   base_url?: string;
   api_key?: string;
   temperature?: number;
   max_tokens?: number;
+  supports_json_mode: boolean;
+  supports_tools: boolean;
+  timeout_seconds?: number;
+}
+
+export interface UpdateLLMProfileRequest {
+  name?: string;
+  provider_type?: LLMProviderType;
+  model_name?: string;
+  base_url?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  temperature?: number;
+  max_tokens?: number;
+  supports_json_mode?: boolean;
+  supports_tools?: boolean;
+  timeout_seconds?: number;
+}
+
+export interface LLMTestResult {
+  success: boolean;
+  latency_ms?: number;
+  error?: string;
+}
+
+// ─── M6: Embedding Profiles ───────────────────────────────────────────────────
+
+export type EmbeddingProviderType = "openai" | "openai_compatible";
+
+export interface EmbeddingProfile {
+  id: string;
+  name: string;
+  provider_type: EmbeddingProviderType;
+  base_url: string | null;
+  model_name: string;
+  dimensions: number | null;
+  has_api_key: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateEmbeddingProfileRequest {
+  name: string;
+  provider_type: EmbeddingProviderType;
+  model_name: string;
+  base_url?: string;
+  api_key?: string;
+  dimensions?: number;
+}
+
+export interface UpdateEmbeddingProfileRequest {
+  name?: string;
+  provider_type?: EmbeddingProviderType;
+  model_name?: string;
+  base_url?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  dimensions?: number;
+}
+
+export interface EmbeddingTestResult {
+  success: boolean;
+  dimensions?: number;
+  latency_ms?: number;
+  error?: string;
+}
+
+// ─── M6: LLM Usage Records ────────────────────────────────────────────────────
+
+export interface LLMUsageRecord {
+  id: string;
+  llm_profile_id: string;
+  workspace_id: string | null;
+  task_type: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  created_at: string;
 }
 
 // ─── M2: Knowledge ────────────────────────────────────────────────────────────
@@ -110,6 +186,8 @@ export interface KnowledgeLibrary {
   type: LibraryType;
   description: string | null;
   embedding_config: string | null;
+  embedding_profile_id: string | null;
+  embedding_model_snapshot: string | null;
   document_count: number;
   created_at: string;
   updated_at: string;
@@ -188,6 +266,12 @@ export interface Citation {
   page_to: number;
   section_title: string | null;
   relevance_score: number;
+}
+
+export interface SearchResponse {
+  results: Citation[];
+  warnings: string[];
+  error: string | null;
 }
 
 export type SearchResult = Citation;
