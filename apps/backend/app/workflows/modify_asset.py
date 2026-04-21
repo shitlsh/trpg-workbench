@@ -12,6 +12,8 @@ from app.agents.consistency import run_consistency_agent
 from app.agents.document import run_document_agent
 from app.agents.plot import run_plot_agent
 from app.agents.npc import run_npc_agent
+from app.agents.monster import run_monster_agent
+from app.agents.lore import run_lore_agent
 from app.models.orm import WorkflowStateORM, WorkspaceORM, AssetORM, AssetRevisionORM
 
 
@@ -94,6 +96,15 @@ async def run_modify_asset(
             if asset_type == "npc":
                 raw = run_npc_agent(user_intent, [], 1, knowledge_context, ws_ctx, model=model)
                 raw_content = raw[0] if raw else {}
+            elif asset_type == "monster":
+                raw = run_monster_agent(user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx, model=model)
+                raw_content = raw[0] if raw else {}
+            elif asset_type in ("location", "lore_note"):
+                raw = run_lore_agent(user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx,
+                                     location_count=1, lore_note_count=1, model=model)
+                locs = raw.get("locations", [])
+                lnotes = raw.get("lore_notes", [])
+                raw_content = locs[0] if locs and asset_type == "location" else (lnotes[0] if lnotes else {})
             else:
                 raw = run_plot_agent(user_intent, "outline", knowledge_context, ws_ctx, model=model)
                 raw_content = raw

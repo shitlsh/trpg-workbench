@@ -155,7 +155,18 @@ export function WorkflowProgress({ onPatchesReady, onComplete }: WorkflowProgres
 
       {activeWorkflow.status === "failed" && (
         <div style={{ padding: "8px 12px", borderTop: "1px solid var(--border)" }}>
-          <div style={{ fontSize: 11, color: "var(--danger)" }}>{activeWorkflow.error_message}</div>
+          <div style={{ fontSize: 11, color: "#e05252", marginBottom: 6 }}>
+            {activeWorkflow.error_message ?? "执行失败"}
+          </div>
+          {activeWorkflow.error_message?.includes("API key") && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+              提示：请检查模型配置页中的 API Key 和 Base URL 是否正确。
+            </div>
+          )}
+          <button
+            onClick={() => setActiveWorkflow(null)}
+            style={{ ...btnSecondary, marginTop: 6, fontSize: 11 }}
+          >关闭</button>
         </div>
       )}
 

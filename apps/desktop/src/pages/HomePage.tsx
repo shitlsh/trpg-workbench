@@ -62,6 +62,9 @@ export default function HomePage() {
           <button className={styles.btnSecondary} onClick={() => navigate("/settings/models")}>
             模型配置
           </button>
+          <button className={styles.btnSecondary} onClick={() => navigate("/settings/prompts")}>
+            Prompt 配置
+          </button>
           <button className={styles.btnPrimary} onClick={() => setShowNewForm(true)}>
             新建工作空间
           </button>
@@ -75,10 +78,17 @@ export default function HomePage() {
 
         {!isLoading && workspaces.length === 0 && (
           <div className={styles.empty}>
-            <p>还没有工作空间</p>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>🎲</div>
+            <p style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>欢迎使用 TRPG Workbench</p>
+            <p style={{ fontSize: 14, color: "var(--text-muted, #888)", marginBottom: 20, maxWidth: 400, textAlign: "center", lineHeight: 1.6 }}>
+              创建你的第一个工作空间，开始用 AI 辅助创作 TRPG 剧本。支持导入规则书、生成 NPC、设计场景和一致性检查。
+            </p>
             <button className={styles.btnPrimary} onClick={() => setShowNewForm(true)}>
               新建第一个工作空间
             </button>
+            <div style={{ display: "flex", gap: 12, marginTop: 16, fontSize: 13, color: "var(--text-muted, #888)" }}>
+              <span>💡 建议先在"知识库"中导入规则书 PDF</span>
+            </div>
           </div>
         )}
 

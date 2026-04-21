@@ -194,7 +194,37 @@ class ChatMessageORM(Base):
     session: Mapped["ChatSessionORM"] = relationship("ChatSessionORM", back_populates="messages")
 
 
-class WorkflowStateORM(Base):
+# ─── M5: Image Generation ─────────────────────────────────────────────────────
+
+class ImageGenerationJobORM(Base):
+    __tablename__ = "image_generation_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id"), nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(String(50), default="dalle3")
+    status: Mapped[str] = mapped_column(String(30), default="pending")  # pending/running/completed/failed
+    result_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ─── M5: Prompt Profiles ──────────────────────────────────────────────────────
+
+class PromptProfileORM(Base):
+    __tablename__ = "prompt_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    rule_set_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rule_sets.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    style_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_schema_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
     __tablename__ = "workflow_states"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

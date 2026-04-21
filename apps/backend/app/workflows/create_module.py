@@ -11,6 +11,8 @@ from app.agents.director import run_director
 from app.agents.rules import run_rules_agent
 from app.agents.plot import run_plot_agent
 from app.agents.npc import run_npc_agent
+from app.agents.monster import run_monster_agent
+from app.agents.lore import run_lore_agent
 from app.agents.consistency import run_consistency_agent
 from app.agents.document import run_document_agent
 from app.services.asset_service import create_asset, update_asset, get_asset_with_content
@@ -25,14 +27,15 @@ STEP_NAMES = [
     "生成故事大纲",                    # 4
     "生成场景列表",                    # 5
     "生成关键 NPC",                    # 6
-    "生成地点初稿",                    # 7
-    "生成线索链",                      # 8
-    "一致性检查",                      # 9
-    "格式化资产",                      # 10
-    "落盘保存",                        # 11
-    "完成",                            # 12
+    "生成怪物/实体",                   # 7
+    "生成地点与世界观",                # 8
+    "生成线索链",                      # 9
+    "一致性检查",                      # 10
+    "格式化资产",                      # 11
+    "落盘保存",                        # 12
+    "完成",                            # 13
 ]
-TOTAL_STEPS = 12
+TOTAL_STEPS = 13
 
 
 async def run_create_module(
@@ -139,38 +142,53 @@ async def resume_create_module(
         update_step(db, wf, 6, STEP_NAMES[6], "completed",
                     summary=f"生成 {len(npcs)} 个 NPC")
 
-        # ── Step 7: Location stubs (Lore Agent placeholder) ─────────────────
+        # ── Step 7: Monster Agent ───────────────────────────────────────────
         update_step(db, wf, 7, STEP_NAMES[7], "running")
-        # M5 will add proper Lore Agent; for now generate basic locations from stages
-        locations = [
-            {"name": s.get("name", f"地点{i+1}"), "slug": s.get("slug", f"location-{i+1}"),
-             "description": s.get("description", "")}
-            for i, s in enumerate(stages[:2])
-        ]
+        # Extract monster hints from change_plan if available; else let agent decide
+        monster_hints = change_plan.get("monster_hints", [])
+        monsters = run_monster_agent(premise, monster_hints, knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 7, STEP_NAMES[7], "completed",
-                    summary=f"生成 {len(locations)} 个地点（占位）")
+                    summary=f"生成 {len(monsters)} 个怪物/实体")
 
-        # ── Step 8: Clue chain ──────────────────────────────────────────────
+        # ── Step 8: Lore Agent – locations & lore notes ────────────────────
         update_step(db, wf, 8, STEP_NAMES[8], "running")
+        location_hints = [s.get("name", "") for s in stages[:3]]
+        lore_result = run_lore_agent(
+            premise, location_hints, knowledge_context, ws_ctx,
+            location_count=max(2, len(stages[:3])),
+            lore_note_count=2,
+            model=model,
+        )
+        locations = lore_result.get("locations", [])
+        lore_notes = lore_result.get("lore_notes", [])
+        update_step(db, wf, 8, STEP_NAMES[8], "completed",
+                    summary=f"生成 {len(locations)} 个地点，{len(lore_notes)} 个世界观词条")
+
+        # ── Step 9: Clue chain ──────────────────────────────────────────────
+        update_step(db, wf, 9, STEP_NAMES[9], "running")
         clues_result = run_plot_agent(premise, "clues", knowledge_context, ws_ctx, model=model)
         clues = clues_result.get("clues", [])
-        update_step(db, wf, 8, STEP_NAMES[8], "completed",
+        update_step(db, wf, 9, STEP_NAMES[9], "completed",
                     summary=f"生成 {len(clues)} 条线索")
 
-        # ── Step 9: Consistency check ───────────────────────────────────────
-        update_step(db, wf, 9, STEP_NAMES[9], "running")
+        # ── Step 10: Consistency check ──────────────────────────────────────
+        update_step(db, wf, 10, STEP_NAMES[10], "running")
         all_summaries = (
             [{"type": "outline", "name": outline.get("title", "大纲"), "slug": "outline",
               "content_json": json.dumps(outline, ensure_ascii=False)}]
             + [{"type": "npc", "name": n.get("name", "NPC"), "slug": n.get("slug", "npc"),
                 "content_json": json.dumps(n, ensure_ascii=False)} for n in npcs]
+            + [{"type": "monster", "name": m.get("name", "怪物"), "slug": m.get("slug", "monster"),
+                "content_json": json.dumps(m, ensure_ascii=False)} for m in monsters]
+            + [{"type": "location", "name": loc.get("name", "地点"), "slug": loc.get("slug", "location"),
+                "content_json": json.dumps(loc, ensure_ascii=False)} for loc in locations]
         )
         consistency = run_consistency_agent(all_summaries, model=model)
-        update_step(db, wf, 9, STEP_NAMES[9], "completed",
+        update_step(db, wf, 10, STEP_NAMES[10], "completed",
                     summary=f"一致性状态：{consistency.get('overall_status', 'clean')}")
 
-        # ── Step 10: Document Agent formatting ──────────────────────────────
-        update_step(db, wf, 10, STEP_NAMES[10], "running")
+        # ── Step 11: Document Agent formatting ─────────────────────────────
+        update_step(db, wf, 11, STEP_NAMES[11], "running")
         raw_assets = (
             [{"asset_id": None, "asset_name": outline.get("title", "大纲"),
               "asset_type": "outline", "asset_slug": "outline-main",
@@ -181,16 +199,25 @@ async def resume_create_module(
             + [{"asset_id": None, "asset_name": n.get("name"), "asset_type": "npc",
                 "asset_slug": n.get("slug", f"npc-{i+1}"), "raw_content": n}
                for i, n in enumerate(npcs)]
+            + [{"asset_id": None, "asset_name": m.get("name"), "asset_type": "monster",
+                "asset_slug": m.get("slug", f"monster-{i+1}"), "raw_content": m}
+               for i, m in enumerate(monsters)]
+            + [{"asset_id": None, "asset_name": loc.get("name"), "asset_type": "location",
+                "asset_slug": loc.get("slug", f"location-{i+1}"), "raw_content": loc}
+               for i, loc in enumerate(locations)]
+            + [{"asset_id": None, "asset_name": ln.get("name"), "asset_type": "lore_note",
+                "asset_slug": ln.get("slug", f"lore-{i+1}"), "raw_content": ln}
+               for i, ln in enumerate(lore_notes)]
             + [{"asset_id": None, "asset_name": c.get("name"), "asset_type": "clue",
                 "asset_slug": c.get("slug", f"clue-{i+1}"), "raw_content": c}
                for i, c in enumerate(clues)]
         )
         patches = run_document_agent(raw_assets, model=model)
-        update_step(db, wf, 10, STEP_NAMES[10], "completed",
+        update_step(db, wf, 11, STEP_NAMES[11], "completed",
                     summary=f"格式化 {len(patches)} 个资产")
 
-        # ── Step 11: Persist assets ─────────────────────────────────────────
-        update_step(db, wf, 11, STEP_NAMES[11], "running")
+        # ── Step 12: Persist assets ─────────────────────────────────────────
+        update_step(db, wf, 12, STEP_NAMES[12], "running")
         ws = db.get(WorkspaceORM, workspace_id)
         created_count = 0
         for patch in patches:
@@ -223,11 +250,11 @@ async def resume_create_module(
             except Exception:
                 continue
 
-        update_step(db, wf, 11, STEP_NAMES[11], "completed",
+        update_step(db, wf, 12, STEP_NAMES[12], "completed",
                     summary=f"保存 {created_count} 个资产")
 
-        # ── Step 12: Done ────────────────────────────────────────────────────
-        update_step(db, wf, 12, STEP_NAMES[12], "completed")
+        # ── Step 13: Done ────────────────────────────────────────────────────
+        update_step(db, wf, 13, STEP_NAMES[13], "completed")
         complete_workflow(db, wf, f"模组创建完成，共生成 {created_count} 个资产")
 
     except Exception as e:

@@ -26,7 +26,9 @@ Rules:
 - If modifying a single asset field, workflow = "modify_asset"
 - If asking a rules question, workflow = "rules_review", agents_to_call = ["rules"]
 - For simple queries with no file changes, workflow = null, intent = "query"
+- For image generation requests, workflow = "generate_image", intent = "image_gen"
 - Always set requires_user_confirm = true for create/modify operations
+- agents_to_call can include: "plot", "npc", "monster", "lore", "rules", "consistency", "document"
 - Respond ONLY with JSON, no extra text
 """
 

@@ -274,3 +274,33 @@ class ApplyPatchRequest(BaseModel):
     content_json: str
     change_summary: str
     source_type: str = "agent"
+
+
+# ─── M5: Prompt Profiles ──────────────────────────────────────────────────────
+
+class PromptProfileSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    rule_set_id: str | None
+    name: str
+    system_prompt: str
+    style_notes: str | None
+    output_schema_hint: str | None
+    is_builtin: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PromptProfileCreate(BaseModel):
+    name: str
+    system_prompt: str
+    style_notes: str | None = None
+    rule_set_id: str | None = None
+    output_schema_hint: str | None = None
+
+
+class PromptProfileUpdate(BaseModel):
+    name: str | None = None
+    system_prompt: str | None = None
+    style_notes: str | None = None
+    output_schema_hint: str | None = None

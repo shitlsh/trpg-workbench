@@ -9,6 +9,7 @@ from app.models.orm import WorkflowStateORM
 from app.models.schemas import WorkflowStateSchema, StartWorkflowRequest
 from app.workflows.create_module import run_create_module, resume_create_module
 from app.workflows.modify_asset import run_modify_asset, apply_modify_asset_patches
+from app.workflows.rules_review import run_rules_review
 from app.workflows.utils import get_workspace_context
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -32,17 +33,8 @@ async def start_workflow(body: StartWorkflowRequest, background_tasks: Backgroun
     elif body.type == "modify_asset":
         wf = await run_modify_asset(db, body.workspace_id, user_intent, affected_ids)
     elif body.type == "rules_review":
-        # Lightweight: Director routes directly, no long workflow
-        from app.workflows.utils import create_workflow, update_step, complete_workflow
-        from app.agents.rules import run_rules_agent
-        wf = create_workflow(db, body.workspace_id, "rules_review", 3,
-                             {"user_intent": user_intent})
-        update_step(db, wf, 1, "检索规则知识库", "completed", summary="规则检索完成")
-        result = run_rules_agent(user_intent, [])
-        update_step(db, wf, 2, "整理建议", "completed",
-                    summary=json.dumps(result, ensure_ascii=False))
-        update_step(db, wf, 3, "完成", "completed")
-        complete_workflow(db, wf, result.get("summary", "规则审查完成"))
+        asset_ids = body.input.get("asset_ids", [])
+        wf = await run_rules_review(db, body.workspace_id, user_intent, asset_ids)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown workflow type: {body.type}")
 
@@ -93,13 +85,24 @@ def cancel_workflow(wf_id: str, db: Session = Depends(get_db)):
     return wf
 
 
-@router.get("/{wf_id}/patches", response_model=list[dict])
+@router.get("/{wf_id}/rules-suggestions", response_model=dict)
+def get_rules_suggestions(wf_id: str, db: Session = Depends(get_db)):
+    """Return the rules suggestions from a completed rules_review workflow."""
+    wf = _get_wf(wf_id, db)
+    step_results = json.loads(wf.step_results)
+    step3 = next((s for s in step_results if s["step"] == 3 and s.get("summary")), None)
+    if step3:
+        try:
+            return json.loads(step3["summary"])
+        except Exception:
+            pass
+    return {"suggestions": [], "summary": wf.result_summary or ""}
 def get_workflow_patches(wf_id: str, db: Session = Depends(get_db)):
     """Return the patch proposals stored in step 5 or 6 of a modify_asset workflow."""
     wf = _get_wf(wf_id, db)
     step_results = json.loads(wf.step_results)
-    # Find the step with patches (step 5 or 6 for modify_asset, step 10 for create_module)
-    for step_num in [6, 5, 10]:
+    # Find the step with patches (step 5 or 6 for modify_asset, step 11 for create_module)
+    for step_num in [6, 5, 11, 10]:
         step = next((s for s in step_results if s["step"] == step_num and s.get("summary")), None)
         if step:
             try:

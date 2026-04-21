@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Plus, ShieldCheck, RefreshCw } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Send, Plus, ShieldCheck, RefreshCw, BookOpen, FileText, ChevronDown, ChevronUp } from "lucide-react";
 import type {
   ChatSession, ChatMessage, WorkflowState,
   ChangePlan, ConsistencyReport, PatchProposal,
@@ -32,6 +32,54 @@ function ChangePlanView({ plan }: { plan: ChangePlan }) {
           Workflow：{WORKFLOW_LABELS[plan.workflow] ?? plan.workflow}
         </div>
       )}
+    </div>
+  );
+}
+
+interface RulesSuggestion {
+  text: string;
+  citation: { document: string; page_from: number; page_to: number } | null;
+  has_citation: boolean;
+}
+
+function RulesReviewView({
+  suggestions, summary, onApply,
+}: {
+  suggestions: RulesSuggestion[];
+  summary: string;
+  onApply: (suggestion: RulesSuggestion) => void;
+}) {
+  return (
+    <div>
+      {summary && (
+        <div style={{ fontSize: 12, marginBottom: 8, color: "var(--text-muted)" }}>{summary}</div>
+      )}
+      {suggestions.map((s, i) => (
+        <div key={i} style={{
+          padding: "8px 10px", marginBottom: 6,
+          background: "var(--bg-surface)", border: "1px solid var(--border)",
+          borderRadius: 4, fontSize: 12,
+        }}>
+          <div style={{ lineHeight: 1.6, marginBottom: 4 }}>{s.text}</div>
+          {s.citation ? (
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              来源：{s.citation.document}，第 {s.citation.page_from}–{s.citation.page_to} 页
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+              基于通用经验，未找到对应规则原文
+            </div>
+          )}
+          <button
+            onClick={() => onApply(s)}
+            style={{
+              marginTop: 6, fontSize: 11, padding: "2px 8px",
+              background: "var(--bg-hover)", border: "1px solid var(--border)",
+              borderRadius: 3, cursor: "pointer", color: "var(--text)",
+            }}
+          >应用此建议</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -100,6 +148,57 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
+// ─── Log Entry ────────────────────────────────────────────────────────────────
+
+const LOG_TYPE_ICONS: Record<string, string> = {
+  model_call: "🤖",
+  retrieval: "🔍",
+  asset_write: "💾",
+};
+
+function LogEntry({ entry }: { entry: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false);
+  const type = entry.type as string;
+  const ts = entry.timestamp as string;
+  const time = ts ? new Date(ts).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+
+  let summary = "";
+  if (type === "model_call") {
+    summary = `${entry.provider}/${entry.model} · ${entry.total_tokens} tokens · ${entry.duration_ms}ms`;
+    if (entry.agent) summary = `[${entry.agent}] ` + summary;
+  } else if (type === "retrieval") {
+    summary = `检索 ${entry.result_count} 条 · ${(entry.query as string)?.slice(0, 40)}`;
+  } else if (type === "asset_write") {
+    summary = `${entry.asset_type} "${entry.asset_name}" v${entry.revision_version} · ${entry.source_type}`;
+  }
+
+  return (
+    <div
+      onClick={() => setExpanded(!expanded)}
+      style={{
+        padding: "4px 0", borderBottom: "1px solid var(--border)",
+        cursor: "pointer", fontSize: 11,
+      }}
+    >
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <span>{LOG_TYPE_ICONS[type] ?? "📝"}</span>
+        <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{time}</span>
+        <span style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary}</span>
+      </div>
+      {expanded && (
+        <pre style={{
+          marginTop: 4, padding: 6, background: "var(--bg)",
+          border: "1px solid var(--border)", borderRadius: 3,
+          fontSize: 10, whiteSpace: "pre-wrap", color: "var(--text-muted)",
+          maxHeight: 120, overflowY: "auto",
+        }}>
+          {JSON.stringify(entry, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 // ─── Main AgentPanel ──────────────────────────────────────────────────────────
 
 export function AgentPanel({ workspaceId }: { workspaceId: string }) {
@@ -114,6 +213,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [rulesReview, setRulesReview] = useState<{ suggestions: RulesSuggestion[]; summary: string } | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -185,10 +286,38 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     }
   };
 
+  const { data: logsData } = useQuery({
+    queryKey: ["logs", workspaceId],
+    queryFn: () => apiFetch<{ entries: Array<Record<string, unknown>>; count: number }>(`/workspaces/${workspaceId}/logs`),
+    enabled: logsOpen,
+    refetchInterval: logsOpen ? 5000 : false,
+  });
+
   const handleConsistencyCheck = async () => {
     try {
       const report = await apiFetch<ConsistencyReport>(`/workspaces/${workspaceId}/consistency-check`);
       setConsistencyReport(report);
+    } catch {}
+  };
+
+  const handleRulesReview = async () => {
+    const question = input.trim() || "请检查当前 Workspace 中的资产是否符合规则，给出建议";
+    try {
+      const wf = await apiFetch<{ id: string }>("/workflows", {
+        method: "POST",
+        body: JSON.stringify({ type: "rules_review", workspace_id: workspaceId, input: { user_intent: question, asset_ids: [] } }),
+      });
+      // Poll until completed then fetch suggestions
+      const poll = async (): Promise<void> => {
+        const state = await apiFetch<{ status: string; id: string }>(`/workflows/${wf.id}`);
+        if (state.status === "completed") {
+          const result = await apiFetch<{ suggestions: RulesSuggestion[]; summary: string }>(`/workflows/${wf.id}/rules-suggestions`);
+          setRulesReview(result);
+        } else if (state.status === "running" || state.status === "pending") {
+          setTimeout(poll, 2000);
+        }
+      };
+      await poll();
     } catch {}
   };
 
@@ -235,6 +364,16 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           </div>
         )}
 
+        {sendMutation.isError && (
+          <div style={{
+            padding: "6px 10px", marginBottom: 6,
+            background: "#2a0a0a", border: "1px solid #e05252",
+            borderRadius: 4, fontSize: 12, color: "#e05252",
+          }}>
+            发送失败：{(sendMutation.error as Error).message}
+          </div>
+        )}
+
         {activeWorkflow && (
           <WorkflowProgress
             onPatchesReady={(patches) => {
@@ -260,7 +399,60 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           </div>
         )}
 
+        {rulesReview && (
+          <div style={{
+            marginTop: 8, padding: "8px 10px",
+            background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>规则审查建议</div>
+            <RulesReviewView
+              suggestions={rulesReview.suggestions}
+              summary={rulesReview.summary}
+              onApply={(s) => {
+                setInput(`请根据以下规则建议修改相关资产：${s.text}`);
+                setRulesReview(null);
+              }}
+            />
+            <button
+              onClick={() => setRulesReview(null)}
+              style={{ marginTop: 6, fontSize: 11, background: "none", color: "var(--text-muted)" }}
+            >关闭</button>
+          </div>
+        )}
+
         <div ref={bottomRef} />
+      </div>
+
+      {/* Execution log panel (collapsible) */}
+      <div style={{ borderTop: "1px solid var(--border)" }}>
+        <button
+          onClick={() => setLogsOpen(!logsOpen)}
+          style={{
+            width: "100%", padding: "6px 12px",
+            display: "flex", alignItems: "center", gap: 6,
+            background: "none", border: "none", cursor: "pointer",
+            color: "var(--text-muted)", fontSize: 11, textAlign: "left",
+          }}
+        >
+          <FileText size={11} />
+          执行日志
+          <span style={{ marginLeft: "auto" }}>
+            {logsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+          </span>
+        </button>
+        {logsOpen && (
+          <div style={{
+            maxHeight: 200, overflowY: "auto", padding: "0 12px 8px",
+          }}>
+            {!logsData || logsData.count === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>今日暂无日志</div>
+            ) : (
+              logsData.entries.slice(-30).reverse().map((entry, i) => (
+                <LogEntry key={i} entry={entry} />
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick actions */}
@@ -273,6 +465,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         </button>
         <button onClick={handleConsistencyCheck} style={quickBtn}>
           <ShieldCheck size={11} /> 一致性检查
+        </button>
+        <button onClick={handleRulesReview} style={quickBtn}>
+          <BookOpen size={11} /> 规则审查
         </button>
       </div>
 

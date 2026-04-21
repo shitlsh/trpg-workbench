@@ -355,3 +355,50 @@ export interface StartWorkflowRequest {
   workspace_id: string;
   input: Record<string, unknown>;
 }
+
+// ─── M5: Image Generation ─────────────────────────────────────────────────────
+
+export interface ImageBrief {
+  subject: string;
+  mood: string;
+  key_elements: string[];
+  style: string;
+  generated_image_path?: string;
+}
+
+export interface ImageGenerationJob {
+  id: string;
+  asset_id: string;
+  prompt: string;
+  provider: string;
+  status: "pending" | "running" | "completed" | "failed";
+  result_path: string | null;
+  error_message: string | null;
+}
+
+// ─── M5: Prompt Profiles ──────────────────────────────────────────────────────
+
+export interface PromptProfile {
+  id: string;
+  rule_set_id: string | null;
+  name: string;
+  system_prompt: string;
+  style_notes: string | null;
+  output_schema_hint: string | null;
+  is_builtin: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePromptProfileRequest {
+  name: string;
+  system_prompt: string;
+  style_notes?: string;
+  rule_set_id?: string;
+}
+
+export interface UpdatePromptProfileRequest {
+  name?: string;
+  system_prompt?: string;
+  style_notes?: string;
+}
