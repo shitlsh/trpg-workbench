@@ -5,9 +5,8 @@ import { useBackendStore } from "./stores/backendStore";
 import StartingScreen from "./pages/StartingScreen";
 import FailedScreen from "./pages/FailedScreen";
 import HomePage from "./pages/HomePage";
-import ModelProfilesPage from "./pages/ModelProfilesPage";
-import SettingsPage from "./pages/SettingsPage";
 import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
+import SettingsPage from "./pages/SettingsPage";
 import KnowledgePage from "./pages/KnowledgePage";
 import PromptProfilesPage from "./pages/PromptProfilesPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
@@ -78,7 +77,6 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/settings/models" element={<SettingsPage />} />
-          <Route path="/settings/models/legacy" element={<ModelProfilesPage />} />
           <Route path="/settings/prompts" element={<PromptProfilesPage />} />
           <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
           <Route path="/workspace/:id" element={<WorkspacePage />} />

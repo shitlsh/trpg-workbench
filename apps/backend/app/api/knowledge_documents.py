@@ -1,13 +1,15 @@
 import asyncio
+import json
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
 from app.models.orm import KnowledgeDocumentORM, KnowledgeLibraryORM, IngestTaskORM
 from app.models.schemas import KnowledgeDocumentSchema, IngestTaskSchema
+from app.services.model_routing import get_embedding_for_ingest, ModelNotConfiguredError
 
 router = APIRouter(prefix="/knowledge/libraries", tags=["knowledge-documents"])
 
@@ -29,6 +31,7 @@ def list_documents(library_id: str, db: Session = Depends(get_db)):
 async def upload_document(
     library_id: str,
     file: UploadFile = File(...),
+    workspace_id: str = Query(..., description="Workspace ID to resolve embedding profile"),
     db: Session = Depends(get_db),
 ):
     lib = db.get(KnowledgeLibraryORM, library_id)
@@ -37,6 +40,15 @@ async def upload_document(
 
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    # Resolve embedding profile before creating records
+    try:
+        embedding_profile = get_embedding_for_ingest(workspace_id, db)
+    except ModelNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": exc.message, "error_type": "ModelNotConfiguredError"},
+        )
 
     # Sanitize filename to prevent path traversal
     safe_filename = Path(file.filename).name
@@ -66,6 +78,14 @@ async def upload_document(
     tmp.close()
     tmp_path = Path(tmp.name)
 
+    # Snapshot embedding profile info (id + model details) to persist on library after ingest
+    embedding_snapshot = {
+        "profile_id": embedding_profile.id,
+        "provider_type": embedding_profile.provider_type,
+        "model_name": embedding_profile.model_name,
+        "dimensions": embedding_profile.dimensions,
+    }
+
     # Launch ingest in background (fire-and-forget)
     asyncio.create_task(
         _run_ingest_background(
@@ -74,6 +94,8 @@ async def upload_document(
             task_id=task.id,
             tmp_path=tmp_path,
             filename=file.filename,
+            embedding_profile_id=embedding_profile.id,
+            embedding_snapshot=embedding_snapshot,
         )
     )
 
@@ -86,9 +108,13 @@ async def _run_ingest_background(
     task_id: str,
     tmp_path: Path,
     filename: str,
+    embedding_profile_id: str,
+    embedding_snapshot: dict,
 ):
     from app.knowledge.pdf_ingest import run_ingest
     from app.storage.database import get_session_factory
+    from app.agents.model_adapter import embedding_from_profile
+    from app.models.orm import EmbeddingProfileORM
 
     SessionLocal = get_session_factory()
 
@@ -114,6 +140,12 @@ async def _run_ingest_background(
         if doc:
             doc.parse_status = "running"
             db.commit()
+
+        # Reload embedding profile for use in background task
+        profile = db.get(EmbeddingProfileORM, embedding_profile_id)
+        if not profile:
+            raise RuntimeError(f"Embedding profile {embedding_profile_id} not found")
+        embedder = embedding_from_profile(profile)
     finally:
         db.close()
 
@@ -124,6 +156,8 @@ async def _run_ingest_background(
             tmp_file_path=tmp_path,
             original_filename=filename,
             progress_callback=progress_callback,
+            embedder=embedder,
+            embedding_snapshot=embedding_snapshot,
         )
         db = SessionLocal()
         try:
@@ -133,6 +167,12 @@ async def _run_ingest_background(
                 doc.page_count = result.get("page_count")
                 doc.chunk_count = result.get("chunk_count")
                 doc.original_path = result.get("manifest_path", "")
+                db.commit()
+            # Update library embedding snapshot on successful ingest
+            lib = db.get(KnowledgeLibraryORM, library_id)
+            if lib:
+                lib.embedding_profile_id = embedding_profile_id
+                lib.embedding_model_snapshot = json.dumps(embedding_snapshot)
                 db.commit()
             task = db.get(IngestTaskORM, task_id)
             if task:

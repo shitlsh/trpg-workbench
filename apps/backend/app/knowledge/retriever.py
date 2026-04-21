@@ -1,8 +1,8 @@
 """Retrieval logic: search across libraries by priority, return Citations."""
 from __future__ import annotations
 from pathlib import Path
+from typing import Any
 from app.knowledge.citations import Citation
-from app.knowledge.embedder import embed_texts, EmbedderConfig
 from app.knowledge.vector_index import search_library
 from app.utils.paths import get_data_dir
 
@@ -15,18 +15,23 @@ async def retrieve(
     query: str,
     library_ids: list[str],
     top_k: int = 5,
-    config: EmbedderConfig | None = None,
+    embedder: Any = None,  # object with .embed_one(text) -> list[float]
     document_map: dict[str, dict] | None = None,  # document_id -> {filename, ...}
 ) -> list[Citation]:
     """
     Embed the query and search across the given libraries in order.
     Returns up to top_k deduplicated Citations, sorted by relevance.
+
+    embedder must be provided; raises ValueError if None.
     """
     if not library_ids:
         return []
 
-    vectors = await embed_texts([query], config)
-    query_vector = vectors[0]
+    if embedder is None:
+        raise ValueError("embedder must be provided for retrieval")
+
+    import asyncio
+    query_vector = await asyncio.to_thread(embedder.embed_one, query)
 
     seen_chunk_ids: set[str] = set()
     all_results: list[dict] = []

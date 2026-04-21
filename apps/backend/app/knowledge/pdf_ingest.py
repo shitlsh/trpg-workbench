@@ -17,11 +17,11 @@ import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pdfplumber
 
 from app.knowledge.chunker import chunk_pages, RawChunk
-from app.knowledge.embedder import embed_texts, EmbedderConfig, get_default_config
 from app.knowledge.vector_index import upsert_chunks
 from app.utils.paths import get_data_dir
 
@@ -49,17 +49,15 @@ async def run_ingest(
     library_id: str,
     tmp_file_path: Path,
     original_filename: str,
+    embedder: Any,  # object with .embed(texts: list[str]) -> list[list[float]]
+    embedding_snapshot: dict,  # {profile_id, provider_type, model_name, dimensions}
     progress_callback=None,  # async callable(step: int, label: str, status: str)
-    embed_config: EmbedderConfig | None = None,
 ) -> dict:
     """
     Run the full 8-step ingest pipeline.
     Returns a result dict with parse_status, page_count, chunk_count, manifest_path.
     Raises on unrecoverable errors.
     """
-    if embed_config is None:
-        embed_config = get_default_config()
-
     lib_dir = _lib_dir(library_id)
     source_dir = lib_dir / "source"
     parsed_dir = lib_dir / "parsed"
@@ -130,12 +128,13 @@ async def run_ingest(
     await report(6, STEP_LABELS[5])
     texts = [c.content for c in raw_chunks]
     try:
-        vectors = await embed_texts(texts, embed_config)
+        vectors = await asyncio.to_thread(embedder.embed, texts)
     except Exception as e:
         # Embedding failure: save chunks without vectors
         parse_quality = "partial" if parse_quality == "good" else parse_quality
         parse_notes += f" | Embedding failed: {e}"
-        vectors = [[0.0] * 1536 for _ in raw_chunks]
+        dimensions = embedding_snapshot.get("dimensions") or 1536
+        vectors = [[0.0] * dimensions for _ in raw_chunks]
 
     # ── Step 7: Build vector index ───────────────────────────────────────────
     await report(7, STEP_LABELS[6])
@@ -186,8 +185,9 @@ async def run_ingest(
         "chunk_count": len(raw_chunks),
         "parse_status": "success" if parse_quality == "good" else parse_quality,
         "parse_quality_notes": parse_notes or None,
-        "embedding_provider": embed_config.provider,
-        "embedding_model": embed_config.model,
+        "embedding_profile_id": embedding_snapshot["profile_id"],
+        "embedding_provider": embedding_snapshot["provider_type"],
+        "embedding_model": embedding_snapshot["model_name"],
         "indexed_at": datetime.now(timezone.utc).isoformat(),
     }
     manifest_path = parsed_dir / "manifest.json"

@@ -101,7 +101,7 @@ class KnowledgeLibraryORM(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False, default="core_rules")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    embedding_config: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON (legacy, kept for reference)
+    embedding_config: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON, M2 legacy field
     embedding_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     embedding_model_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON snapshot at index time
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
