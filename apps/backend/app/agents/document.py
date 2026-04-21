@@ -2,7 +2,7 @@
 This agent NEVER writes files or database rows. It only returns patch data."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model, strip_code_fence
+from app.agents.model_adapter import strip_code_fence
 
 DOCUMENT_SYSTEM = """You are the Document Agent for a TRPG workbench.
 Your ONLY job is to format raw content into structured asset data.
@@ -39,7 +39,9 @@ def run_document_agent(
                           "asset_slug": str, "raw_content": dict | str}
     Returns: list of PatchProposal dicts
     """
-    mdl = model or get_default_model()
+    if model is None:
+        raise ValueError("model must be provided; configure an LLM profile in workspace settings")
+    mdl = model
     agent = Agent(model=mdl, system_prompt=DOCUMENT_SYSTEM, markdown=False)
 
     ctx = json.dumps(raw_assets, ensure_ascii=False, indent=2)

@@ -1,7 +1,7 @@
 """Rules Agent – knowledge retrieval + rule advisory with citations."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model, strip_code_fence
+from app.agents.model_adapter import strip_code_fence
 
 RULES_SYSTEM = """You are the Rules Agent for a TRPG workbench.
 Your job is to answer rule questions using the provided knowledge context.
@@ -35,7 +35,9 @@ def run_rules_agent(
     knowledge_context: list of Citation dicts from retriever
     Returns: {"suggestions": [...], "summary": str}
     """
-    mdl = model or get_default_model()
+    if model is None:
+        raise ValueError("model must be provided; configure an LLM profile in workspace settings")
+    mdl = model
     agent = Agent(model=mdl, system_prompt=RULES_SYSTEM, markdown=False)
 
     ctx = json.dumps(knowledge_context, ensure_ascii=False, indent=2)

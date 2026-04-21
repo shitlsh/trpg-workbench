@@ -1,7 +1,7 @@
 """NPC Agent – character design, motivations, relationships."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model, strip_code_fence
+from app.agents.model_adapter import strip_code_fence
 
 NPC_SYSTEM = """You are the NPC Agent for a TRPG workbench.
 Your job is to create detailed NPC characters: identity, appearance, personality, motivation, secrets, relationships.
@@ -35,7 +35,9 @@ def run_npc_agent(
     workspace_context: dict,
     model=None,
 ) -> list[dict]:
-    mdl = model or get_default_model()
+    if model is None:
+        raise ValueError("model must be provided; configure an LLM profile in workspace settings")
+    mdl = model
     agent = Agent(model=mdl, system_prompt=NPC_SYSTEM, markdown=False)
 
     ctx = json.dumps(knowledge_context[:3], ensure_ascii=False) if knowledge_context else "None"

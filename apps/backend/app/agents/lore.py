@@ -1,7 +1,7 @@
 """Lore Agent – locations, world-building entries, map briefs, faction lore."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model, strip_code_fence
+from app.agents.model_adapter import strip_code_fence
 
 LORE_SYSTEM = """You are the Lore Agent for a TRPG workbench.
 Your job is to create world-building content: locations, lore notes (world-building entries),
@@ -67,7 +67,9 @@ def run_lore_agent(
     location_hints: high-level descriptions of locations to create
     Returns: {"locations": [...], "lore_notes": [...]}
     """
-    mdl = model or get_default_model()
+    if model is None:
+        raise ValueError("model must be provided; configure an LLM profile in workspace settings")
+    mdl = model
     agent = Agent(model=mdl, system_prompt=LORE_SYSTEM, markdown=False)
 
     ctx = json.dumps(knowledge_context[:5], ensure_ascii=False) if knowledge_context else "None"

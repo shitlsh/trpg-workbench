@@ -11,6 +11,8 @@ from app.workflows.create_module import run_create_module, resume_create_module
 from app.workflows.modify_asset import run_modify_asset, apply_modify_asset_patches
 from app.workflows.rules_review import run_rules_review
 from app.workflows.utils import get_workspace_context
+from app.services.model_routing import get_llm_for_task, ModelNotConfiguredError
+from app.agents.model_adapter import model_from_profile
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -22,6 +24,18 @@ def _get_wf(wf_id: str, db: Session) -> WorkflowStateORM:
     return wf
 
 
+def _resolve_model(workspace_id: str, task_type: str, db: Session):
+    """Resolve LLM model for the given task, raising 422 if not configured."""
+    try:
+        profile = get_llm_for_task(workspace_id, task_type, db)
+        return model_from_profile(profile)
+    except ModelNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": exc.message, "error_type": "ModelNotConfiguredError"},
+        )
+
+
 @router.post("", response_model=WorkflowStateSchema, status_code=201)
 async def start_workflow(body: StartWorkflowRequest, background_tasks: BackgroundTasks,
                          db: Session = Depends(get_db)):
@@ -29,12 +43,15 @@ async def start_workflow(body: StartWorkflowRequest, background_tasks: Backgroun
     affected_ids = body.input.get("affected_asset_ids", [])
 
     if body.type == "create_module":
-        wf = await run_create_module(db, body.workspace_id, user_intent)
+        model = _resolve_model(body.workspace_id, "create_module", db)
+        wf = await run_create_module(db, body.workspace_id, user_intent, model=model)
     elif body.type == "modify_asset":
-        wf = await run_modify_asset(db, body.workspace_id, user_intent, affected_ids)
+        model = _resolve_model(body.workspace_id, "modify_asset", db)
+        wf = await run_modify_asset(db, body.workspace_id, user_intent, affected_ids, model=model)
     elif body.type == "rules_review":
         asset_ids = body.input.get("asset_ids", [])
-        wf = await run_rules_review(db, body.workspace_id, user_intent, asset_ids)
+        model = _resolve_model(body.workspace_id, "rules_review", db)
+        wf = await run_rules_review(db, body.workspace_id, user_intent, asset_ids, model=model)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown workflow type: {body.type}")
 
@@ -65,7 +82,8 @@ async def confirm_workflow(wf_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Workflow is not paused")
 
     if wf.type == "create_module":
-        wf = await resume_create_module(db, wf)
+        model = _resolve_model(wf.workspace_id, "create_module", db)
+        wf = await resume_create_module(db, wf, model=model)
     elif wf.type == "modify_asset":
         wf = await apply_modify_asset_patches(db, wf)
     else:

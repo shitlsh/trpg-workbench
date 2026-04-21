@@ -1,7 +1,7 @@
 """Director Agent – intent parsing and routing only. No content generation."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model, strip_code_fence
+from app.agents.model_adapter import strip_code_fence
 
 DIRECTOR_SYSTEM = """You are the Director Agent for a TRPG workbench application.
 Your ONLY job is to:
@@ -47,7 +47,9 @@ def run_director(
     }
     Returns: ChangePlan dict
     """
-    mdl = model or get_default_model()
+    if model is None:
+        raise ValueError("model must be provided; configure an LLM profile in workspace settings")
+    mdl = model
     agent = Agent(
         model=mdl,
         system_prompt=DIRECTOR_SYSTEM,

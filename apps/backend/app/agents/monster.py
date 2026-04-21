@@ -1,7 +1,7 @@
 """Monster / Entity Agent – creature design, threat forms, rule adaptation."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model, strip_code_fence
+from app.agents.model_adapter import strip_code_fence
 
 MONSTER_SYSTEM = """You are the Monster Agent for a TRPG workbench.
 Your job is to design monsters and anomalous entities: concept, behavior, threat forms, and rule adaptation hints.
@@ -51,7 +51,9 @@ def run_monster_agent(
     monster_descriptions: high-level descriptions of monsters to create
     Returns: list of monster dicts
     """
-    mdl = model or get_default_model()
+    if model is None:
+        raise ValueError("model must be provided; configure an LLM profile in workspace settings")
+    mdl = model
     agent = Agent(model=mdl, system_prompt=MONSTER_SYSTEM, markdown=False)
 
     ctx = json.dumps(knowledge_context[:5], ensure_ascii=False) if knowledge_context else "None"

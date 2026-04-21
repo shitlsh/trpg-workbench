@@ -1,7 +1,7 @@
 """Plot Agent – story structure, stages, clue chains."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model, strip_code_fence
+from app.agents.model_adapter import strip_code_fence
 
 PLOT_SYSTEM = """You are the Plot Agent for a TRPG workbench.
 Your job is to create story structure, scene (stage) lists, and clue chains.
@@ -43,7 +43,9 @@ def run_plot_agent(
     workspace_context: dict,
     model=None,
 ) -> dict:
-    mdl = model or get_default_model()
+    if model is None:
+        raise ValueError("model must be provided; configure an LLM profile in workspace settings")
+    mdl = model
     agent = Agent(model=mdl, system_prompt=PLOT_SYSTEM, markdown=False)
 
     ctx = json.dumps(knowledge_context[:3], ensure_ascii=False) if knowledge_context else "None"

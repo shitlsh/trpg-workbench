@@ -1,7 +1,7 @@
 """Consistency Agent – checks naming, timeline, motivation, clue chain coherence."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model, strip_code_fence
+from app.agents.model_adapter import strip_code_fence
 
 CONSISTENCY_SYSTEM = """You are the Consistency Agent for a TRPG workbench.
 Your ONLY job is to check consistency across assets and report issues.
@@ -40,7 +40,9 @@ def run_consistency_agent(
     asset_summaries: list of {"type": str, "name": str, "slug": str, "content_json": str}
     Returns: ConsistencyReport dict
     """
-    mdl = model or get_default_model()
+    if model is None:
+        raise ValueError("model must be provided; configure an LLM profile in workspace settings")
+    mdl = model
     agent = Agent(model=mdl, system_prompt=CONSISTENCY_SYSTEM, markdown=False)
 
     ctx = json.dumps(asset_summaries, ensure_ascii=False, indent=2)
