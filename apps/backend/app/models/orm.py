@@ -225,6 +225,11 @@ class PromptProfileORM(Base):
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ─── M4: Workflow State ───────────────────────────────────────────────────────
+
+class WorkflowStateORM(Base):
     __tablename__ = "workflow_states"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

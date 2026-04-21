@@ -97,6 +97,9 @@ def get_rules_suggestions(wf_id: str, db: Session = Depends(get_db)):
         except Exception:
             pass
     return {"suggestions": [], "summary": wf.result_summary or ""}
+
+
+@router.get("/{wf_id}/patches")
 def get_workflow_patches(wf_id: str, db: Session = Depends(get_db)):
     """Return the patch proposals stored in step 5 or 6 of a modify_asset workflow."""
     wf = _get_wf(wf_id, db)
