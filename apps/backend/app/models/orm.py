@@ -161,3 +161,51 @@ class AssetRevisionORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     asset: Mapped["AssetORM"] = relationship("AssetORM", back_populates="revisions", foreign_keys=[asset_id])
+
+
+# ─── M4: Chat & Workflow ──────────────────────────────────────────────────────
+
+class ChatSessionORM(Base):
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
+    agent_scope: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    messages: Mapped[list["ChatMessageORM"]] = relationship(
+        "ChatMessageORM", back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class ChatMessageORM(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_sessions.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # user/assistant/system
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    references_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_calls_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    session: Mapped["ChatSessionORM"] = relationship("ChatSessionORM", back_populates="messages")
+
+
+class WorkflowStateORM(Base):
+    __tablename__ = "workflow_states"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    current_step: Mapped[int] = mapped_column(Integer, default=0)
+    total_steps: Mapped[int] = mapped_column(Integer, default=1)
+    input_snapshot: Mapped[str] = mapped_column(Text, default="{}")
+    step_results: Mapped[str] = mapped_column(Text, default="[]")
+    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

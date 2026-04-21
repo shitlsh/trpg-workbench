@@ -1,0 +1,236 @@
+"""create_module Workflow – orchestrates full module creation (9+ steps)."""
+import json
+import asyncio
+from sqlalchemy.orm import Session
+
+from app.workflows.utils import (
+    create_workflow, update_step, complete_workflow,
+    fail_workflow, pause_workflow, get_workspace_context,
+)
+from app.agents.director import run_director
+from app.agents.rules import run_rules_agent
+from app.agents.plot import run_plot_agent
+from app.agents.npc import run_npc_agent
+from app.agents.consistency import run_consistency_agent
+from app.agents.document import run_document_agent
+from app.services.asset_service import create_asset, update_asset, get_asset_with_content
+from app.models.orm import WorkflowStateORM, WorkspaceORM, AssetORM
+
+
+STEP_NAMES = [
+    "",                              # 0 (unused)
+    "读取 Workspace 配置",            # 1
+    "生成变更计划（等待用户确认）",     # 2
+    "检索规则知识库",                  # 3
+    "生成故事大纲",                    # 4
+    "生成场景列表",                    # 5
+    "生成关键 NPC",                    # 6
+    "生成地点初稿",                    # 7
+    "生成线索链",                      # 8
+    "一致性检查",                      # 9
+    "格式化资产",                      # 10
+    "落盘保存",                        # 11
+    "完成",                            # 12
+]
+TOTAL_STEPS = 12
+
+
+async def run_create_module(
+    db: Session,
+    workspace_id: str,
+    user_intent: str,
+    model=None,
+    knowledge_retriever=None,
+) -> WorkflowStateORM:
+    """
+    Runs the full create_module workflow.
+    knowledge_retriever: optional callable(query, workspace_id) -> list[Citation]
+    Returns the WorkflowStateORM after completion or failure.
+    """
+    wf = create_workflow(
+        db=db,
+        workspace_id=workspace_id,
+        wf_type="create_module",
+        total_steps=TOTAL_STEPS,
+        input_snapshot={"user_intent": user_intent},
+    )
+
+    try:
+        # ── Step 1: Load workspace config ──────────────────────────────────
+        update_step(db, wf, 1, STEP_NAMES[1], "running")
+        ws_ctx = get_workspace_context(db, workspace_id)
+        update_step(db, wf, 1, STEP_NAMES[1], "completed",
+                    summary=f"工作空间：{ws_ctx.get('workspace_name')}")
+
+        # ── Step 2: Director – change plan ─────────────────────────────────
+        update_step(db, wf, 2, STEP_NAMES[2], "running")
+        change_plan = run_director(user_intent, ws_ctx, model=model)
+        # Pause for user confirmation (caller must call /workflows/:id/confirm)
+        # Store change_plan in step result
+        update_step(db, wf, 2, STEP_NAMES[2], "waiting_confirm",
+                    summary=json.dumps(change_plan, ensure_ascii=False))
+        pause_workflow(db, wf)
+        return wf  # Caller must resume after user confirms
+
+    except Exception as e:
+        fail_workflow(db, wf, str(e))
+        return wf
+
+
+async def resume_create_module(
+    db: Session,
+    wf: WorkflowStateORM,
+    model=None,
+    knowledge_retriever=None,
+) -> WorkflowStateORM:
+    """Continue a paused create_module workflow after user confirmation."""
+    step_results = json.loads(wf.step_results)
+    input_snapshot = json.loads(wf.input_snapshot)
+    user_intent = input_snapshot.get("user_intent", "")
+    workspace_id = wf.workspace_id
+
+    ws_ctx = get_workspace_context(db, workspace_id)
+
+    # Get the change_plan from step 2
+    step2 = next((s for s in step_results if s["step"] == 2), None)
+    change_plan: dict = {}
+    if step2 and step2.get("summary"):
+        try:
+            change_plan = json.loads(step2["summary"])
+        except Exception:
+            change_plan = {}
+
+    premise = change_plan.get("change_plan", user_intent)
+    wf.status = "running"
+    db.commit()
+
+    try:
+        # ── Step 3: Rules Agent retrieval ───────────────────────────────────
+        update_step(db, wf, 3, STEP_NAMES[3], "running")
+        knowledge_context = []
+        if knowledge_retriever:
+            try:
+                knowledge_context = await asyncio.to_thread(
+                    knowledge_retriever, premise, workspace_id
+                )
+            except Exception:
+                knowledge_context = []
+        rules_result = run_rules_agent(premise, knowledge_context, model=model)
+        update_step(db, wf, 3, STEP_NAMES[3], "completed",
+                    summary=rules_result.get("summary", "规则检索完成"))
+
+        # ── Step 4: Plot Agent – outline ────────────────────────────────────
+        update_step(db, wf, 4, STEP_NAMES[4], "running")
+        outline = run_plot_agent(premise, "outline", knowledge_context, ws_ctx, model=model)
+        update_step(db, wf, 4, STEP_NAMES[4], "completed",
+                    summary=outline.get("title", "大纲生成完成"))
+
+        # ── Step 5: Plot Agent – stages ─────────────────────────────────────
+        update_step(db, wf, 5, STEP_NAMES[5], "running")
+        stages_result = run_plot_agent(premise, "stages", knowledge_context, ws_ctx, model=model)
+        stages = stages_result.get("stages", [])
+        update_step(db, wf, 5, STEP_NAMES[5], "completed",
+                    summary=f"生成 {len(stages)} 个场景")
+
+        # ── Step 6: NPC Agent ───────────────────────────────────────────────
+        update_step(db, wf, 6, STEP_NAMES[6], "running")
+        stage_summaries = [s.get("description", s.get("name", "")) for s in stages]
+        npcs = run_npc_agent(premise, stage_summaries, 3, knowledge_context, ws_ctx, model=model)
+        update_step(db, wf, 6, STEP_NAMES[6], "completed",
+                    summary=f"生成 {len(npcs)} 个 NPC")
+
+        # ── Step 7: Location stubs (Lore Agent placeholder) ─────────────────
+        update_step(db, wf, 7, STEP_NAMES[7], "running")
+        # M5 will add proper Lore Agent; for now generate basic locations from stages
+        locations = [
+            {"name": s.get("name", f"地点{i+1}"), "slug": s.get("slug", f"location-{i+1}"),
+             "description": s.get("description", "")}
+            for i, s in enumerate(stages[:2])
+        ]
+        update_step(db, wf, 7, STEP_NAMES[7], "completed",
+                    summary=f"生成 {len(locations)} 个地点（占位）")
+
+        # ── Step 8: Clue chain ──────────────────────────────────────────────
+        update_step(db, wf, 8, STEP_NAMES[8], "running")
+        clues_result = run_plot_agent(premise, "clues", knowledge_context, ws_ctx, model=model)
+        clues = clues_result.get("clues", [])
+        update_step(db, wf, 8, STEP_NAMES[8], "completed",
+                    summary=f"生成 {len(clues)} 条线索")
+
+        # ── Step 9: Consistency check ───────────────────────────────────────
+        update_step(db, wf, 9, STEP_NAMES[9], "running")
+        all_summaries = (
+            [{"type": "outline", "name": outline.get("title", "大纲"), "slug": "outline",
+              "content_json": json.dumps(outline, ensure_ascii=False)}]
+            + [{"type": "npc", "name": n.get("name", "NPC"), "slug": n.get("slug", "npc"),
+                "content_json": json.dumps(n, ensure_ascii=False)} for n in npcs]
+        )
+        consistency = run_consistency_agent(all_summaries, model=model)
+        update_step(db, wf, 9, STEP_NAMES[9], "completed",
+                    summary=f"一致性状态：{consistency.get('overall_status', 'clean')}")
+
+        # ── Step 10: Document Agent formatting ──────────────────────────────
+        update_step(db, wf, 10, STEP_NAMES[10], "running")
+        raw_assets = (
+            [{"asset_id": None, "asset_name": outline.get("title", "大纲"),
+              "asset_type": "outline", "asset_slug": "outline-main",
+              "raw_content": outline}]
+            + [{"asset_id": None, "asset_name": s.get("name"), "asset_type": "stage",
+                "asset_slug": s.get("slug", f"stage-{i+1}"), "raw_content": s}
+               for i, s in enumerate(stages)]
+            + [{"asset_id": None, "asset_name": n.get("name"), "asset_type": "npc",
+                "asset_slug": n.get("slug", f"npc-{i+1}"), "raw_content": n}
+               for i, n in enumerate(npcs)]
+            + [{"asset_id": None, "asset_name": c.get("name"), "asset_type": "clue",
+                "asset_slug": c.get("slug", f"clue-{i+1}"), "raw_content": c}
+               for i, c in enumerate(clues)]
+        )
+        patches = run_document_agent(raw_assets, model=model)
+        update_step(db, wf, 10, STEP_NAMES[10], "completed",
+                    summary=f"格式化 {len(patches)} 个资产")
+
+        # ── Step 11: Persist assets ─────────────────────────────────────────
+        update_step(db, wf, 11, STEP_NAMES[11], "running")
+        ws = db.get(WorkspaceORM, workspace_id)
+        created_count = 0
+        for patch in patches:
+            try:
+                asset_type = patch.get("asset_type", "npc")
+                slug = patch.get("asset_slug", "unknown")
+                name = patch.get("asset_name", slug)
+                content_md = patch.get("content_md", "")
+                content_json = patch.get("content_json", "{}")
+                summary_text = patch.get("change_summary", "由 AI 创建")
+
+                # Check if asset exists
+                existing = db.query(AssetORM).filter(
+                    AssetORM.workspace_id == workspace_id,
+                    AssetORM.type == asset_type,
+                    AssetORM.slug == slug,
+                ).first()
+
+                if existing:
+                    update_asset(db, existing, ws.workspace_path,
+                                 content_md=content_md, content_json=content_json,
+                                 change_summary=summary_text)
+                else:
+                    new_asset = create_asset(db, workspace_id, ws.workspace_path,
+                                             asset_type, name, slug)
+                    update_asset(db, new_asset, ws.workspace_path,
+                                 content_md=content_md, content_json=content_json,
+                                 change_summary=summary_text)
+                created_count += 1
+            except Exception:
+                continue
+
+        update_step(db, wf, 11, STEP_NAMES[11], "completed",
+                    summary=f"保存 {created_count} 个资产")
+
+        # ── Step 12: Done ────────────────────────────────────────────────────
+        update_step(db, wf, 12, STEP_NAMES[12], "completed")
+        complete_workflow(db, wf, f"模组创建完成，共生成 {created_count} 个资产")
+
+    except Exception as e:
+        fail_workflow(db, wf, str(e))
+
+    return wf

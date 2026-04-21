@@ -4,7 +4,7 @@ import type { Workspace } from "@trpg-workbench/shared-schema";
 import { ThreePanelLayout } from "@/components/editor/ThreePanelLayout";
 import { AssetTree } from "@/components/editor/AssetTree";
 import { EditorCenter } from "@/components/editor/EditorCenter";
-import { AssetMetaPanel } from "@/components/editor/AssetMetaPanel";
+import { AgentPanel } from "@/components/agent/AgentPanel";
 import { ArrowLeft } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
@@ -63,10 +63,7 @@ export function WorkspacePage() {
           center={<EditorCenter />}
           right={
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-              <div style={{ padding: "10px 12px", fontWeight: 600, fontSize: 13, borderBottom: "1px solid var(--border)" }}>
-                资产信息
-              </div>
-              <AssetMetaPanel />
+              <AgentPanel workspaceId={workspace.id} />
             </div>
           }
         />

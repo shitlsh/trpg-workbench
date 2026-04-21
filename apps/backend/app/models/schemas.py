@@ -211,3 +211,66 @@ class AssetUpdate(BaseModel):
     name: str | None = None
     status: str | None = None
     summary: str | None = None
+
+
+# ─── M4: Chat & Workflow ──────────────────────────────────────────────────────
+
+class ChatSessionSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workspace_id: str
+    agent_scope: str | None
+    title: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChatMessageSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    session_id: str
+    role: str
+    content: str
+    references_json: str | None
+    tool_calls_json: str | None
+    created_at: datetime
+
+
+class ChatSessionCreate(BaseModel):
+    workspace_id: str
+    agent_scope: str | None = None
+    title: str | None = None
+
+
+class SendMessageRequest(BaseModel):
+    content: str
+    workspace_id: str
+
+
+class WorkflowStateSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workspace_id: str
+    type: str
+    status: str
+    current_step: int
+    total_steps: int
+    input_snapshot: str
+    step_results: str
+    result_summary: str | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class StartWorkflowRequest(BaseModel):
+    type: str
+    workspace_id: str
+    input: dict
+
+
+class ApplyPatchRequest(BaseModel):
+    content_md: str
+    content_json: str
+    change_summary: str
+    source_type: str = "agent"

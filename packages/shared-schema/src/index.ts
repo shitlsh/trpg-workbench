@@ -255,3 +255,103 @@ export interface UpdateAssetRequest {
   status?: AssetStatus;
   summary?: string;
 }
+
+// ─── M4: Chat & Workflow ──────────────────────────────────────────────────────
+
+export interface ChatSession {
+  id: string;
+  workspace_id: string;
+  agent_scope: string | null;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  references_json: string | null;
+  tool_calls_json: string | null;
+  created_at: string;
+}
+
+export type WorkflowType = "create_module" | "modify_asset" | "rules_review" | "generate_image";
+export type WorkflowStatus = "pending" | "running" | "paused" | "completed" | "failed";
+
+export interface WorkflowStepResult {
+  step: number;
+  name: string;
+  status: "pending" | "running" | "completed" | "failed" | "waiting_confirm";
+  summary: string | null;
+  error?: string | null;
+}
+
+export interface WorkflowState {
+  id: string;
+  workspace_id: string;
+  type: WorkflowType;
+  status: WorkflowStatus;
+  current_step: number;
+  total_steps: number;
+  input_snapshot: string; // JSON string
+  step_results: string;   // JSON array string
+  result_summary: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AgentIntent = "create_asset" | "modify_asset" | "rules_review" | "image_gen" | "query";
+
+export interface ChangePlan {
+  intent: AgentIntent;
+  affected_asset_types: string[];
+  workflow: WorkflowType | null;
+  agents_to_call: string[];
+  change_plan: string;
+  requires_user_confirm: boolean;
+}
+
+export interface PatchProposal {
+  asset_id: string;
+  asset_name: string;
+  content_md: string;
+  content_json: string;
+  change_summary: string;
+}
+
+export interface ConsistencyIssue {
+  type: "naming_conflict" | "timeline_conflict" | "motivation_gap" | "clue_break" | "branch_conflict";
+  severity: "warning" | "error";
+  description: string;
+  affected_assets: string[];
+  suggestion: string;
+}
+
+export interface ConsistencyReport {
+  issues: ConsistencyIssue[];
+  overall_status: "clean" | "has_warnings" | "has_errors";
+}
+
+export interface AgentResponse {
+  explanation: string | null;
+  change_plan: ChangePlan | null;
+  patch_proposals: PatchProposal[];
+  consistency_report: ConsistencyReport | null;
+  citations: Citation[];
+  workflow_id: string | null;
+  persist_status: "none" | "pending_confirm" | "saved";
+}
+
+export interface SendMessageRequest {
+  content: string;
+  workspace_id: string;
+}
+
+export interface StartWorkflowRequest {
+  type: WorkflowType;
+  workspace_id: string;
+  input: Record<string, unknown>;
+}
