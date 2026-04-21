@@ -1,0 +1,14 @@
+{
+  "name": "trpg-workbench",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --filter desktop dev",
+    "build": "pnpm --filter shared-schema build && pnpm --filter desktop build",
+    "tauri": "pnpm --filter desktop tauri"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
