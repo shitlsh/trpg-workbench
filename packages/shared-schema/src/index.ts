@@ -92,3 +92,102 @@ export interface UpdateModelProfileRequest {
   temperature?: number;
   max_tokens?: number;
 }
+
+// ─── M2: Knowledge ────────────────────────────────────────────────────────────
+
+export type LibraryType =
+  | "core_rules"
+  | "expansion"
+  | "module_reference"
+  | "monster_manual"
+  | "lore"
+  | "house_rules";
+
+export interface KnowledgeLibrary {
+  id: string;
+  rule_set_id: string | null;
+  name: string;
+  type: LibraryType;
+  description: string | null;
+  embedding_config: string | null;
+  document_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateKnowledgeLibraryRequest {
+  name: string;
+  type: LibraryType;
+  description?: string;
+  rule_set_id?: string;
+}
+
+export type ParseStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "partial"
+  | "scanned_fallback"
+  | "failed";
+
+export interface KnowledgeDocument {
+  id: string;
+  library_id: string;
+  filename: string;
+  original_path: string;
+  mime_type: string;
+  parse_status: ParseStatus;
+  page_count: number | null;
+  chunk_count: number | null;
+  metadata_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TaskStatus = "pending" | "running" | "completed" | "failed";
+
+export interface IngestTask {
+  id: string;
+  document_id: string;
+  status: TaskStatus;
+  current_step: number;
+  total_steps: number;
+  step_label: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceLibraryBinding {
+  id: string;
+  workspace_id: string;
+  library_id: string;
+  priority: number;
+  enabled: boolean;
+  library?: KnowledgeLibrary;
+}
+
+export interface CreateBindingRequest {
+  library_id: string;
+  priority?: number;
+  enabled?: boolean;
+}
+
+export interface SearchRequest {
+  query: string;
+  library_ids: string[];
+  top_k?: number;
+}
+
+export interface Citation {
+  chunk_id: string;
+  content: string;
+  document_id: string;
+  document_filename: string;
+  page_from: number;
+  page_to: number;
+  section_title: string | null;
+  relevance_score: number;
+}
+
+export type SearchResult = Citation;

@@ -7,6 +7,7 @@ import FailedScreen from "./pages/FailedScreen";
 import HomePage from "./pages/HomePage";
 import ModelProfilesPage from "./pages/ModelProfilesPage";
 import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
+import KnowledgePage from "./pages/KnowledgePage";
 import DisconnectedBanner from "./components/DisconnectedBanner";
 
 const POLL_INTERVAL = 500;
@@ -71,12 +72,13 @@ export default function App() {
   return (
     <BrowserRouter>
       {status === "disconnected" && <DisconnectedBanner />}
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/settings/models" element={<ModelProfilesPage />} />
-        <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/settings/models" element={<ModelProfilesPage />} />
+          <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
+          <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
     </BrowserRouter>
   );
 }

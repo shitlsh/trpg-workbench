@@ -76,3 +76,87 @@ class ModelProfileUpdate(BaseModel):
     api_key: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
+
+
+# ─── M2: Knowledge ────────────────────────────────────────────────────────────
+
+class KnowledgeLibrarySchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    rule_set_id: str | None
+    name: str
+    type: str
+    description: str | None
+    embedding_config: str | None
+    document_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class KnowledgeLibraryCreate(BaseModel):
+    name: str
+    type: str = "core_rules"
+    description: str | None = None
+    rule_set_id: str | None = None
+
+
+class KnowledgeDocumentSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    library_id: str
+    filename: str
+    original_path: str
+    mime_type: str
+    parse_status: str
+    page_count: int | None
+    chunk_count: int | None
+    metadata_json: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class IngestTaskSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    document_id: str
+    status: str
+    current_step: int
+    total_steps: int
+    step_label: str | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspaceLibraryBindingSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workspace_id: str
+    library_id: str
+    priority: int
+    enabled: bool
+    library: KnowledgeLibrarySchema | None = None
+
+
+class WorkspaceLibraryBindingCreate(BaseModel):
+    library_id: str
+    priority: int = 0
+    enabled: bool = True
+
+
+class SearchRequest(BaseModel):
+    query: str
+    library_ids: list[str]
+    top_k: int = 5
+
+
+class CitationSchema(BaseModel):
+    chunk_id: str
+    content: str
+    document_id: str
+    document_filename: str
+    page_from: int
+    page_to: int
+    section_title: str | None
+    relevance_score: float
+
