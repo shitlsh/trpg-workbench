@@ -1,11 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "dev-env-setup": {
-      "source": "local",
-      "sourceType": "local",
-      "path": ".agents/skills/dev-env-setup"
-    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
