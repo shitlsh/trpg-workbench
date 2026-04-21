@@ -1,4 +1,5 @@
 import uuid
+import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -62,5 +63,8 @@ def delete_workspace(workspace_id: str, db: Session = Depends(get_db)):
     ws = db.get(WorkspaceORM, workspace_id)
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
+    workspace_path = ws.workspace_path
     db.delete(ws)
     db.commit()
+    # Clean up filesystem directory after successful DB delete
+    shutil.rmtree(workspace_path, ignore_errors=True)

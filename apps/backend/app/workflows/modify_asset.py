@@ -88,8 +88,7 @@ async def run_modify_asset(
                     "current_content_json": rev.content_json if rev else "{}",
                 })
 
-        # Call appropriate agent based on asset types in change_plan
-        agent_types = change_plan.get("agents_to_call", ["plot"])
+        # Call appropriate agent based on asset type
         raw_assets_for_doc = []
         for asset_ctx in assets:
             asset_type = asset_ctx["asset_type"]
@@ -168,6 +167,9 @@ async def apply_modify_asset_patches(
     try:
         from app.services.asset_service import update_asset
         ws = db.get(WorkspaceORM, wf.workspace_id)
+        if not ws:
+            fail_workflow(db, wf, f"Workspace {wf.workspace_id} not found")
+            return wf
 
         update_step(db, wf, 7, STEP_NAMES[7], "running")
         saved = 0

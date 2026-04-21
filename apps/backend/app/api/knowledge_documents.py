@@ -38,10 +38,13 @@ async def upload_document(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
+    # Sanitize filename to prevent path traversal
+    safe_filename = Path(file.filename).name
+
     # Create document record
     doc = KnowledgeDocumentORM(
         library_id=library_id,
-        filename=file.filename,
+        filename=safe_filename,
         original_path="",  # will be set after save
         mime_type="application/pdf",
         parse_status="pending",

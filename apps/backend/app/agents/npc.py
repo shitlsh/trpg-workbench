@@ -1,7 +1,7 @@
 """NPC Agent – character design, motivations, relationships."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model
+from app.agents.model_adapter import get_default_model, strip_code_fence
 
 NPC_SYSTEM = """You are the NPC Agent for a TRPG workbench.
 Your job is to create detailed NPC characters: identity, appearance, personality, motivation, secrets, relationships.
@@ -50,10 +50,7 @@ Knowledge context: {ctx}
 Create {npc_count} key NPCs for this module."""
 
     response = agent.run(prompt)
-    text = (response.content if hasattr(response, "content") else str(response)).strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    text = strip_code_fence(response.content if hasattr(response, "content") else str(response))
 
     try:
         result = json.loads(text)

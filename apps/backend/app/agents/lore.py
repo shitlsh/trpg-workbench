@@ -1,7 +1,7 @@
 """Lore Agent – locations, world-building entries, map briefs, faction lore."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model
+from app.agents.model_adapter import get_default_model, strip_code_fence
 
 LORE_SYSTEM = """You are the Lore Agent for a TRPG workbench.
 Your job is to create world-building content: locations, lore notes (world-building entries),
@@ -84,10 +84,7 @@ Knowledge context (lore books, module references):
 Create the requested locations and lore notes. Each location must include an image_brief."""
 
     response = agent.run(prompt)
-    text = (response.content if hasattr(response, "content") else str(response)).strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    text = strip_code_fence(response.content if hasattr(response, "content") else str(response))
 
     try:
         result = json.loads(text)

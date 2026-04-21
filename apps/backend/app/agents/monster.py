@@ -1,7 +1,7 @@
 """Monster / Entity Agent – creature design, threat forms, rule adaptation."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model
+from app.agents.model_adapter import get_default_model, strip_code_fence
 
 MONSTER_SYSTEM = """You are the Monster Agent for a TRPG workbench.
 Your job is to design monsters and anomalous entities: concept, behavior, threat forms, and rule adaptation hints.
@@ -67,10 +67,7 @@ Knowledge context (monster manuals, rule books):
 Design the monsters/entities listed above."""
 
     response = agent.run(prompt)
-    text = (response.content if hasattr(response, "content") else str(response)).strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    text = strip_code_fence(response.content if hasattr(response, "content") else str(response))
 
     try:
         result = json.loads(text)

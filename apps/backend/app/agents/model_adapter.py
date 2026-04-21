@@ -1,6 +1,12 @@
 """Adapts a ModelProfile ORM record to an Agno model provider."""
+import re
 from typing import Any
 from agno.models.openai import OpenAIChat
+
+
+def strip_code_fence(text: str) -> str:
+    """Remove markdown code fences (``` or ```json etc.) from LLM responses."""
+    return re.sub(r"^```[a-zA-Z]*\n?|```\s*$", "", text.strip(), flags=re.MULTILINE).strip()
 
 
 def model_from_profile(profile) -> Any:

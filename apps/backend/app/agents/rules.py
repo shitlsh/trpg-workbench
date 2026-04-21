@@ -1,7 +1,7 @@
 """Rules Agent – knowledge retrieval + rule advisory with citations."""
 import json
 from agno.agent import Agent
-from app.agents.model_adapter import get_default_model
+from app.agents.model_adapter import get_default_model, strip_code_fence
 
 RULES_SYSTEM = """You are the Rules Agent for a TRPG workbench.
 Your job is to answer rule questions using the provided knowledge context.
@@ -45,10 +45,7 @@ def run_rules_agent(
 Question: {question}"""
 
     response = agent.run(prompt)
-    text = (response.content if hasattr(response, "content") else str(response)).strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    text = strip_code_fence(response.content if hasattr(response, "content") else str(response))
 
     try:
         return json.loads(text)

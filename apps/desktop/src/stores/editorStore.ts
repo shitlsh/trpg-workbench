@@ -63,8 +63,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const tab: EditorTab = {
       assetId: asset.id,
       asset,
-      draftMd: asset.content_md,
-      draftJson: asset.content_json,
+      draftMd: asset.content_md ?? "",
+      draftJson: asset.content_json ?? "{}",
       isDirty: false,
       view: "markdown",
       showHistory: false,
