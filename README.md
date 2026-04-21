@@ -2,7 +2,7 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M1 基础骨架（开发中）**
+> **当前状态：M7 已完成**
 
 ---
 
@@ -12,9 +12,9 @@
 |------|------|
 | 桌面壳 | [Tauri 2](https://tauri.app) |
 | 前端 | React 18 + Vite + TypeScript |
-| AI 编排 | Python + [Agno](https://github.com/agno-agi/agno)（M4 起） |
+| AI 编排 | Python + [Agno](https://github.com/agno-agi/agno) |
 | 数据库 | SQLite（via SQLAlchemy） |
-| 向量索引 | lancedb（M2 起） |
+| 向量索引 | lancedb |
 
 ---
 
@@ -23,23 +23,30 @@
 ```
 trpg-workbench/
   apps/
-    desktop/          # React + Tauri 前端
-      src/            # React 源码
-      src-tauri/      # Tauri / Rust 壳
-    backend/          # Python FastAPI 后端
+    desktop/                # React + Tauri 前端
+      src/
+        pages/              # 页面组件
+        components/         # 通用组件（editor、agent、layout）
+        stores/             # Zustand 状态
+        lib/                # API 客户端工具
+      src-tauri/            # Tauri / Rust 壳
+    backend/                # Python FastAPI 后端
       app/
-        api/          # HTTP 路由
-        models/       # ORM + Pydantic Schema
-        services/     # 业务逻辑（M2+）
-        storage/      # SQLite 操作、种子数据
-        utils/        # 路径、加密工具
-      server.py       # 启动入口
+        api/                # HTTP 路由（workspaces、assets、chat、llm_profiles 等）
+        agents/             # Agno Agent 定义（director、plot、npc 等）
+        data/               # 静态数据（model catalog JSON）
+        models/             # ORM（SQLAlchemy）+ Pydantic Schema
+        services/           # 业务逻辑（model_routing、catalog_service 等）
+        storage/            # SQLite 初始化、种子数据
+        utils/              # 路径、加密工具
+        workflows/          # 多步 Workflow（create_module、rules_review 等）
+        knowledge/          # PDF 解析、向量检索
+      server.py             # 启动入口
   packages/
-    shared-schema/    # 前后端共用 TypeScript 类型（API contract）
-  docs/
+    shared-schema/          # 前后端共用 TypeScript 类型（API contract 唯一来源）
   .agents/
-    skills/           # AI Agent skill 定义
-    plans/            # 开发计划（gitignore，本地）
+    skills/                 # AI Agent skill 约束文档
+    plans/                  # 各里程碑开发计划
 ```
 
 ---
@@ -74,7 +81,7 @@ PIP_USER=false .venv/bin/pip install -r requirements.txt
 ```bash
 cd apps/backend
 PIP_USER=false TRPG_DATA_DIR=~/trpg-workbench-data .venv/bin/python3 server.py
-# 后端监听 http://127.0.0.1:7821
+# 后端监听 http://127.0.0.1:8765
 ```
 
 **方式二：完整桌面应用（Tauri + React + Python）**
@@ -88,13 +95,13 @@ cargo tauri dev
 # Tauri 会自动拉起前端 Vite dev server 和 Python 后端
 ```
 
-### 验证
+### 首次配置
 
-1. 应用窗口打开，显示"正在启动服务..."
-2. 几秒后进入主界面，显示工作空间列表
-3. 点击「新建工作空间」，填写名称，选择规则体系（空白 / COC7）
-4. 重启应用，确认数据持久化
-5. 进入「模型配置」，新增 OpenAI profile（api_key 加密存储，不明文落盘）
+1. 应用启动后进入主界面，点击「新建工作空间」
+2. 进入「模型配置」→ LLM 配置，新增 LLM Profile（如 OpenAI gpt-4o）
+3. 进入「模型配置」→ Embedding 配置，新增 Embedding Profile（如 text-embedding-3-small）
+4. 进入工作空间设置，在「模型路由」区域绑定默认 LLM 和 Embedding 模型
+5. 可在「模型配置」→「模型发现」Tab 查看静态 catalog 及动态拉取最新模型列表
 
 ---
 
@@ -107,7 +114,11 @@ cargo tauri dev
   app.db               # SQLite 主数据库
   .secret_key          # 本地加密密钥（chmod 600，勿提交）
   workspaces/
-    <workspace-id>/    # 每个工作空间的文件目录（M3 起使用）
+    <workspace-id>/    # 每个工作空间的资产文件目录
+      assets/          # 结构化资产（JSON + Markdown 双文件）
+  knowledge/
+    libraries/
+      <library-id>/    # 知识库索引和解析结果
 ```
 
 ---
@@ -116,14 +127,20 @@ cargo tauri dev
 
 | 里程碑 | 内容 | 状态 |
 |--------|------|------|
-| M1 基础骨架 | monorepo、后端骨架、Workspace CRUD、模型配置 | **进行中** |
-| M2 知识库 | PDF 导入、切块、向量检索 | 待启动 |
-| M3 资产系统 | NPC/怪物/场景等资产 CRUD、三栏编辑器 | 待启动 |
-| M4 Agent 创作 | Director + 6 个子 Agent、Patch 确认流程 | 待启动 |
-| M5 产品打磨 | 图像生成、导出、Prompt 配置 | 待启动 |
+| M1 基础骨架 | monorepo、后端骨架、Workspace CRUD、模型配置 | ✅ 完成 |
+| M2 知识库 | PDF 导入、切块、向量检索 | ✅ 完成 |
+| M3 资产系统 | NPC/怪物/场景等资产 CRUD、三栏编辑器 | ✅ 完成 |
+| M4 Agent 创作 | Director + 8 个子 Agent、Patch 确认流程 | ✅ 完成 |
+| M5 产品打磨 | 图像生成、导出、Prompt 配置、规则审查 | ✅ 完成 |
+| M6 模型配置管理 | LLM/Embedding Profile、Workspace 路由绑定、usage 埋点 | ✅ 完成 |
+| M7 模型发现与用量观测 | 静态+动态 model catalog、usage 聚合统计、成本估算、context window | ✅ 完成 |
+
+详细计划见 `.agents/plans/`，架构与约束见 `.agents/skills/`。
 
 ---
 
 ## 贡献
 
-本项目处于早期开发阶段。如有意参与，请先阅读 `PLAN.md` 了解完整产品设计，以及 `.agents/skills/` 下的架构约束文档。
+本项目处于积极开发阶段。参与前请先阅读：
+- `.agents/skills/trpg-workbench-architecture/SKILL.md`：整体架构约束
+- `.agents/plans/roadmap.md`：里程碑路线图

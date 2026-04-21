@@ -104,7 +104,7 @@ def refresh_catalog_from_provider(
 
 def _upsert_llm_catalog(db: Session, entry_id: str, data: dict) -> bool:
     """Insert or update a catalog entry. Returns True if new, False if updated.
-    Preserves user-customized pricing (if source != 'api_fetched')."""
+    Preserves user-customized pricing (source == 'user') and static entries' pricing."""
     existing = db.get(ModelCatalogEntryORM, entry_id)
     if existing is None:
         db.add(ModelCatalogEntryORM(
@@ -115,15 +115,15 @@ def _upsert_llm_catalog(db: Session, entry_id: str, data: dict) -> bool:
         ))
         return True
     else:
-        # Only update non-pricing fields if user has customized pricing
+        # Always update non-pricing metadata from dynamic fetch
         existing.display_name = data.get("display_name", existing.display_name)
         existing.context_window = data.get("context_window", existing.context_window)
         existing.max_output_tokens = data.get("max_output_tokens", existing.max_output_tokens)
-        # Only overwrite pricing if this entry was originally api_fetched (not user-customized)
-        if existing.source == "api_fetched":
+        # Only overwrite pricing if user has NOT manually customized it
+        if existing.source != "user":
             existing.input_price_per_1m = data.get("input_price_per_1m", existing.input_price_per_1m)
             existing.output_price_per_1m = data.get("output_price_per_1m", existing.output_price_per_1m)
-        existing.source = "api_fetched"
+            existing.source = "api_fetched"
         existing.fetched_at = _now()
         return False
 
@@ -150,8 +150,8 @@ def _refresh_openrouter(db: Session, api_key: str | None) -> tuple[int, int, str
             "max_output_tokens": None,
             "supports_json_mode": None,
             "supports_tools": None,
-            "input_price_per_1m": float(pricing.get("prompt", 0)) * 1_000_000 if pricing.get("prompt") else None,
-            "output_price_per_1m": float(pricing.get("completion", 0)) * 1_000_000 if pricing.get("completion") else None,
+            "input_price_per_1m": float(pricing["prompt"]) * 1_000_000 if pricing.get("prompt") and float(pricing["prompt"]) > 0 else None,
+            "output_price_per_1m": float(pricing["completion"]) * 1_000_000 if pricing.get("completion") and float(pricing["completion"]) > 0 else None,
         }
         is_new = _upsert_llm_catalog(db, entry_id, data)
         if is_new:

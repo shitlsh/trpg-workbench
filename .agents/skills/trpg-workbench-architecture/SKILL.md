@@ -72,7 +72,11 @@ Workspace（工作空间）── 归属一个 RuleSet
   └── ChatSession（对话历史）
         └── ChatMessage（含引用和 tool_calls）
 
-ModelProfile（模型供应商配置，全局可复用）
+LLMProfile（LLM 供应商配置，全局可复用）
+EmbeddingProfile（Embedding 供应商配置，全局可复用）
+ModelCatalogEntry（LLM 模型目录，含 pricing/context_window 元数据）
+EmbeddingCatalogEntry（Embedding 模型目录）
+LLMUsageRecord（每次 LLM 调用的 token 用量记录，绑定 workspace）
 ImageGenerationJob（图像生成任务，绑定 Asset）
 ```
 
@@ -126,7 +130,6 @@ trpg-workbench-data/
           chunks.jsonl
         index/                   # 向量索引文件
   settings/
-    model_profiles.json
     prompt_profiles.json
 ```
 
