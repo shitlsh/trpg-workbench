@@ -60,7 +60,7 @@ def run_director(
 
 User request: {user_message}"""
 
-    response: RunResponse = agent.run(prompt)
+    response = agent.run(prompt)
     text = response.content if hasattr(response, "content") else str(response)
 
     # Extract JSON from response
