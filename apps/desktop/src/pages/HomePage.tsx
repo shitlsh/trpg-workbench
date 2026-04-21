@@ -97,6 +97,12 @@ export default function HomePage() {
                 </div>
                 <div className={styles.cardActions}>
                   <button
+                    className={styles.btnPrimary}
+                    onClick={() => navigate(`/workspace/${ws.id}`)}
+                  >
+                    打开
+                  </button>
+                  <button
                     className={styles.btnSecondary}
                     onClick={() => navigate(`/workspace/${ws.id}/settings`)}
                   >

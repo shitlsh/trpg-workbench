@@ -121,3 +121,43 @@ class IngestTaskORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     document: Mapped["KnowledgeDocumentORM"] = relationship("KnowledgeDocumentORM", back_populates="ingest_tasks")
+
+
+# ─── M3: Assets ───────────────────────────────────────────────────────────────
+
+class AssetORM(Base):
+    __tablename__ = "assets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(200), nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="draft")
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latest_revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    revisions: Mapped[list["AssetRevisionORM"]] = relationship(
+        "AssetRevisionORM", back_populates="asset",
+        cascade="all, delete-orphan",
+        foreign_keys="AssetRevisionORM.asset_id"
+    )
+
+
+class AssetRevisionORM(Base):
+    __tablename__ = "asset_revisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_md: Mapped[str] = mapped_column(Text, default="")
+    content_json: Mapped[str] = mapped_column(Text, default="{}")
+    change_summary: Mapped[str] = mapped_column(String(500), default="用户手动编辑")
+    source_type: Mapped[str] = mapped_column(String(20), default="user")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    asset: Mapped["AssetORM"] = relationship("AssetORM", back_populates="revisions", foreign_keys=[asset_id])

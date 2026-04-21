@@ -160,3 +160,54 @@ class CitationSchema(BaseModel):
     section_title: str | None
     relevance_score: float
 
+
+# ─── M3: Assets ───────────────────────────────────────────────────────────────
+
+class AssetSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workspace_id: str
+    type: str
+    name: str
+    slug: str
+    path: str
+    status: str
+    summary: str | None
+    metadata_json: str | None
+    latest_revision_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssetRevisionSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    asset_id: str
+    version: int
+    content_md: str
+    content_json: str
+    change_summary: str
+    source_type: str
+    created_at: datetime
+
+
+class AssetWithContentSchema(AssetSchema):
+    content_md: str = ""
+    content_json: str = "{}"
+    version: int = 0
+
+
+class AssetCreate(BaseModel):
+    type: str
+    name: str
+    slug: str
+    summary: str | None = None
+
+
+class AssetUpdate(BaseModel):
+    content_md: str | None = None
+    content_json: str | None = None
+    change_summary: str | None = None
+    name: str | None = None
+    status: str | None = None
+    summary: str | None = None

@@ -8,6 +8,7 @@ import HomePage from "./pages/HomePage";
 import ModelProfilesPage from "./pages/ModelProfilesPage";
 import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
 import KnowledgePage from "./pages/KnowledgePage";
+import { WorkspacePage } from "./pages/WorkspacePage";
 import DisconnectedBanner from "./components/DisconnectedBanner";
 
 const POLL_INTERVAL = 500;
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/settings/models" element={<ModelProfilesPage />} />
           <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
+          <Route path="/workspace/:id" element={<WorkspacePage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

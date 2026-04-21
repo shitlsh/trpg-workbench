@@ -6,6 +6,7 @@ from app.storage.database import get_db
 from app.models.orm import WorkspaceORM
 from app.models.schemas import WorkspaceSchema, WorkspaceCreate, WorkspaceUpdate
 from app.utils.paths import get_data_dir
+from app.services.asset_service import ensure_workspace_dirs
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -32,6 +33,7 @@ def create_workspace(body: WorkspaceCreate, db: Session = Depends(get_db)):
     db.add(ws)
     db.commit()
     db.refresh(ws)
+    ensure_workspace_dirs(ws.workspace_path)
     return ws
 
 

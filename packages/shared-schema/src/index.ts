@@ -191,3 +191,67 @@ export interface Citation {
 }
 
 export type SearchResult = Citation;
+
+// ─── M3: Assets ───────────────────────────────────────────────────────────────
+
+export type AssetType =
+  | "outline"
+  | "stage"
+  | "npc"
+  | "monster"
+  | "location"
+  | "clue"
+  | "branch"
+  | "timeline"
+  | "map_brief"
+  | "lore_note";
+
+export type AssetStatus = "draft" | "review" | "final" | "deleted";
+
+export interface Asset {
+  id: string;
+  workspace_id: string;
+  type: AssetType;
+  name: string;
+  slug: string;
+  path: string;
+  status: AssetStatus;
+  summary: string | null;
+  metadata_json: string | null;
+  latest_revision_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetRevision {
+  id: string;
+  asset_id: string;
+  version: number;
+  content_md: string;
+  content_json: string;
+  change_summary: string;
+  source_type: "agent" | "user";
+  created_at: string;
+}
+
+export interface AssetWithContent extends Asset {
+  content_md: string;
+  content_json: string;
+  version: number;
+}
+
+export interface CreateAssetRequest {
+  type: AssetType;
+  name: string;
+  slug: string;
+  summary?: string;
+}
+
+export interface UpdateAssetRequest {
+  content_md?: string;
+  content_json?: string;
+  change_summary?: string;
+  name?: string;
+  status?: AssetStatus;
+  summary?: string;
+}
