@@ -6,6 +6,8 @@ import type {
   LLMProfile, CreateLLMProfileRequest, UpdateLLMProfileRequest,
   EmbeddingProfile, CreateEmbeddingProfileRequest, UpdateEmbeddingProfileRequest,
   LLMTestResult, EmbeddingTestResult,
+  ModelCatalogEntry, EmbeddingCatalogEntry, UpdateModelCatalogEntryRequest,
+  CatalogRefreshRequest, CatalogRefreshResult,
 } from "@trpg-workbench/shared-schema";
 import styles from "./ModelProfilesPage.module.css";
 
@@ -428,9 +430,213 @@ function EmbeddingSection() {
   );
 }
 
+// ─── Catalog Section ──────────────────────────────────────────────────────────
+
+function CatalogSection() {
+  const queryClient = useQueryClient();
+  const [filterProvider, setFilterProvider] = useState<string>("");
+  const [refreshProfileId, setRefreshProfileId] = useState("");
+  const [refreshProvider, setRefreshProvider] = useState<LLMProviderType>("openrouter");
+  const [refreshResult, setRefreshResult] = useState<CatalogRefreshResult | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [editEntryId, setEditEntryId] = useState<string | null>(null);
+  const [editPricing, setEditPricing] = useState<{ input: string; output: string }>({ input: "", output: "" });
+
+  const { data: catalog = [] } = useQuery({
+    queryKey: ["model-catalog", filterProvider],
+    queryFn: () => apiFetch<ModelCatalogEntry[]>(`/settings/model-catalog${filterProvider ? `?provider_type=${filterProvider}` : ""}`),
+  });
+
+  const { data: embCatalog = [] } = useQuery({
+    queryKey: ["embedding-catalog"],
+    queryFn: () => apiFetch<EmbeddingCatalogEntry[]>("/settings/model-catalog/embedding"),
+  });
+
+  const { data: llmProfiles = [] } = useQuery({
+    queryKey: ["llm-profiles"],
+    queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
+  });
+
+  const patchMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateModelCatalogEntryRequest }) =>
+      apiFetch<ModelCatalogEntry>(`/settings/model-catalog/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["model-catalog"] });
+      setEditEntryId(null);
+    },
+  });
+
+  async function handleRefresh() {
+    if (!refreshProfileId) return;
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      const res = await apiFetch<CatalogRefreshResult>("/settings/model-catalog/refresh", {
+        method: "POST",
+        body: JSON.stringify({ provider_type: refreshProvider, llm_profile_id: refreshProfileId } as CatalogRefreshRequest),
+      });
+      setRefreshResult(res);
+      queryClient.invalidateQueries({ queryKey: ["model-catalog"] });
+    } catch (e: unknown) {
+      setRefreshResult({ provider_type: refreshProvider, models_added: 0, models_updated: 0, error: (e as Error).message });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function startEdit(entry: ModelCatalogEntry) {
+    setEditEntryId(entry.id);
+    setEditPricing({
+      input: entry.input_price_per_1m != null ? String(entry.input_price_per_1m) : "",
+      output: entry.output_price_per_1m != null ? String(entry.output_price_per_1m) : "",
+    });
+  }
+
+  function saveEdit(entry: ModelCatalogEntry) {
+    patchMutation.mutate({
+      id: entry.id,
+      body: {
+        input_price_per_1m: editPricing.input !== "" ? parseFloat(editPricing.input) : null,
+        output_price_per_1m: editPricing.output !== "" ? parseFloat(editPricing.output) : null,
+      },
+    });
+  }
+
+  const providers = [...new Set(catalog.map((e) => e.provider_type))].sort();
+
+  return (
+    <div>
+      {/* Refresh panel */}
+      <div style={{ marginBottom: 24, padding: 16, background: "var(--surface, #1a1a1a)", borderRadius: 8, border: "1px solid var(--border, #333)" }}>
+        <div style={{ fontWeight: 600, marginBottom: 12 }}>动态拉取模型列表</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select value={refreshProvider} onChange={(e) => setRefreshProvider(e.target.value as LLMProviderType)}
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", fontSize: 13 }}>
+            {["openrouter", "openai", "google"].map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select value={refreshProfileId} onChange={(e) => setRefreshProfileId(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", fontSize: 13, minWidth: 180 }}>
+            <option value="">选择 LLM Profile（提供 API Key）</option>
+            {llmProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.provider_type})</option>)}
+          </select>
+          <button onClick={handleRefresh} disabled={!refreshProfileId || refreshing}
+            style={{ padding: "6px 14px", borderRadius: 6, background: "var(--accent, #7c6aff)", color: "#fff", fontSize: 13, cursor: "pointer" }}>
+            {refreshing ? "拉取中..." : "刷新"}
+          </button>
+        </div>
+        {refreshResult && (
+          <div style={{ marginTop: 8, fontSize: 13, color: refreshResult.error ? "var(--error, #f55)" : "var(--success, #4caf50)" }}>
+            {refreshResult.error
+              ? `⚠ 拉取失败：${refreshResult.error}（显示内置清单）`
+              : `✓ 新增 ${refreshResult.models_added} 个，更新 ${refreshResult.models_updated} 个`}
+          </div>
+        )}
+      </div>
+
+      {/* Filter */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+        <span style={{ fontSize: 13 }}>按 Provider 过滤：</span>
+        <select value={filterProvider} onChange={(e) => setFilterProvider(e.target.value)}
+          style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", fontSize: 13 }}>
+          <option value="">全部</option>
+          {providers.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+
+      {/* LLM Catalog table */}
+      <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>LLM 模型 ({catalog.length})</div>
+      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse", marginBottom: 32 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)", textAlign: "left" }}>
+            <th style={{ padding: "6px 8px" }}>名称</th>
+            <th style={{ padding: "6px 8px" }}>Provider</th>
+            <th style={{ padding: "6px 8px" }}>Context</th>
+            <th style={{ padding: "6px 8px" }}>输入价格 /1M</th>
+            <th style={{ padding: "6px 8px" }}>输出价格 /1M</th>
+            <th style={{ padding: "6px 8px" }}>来源</th>
+            <th style={{ padding: "6px 8px" }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {catalog.map((e) => (
+            <tr key={e.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              <td style={{ padding: "6px 8px" }}>
+                {e.display_name || e.model_name}
+                {e.is_deprecated && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)" }}>（已弃用）</span>}
+              </td>
+              <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{e.provider_type}</td>
+              <td style={{ padding: "6px 8px" }}>{e.context_window ? `${(e.context_window / 1000).toFixed(0)}K` : "—"}</td>
+              <td style={{ padding: "6px 8px" }}>
+                {editEntryId === e.id ? (
+                  <input type="number" step="0.01" value={editPricing.input}
+                    onChange={(ev) => setEditPricing((p) => ({ ...p, input: ev.target.value }))}
+                    style={{ width: 70, padding: "2px 4px", fontSize: 12 }} />
+                ) : (
+                  <>
+                    {e.input_price_per_1m != null ? `$${e.input_price_per_1m}` : "—"}
+                    {e.source === "user" && <span title="自定义价格" style={{ marginLeft: 4 }}>*</span>}
+                  </>
+                )}
+              </td>
+              <td style={{ padding: "6px 8px" }}>
+                {editEntryId === e.id ? (
+                  <input type="number" step="0.01" value={editPricing.output}
+                    onChange={(ev) => setEditPricing((p) => ({ ...p, output: ev.target.value }))}
+                    style={{ width: 70, padding: "2px 4px", fontSize: 12 }} />
+                ) : (
+                  e.output_price_per_1m != null ? `$${e.output_price_per_1m}` : "—"
+                )}
+              </td>
+              <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-muted)" }}>{e.source}</td>
+              <td style={{ padding: "6px 8px" }}>
+                {editEntryId === e.id ? (
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button onClick={() => saveEdit(e)} style={{ fontSize: 12, padding: "2px 8px", cursor: "pointer" }}>保存</button>
+                    <button onClick={() => setEditEntryId(null)} style={{ fontSize: 12, padding: "2px 8px", cursor: "pointer" }}>取消</button>
+                  </div>
+                ) : (
+                  <button onClick={() => startEdit(e)} style={{ fontSize: 12, padding: "2px 8px", cursor: "pointer", color: "var(--accent)" }}>编辑价格</button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Embedding Catalog */}
+      <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Embedding 模型 ({embCatalog.length})</div>
+      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)", textAlign: "left" }}>
+            <th style={{ padding: "6px 8px" }}>名称</th>
+            <th style={{ padding: "6px 8px" }}>Provider</th>
+            <th style={{ padding: "6px 8px" }}>维度</th>
+            <th style={{ padding: "6px 8px" }}>输入价格 /1M</th>
+            <th style={{ padding: "6px 8px" }}>来源</th>
+          </tr>
+        </thead>
+        <tbody>
+          {embCatalog.map((e) => (
+            <tr key={e.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              <td style={{ padding: "6px 8px" }}>{e.display_name || e.model_name}</td>
+              <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{e.provider_type}</td>
+              <td style={{ padding: "6px 8px" }}>{e.dimensions ?? "—"}</td>
+              <td style={{ padding: "6px 8px" }}>{e.input_price_per_1m != null ? `$${e.input_price_per_1m}` : "—"}</td>
+              <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-muted)" }}>{e.source}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
-type TabKey = "llm" | "embedding";
+type TabKey = "llm" | "embedding" | "catalog";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -456,9 +662,12 @@ export default function SettingsPage() {
       <div style={{ borderBottom: "1px solid var(--border)", display: "flex", gap: 0, paddingLeft: 32 }}>
         <button style={tabStyle(tab === "llm")} onClick={() => setTab("llm")}>LLM 语言模型</button>
         <button style={tabStyle(tab === "embedding")} onClick={() => setTab("embedding")}>Embedding 向量模型</button>
+        <button style={tabStyle(tab === "catalog")} onClick={() => setTab("catalog")}>模型发现</button>
       </div>
       <main className={styles.main}>
-        {tab === "llm" ? <LLMSection /> : <EmbeddingSection />}
+        {tab === "llm" && <LLMSection />}
+        {tab === "embedding" && <EmbeddingSection />}
+        {tab === "catalog" && <CatalogSection />}
       </main>
     </div>
   );

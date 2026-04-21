@@ -1,0 +1,42 @@
+[
+  {
+    "provider_type": "openai",
+    "model_name": "text-embedding-3-small",
+    "display_name": "Text Embedding 3 Small",
+    "dimensions": 1536,
+    "max_input_tokens": 8191,
+    "input_price_per_1m": 0.02
+  },
+  {
+    "provider_type": "openai",
+    "model_name": "text-embedding-3-large",
+    "display_name": "Text Embedding 3 Large",
+    "dimensions": 3072,
+    "max_input_tokens": 8191,
+    "input_price_per_1m": 0.13
+  },
+  {
+    "provider_type": "openai",
+    "model_name": "text-embedding-ada-002",
+    "display_name": "Text Embedding Ada 002 (Legacy)",
+    "dimensions": 1536,
+    "max_input_tokens": 8191,
+    "input_price_per_1m": 0.10
+  },
+  {
+    "provider_type": "jina",
+    "model_name": "jina-embeddings-v3",
+    "display_name": "Jina Embeddings v3",
+    "dimensions": 1024,
+    "max_input_tokens": 8192,
+    "input_price_per_1m": 0.018
+  },
+  {
+    "provider_type": "jina",
+    "model_name": "jina-embeddings-v2-base-en",
+    "display_name": "Jina Embeddings v2 Base EN",
+    "dimensions": 768,
+    "max_input_tokens": 8192,
+    "input_price_per_1m": 0.018
+  }
+]

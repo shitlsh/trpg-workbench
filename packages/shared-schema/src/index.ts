@@ -486,3 +486,90 @@ export interface UpdatePromptProfileRequest {
   system_prompt?: string;
   style_notes?: string;
 }
+
+// ─── M7: Model Catalog ────────────────────────────────────────────────────────
+
+export interface ModelCatalogEntry {
+  id: string; // "{provider_type}:{model_name}"
+  provider_type: LLMProviderType;
+  model_name: string;
+  display_name: string | null;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  supports_json_mode: boolean | null;
+  supports_tools: boolean | null;
+  input_price_per_1m: number | null; // USD
+  output_price_per_1m: number | null;
+  pricing_currency: string;
+  is_deprecated: boolean;
+  source: "static" | "api_fetched" | "user";
+  fetched_at: string | null;
+  updated_at: string;
+}
+
+export interface EmbeddingCatalogEntry {
+  id: string; // "{provider_type}:{model_name}"
+  provider_type: EmbeddingProviderType;
+  model_name: string;
+  display_name: string | null;
+  dimensions: number | null;
+  max_input_tokens: number | null;
+  input_price_per_1m: number | null;
+  source: "static" | "api_fetched" | "user";
+  fetched_at: string | null;
+  updated_at: string;
+}
+
+export interface UpdateModelCatalogEntryRequest {
+  input_price_per_1m?: number | null;
+  output_price_per_1m?: number | null;
+  context_window?: number | null;
+  supports_json_mode?: boolean | null;
+  supports_tools?: boolean | null;
+}
+
+export interface CatalogRefreshRequest {
+  provider_type: LLMProviderType;
+  llm_profile_id: string;
+}
+
+export interface CatalogRefreshResult {
+  provider_type: LLMProviderType;
+  models_added: number;
+  models_updated: number;
+  error: string | null;
+}
+
+// ─── M7: Usage ────────────────────────────────────────────────────────────────
+
+export interface UsageByModel {
+  provider_type: LLMProviderType;
+  model_name: string;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number | null;
+  call_count: number;
+}
+
+export interface UsageSummary {
+  period: { from: string | null; to: string | null };
+  total_input_tokens: number;
+  total_output_tokens: number;
+  estimated_cost_usd: number | null;
+  call_count: number;
+  by_model: UsageByModel[];
+}
+
+export interface UsageRecord {
+  id: string;
+  workspace_id: string | null;
+  provider_type: string;
+  model_name: string;
+  task_type: string;
+  workflow_source: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  estimated_cost_usd: number | null;
+  created_at: string;
+}

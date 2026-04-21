@@ -2,8 +2,29 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiFetch, BACKEND_URL } from "../lib/api";
-import type { Workspace, RuleSet, LLMProfile, EmbeddingProfile } from "@trpg-workbench/shared-schema";
+import type { Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry, EmbeddingCatalogEntry } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
+
+function CatalogHint({ profile, catalog }: { profile: LLMProfile | EmbeddingProfile | undefined; catalog: (ModelCatalogEntry | EmbeddingCatalogEntry)[] }) {
+  if (!profile) return null;
+  const entry = catalog.find((e) => e.model_name === profile.model_name);
+  if (!entry) return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>（无 catalog 数据）</span>;
+  const parts: string[] = [];
+  if ("context_window" in entry && entry.context_window) {
+    parts.push(`${(entry.context_window / 1000).toFixed(0)}K context`);
+  }
+  if ("dimensions" in entry && entry.dimensions) {
+    parts.push(`${entry.dimensions}d`);
+  }
+  if (entry.input_price_per_1m != null) {
+    parts.push(`~$${entry.input_price_per_1m}/M in`);
+    if ("output_price_per_1m" in entry && entry.output_price_per_1m != null) {
+      parts.push(`~$${entry.output_price_per_1m}/M out`);
+    }
+  }
+  if (!parts.length) return null;
+  return <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>· {parts.join(" · ")}</span>;
+}
 
 export default function WorkspaceSettingsPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,6 +52,16 @@ export default function WorkspaceSettingsPage() {
   const { data: embeddingProfiles = [] } = useQuery({
     queryKey: ["embedding-profiles"],
     queryFn: () => apiFetch<EmbeddingProfile[]>("/settings/embedding-profiles"),
+  });
+
+  const { data: llmCatalog = [] } = useQuery({
+    queryKey: ["model-catalog"],
+    queryFn: () => apiFetch<ModelCatalogEntry[]>("/settings/model-catalog"),
+  });
+
+  const { data: embCatalog = [] } = useQuery({
+    queryKey: ["embedding-catalog"],
+    queryFn: () => apiFetch<EmbeddingCatalogEntry[]>("/settings/model-catalog/embedding"),
   });
 
   const [name, setName] = useState("");
@@ -90,6 +121,10 @@ export default function WorkspaceSettingsPage() {
 
   if (!workspace) return <div className={styles.loading}>加载中...</div>;
 
+  const selectedDefaultLlm = llmProfiles.find((p) => p.id === defaultLlmId);
+  const selectedRulesLlm = llmProfiles.find((p) => p.id === rulesLlmId);
+  const selectedEmbedding = embeddingProfiles.find((p) => p.id === embeddingId);
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -114,21 +149,30 @@ export default function WorkspaceSettingsPage() {
           </label>
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>模型路由</div>
           <label className={styles.label}>
-            默认 LLM（用于创建模组、修改资产等所有 AI 任务）
+            <span>
+              默认 LLM（用于创建模组、修改资产等所有 AI 任务）
+              <CatalogHint profile={selectedDefaultLlm} catalog={llmCatalog} />
+            </span>
             <select className={styles.select} value={defaultLlmId} onChange={(e) => setDefaultLlmId(e.target.value)}>
               <option value="">不指定</option>
               {llmProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
           <label className={styles.label}>
-            规则审查 LLM（留空则使用默认 LLM）
+            <span>
+              规则审查 LLM（留空则使用默认 LLM）
+              <CatalogHint profile={selectedRulesLlm} catalog={llmCatalog} />
+            </span>
             <select className={styles.select} value={rulesLlmId} onChange={(e) => setRulesLlmId(e.target.value)}>
               <option value="">使用默认 LLM</option>
               {llmProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
           <label className={styles.label}>
-            Embedding 向量化（用于知识库索引和检索）
+            <span>
+              Embedding 向量化（用于知识库索引和检索）
+              <CatalogHint profile={selectedEmbedding} catalog={embCatalog} />
+            </span>
             <select className={styles.select} value={embeddingId} onChange={(e) => setEmbeddingId(e.target.value)}>
               <option value="">不指定</option>
               {embeddingProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}

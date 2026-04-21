@@ -370,3 +370,93 @@ class PromptProfileUpdate(BaseModel):
     system_prompt: str | None = None
     style_notes: str | None = None
     output_schema_hint: str | None = None
+
+
+# ─── M7: Model Catalog ────────────────────────────────────────────────────────
+
+class ModelCatalogEntrySchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    provider_type: str
+    model_name: str
+    display_name: str | None
+    context_window: int | None
+    max_output_tokens: int | None
+    supports_json_mode: bool | None
+    supports_tools: bool | None
+    input_price_per_1m: float | None
+    output_price_per_1m: float | None
+    pricing_currency: str
+    is_deprecated: bool
+    source: str
+    fetched_at: datetime | None
+    updated_at: datetime
+
+
+class UpdateModelCatalogEntryRequest(BaseModel):
+    input_price_per_1m: float | None = None
+    output_price_per_1m: float | None = None
+    context_window: int | None = None
+    supports_json_mode: bool | None = None
+    supports_tools: bool | None = None
+
+
+class CatalogRefreshRequest(BaseModel):
+    provider_type: str
+    llm_profile_id: str
+
+
+class CatalogRefreshResult(BaseModel):
+    provider_type: str
+    models_added: int
+    models_updated: int
+    error: str | None
+
+
+class EmbeddingCatalogEntrySchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    provider_type: str
+    model_name: str
+    display_name: str | None
+    dimensions: int | None
+    max_input_tokens: int | None
+    input_price_per_1m: float | None
+    source: str
+    fetched_at: datetime | None
+    updated_at: datetime
+
+
+# ─── M7: Usage ────────────────────────────────────────────────────────────────
+
+class UsageByModelSchema(BaseModel):
+    provider_type: str
+    model_name: str
+    input_tokens: int
+    output_tokens: int
+    estimated_cost_usd: float | None
+    call_count: int
+
+
+class UsageSummarySchema(BaseModel):
+    period: dict  # {"from": str, "to": str}
+    total_input_tokens: int
+    total_output_tokens: int
+    estimated_cost_usd: float | None
+    call_count: int
+    by_model: list[UsageByModelSchema]
+
+
+class UsageRecordSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workspace_id: str | None
+    provider_type: str
+    model_name: str
+    task_type: str
+    workflow_source: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    total_tokens: int | None
+    estimated_cost_usd: float | None
+    created_at: datetime

@@ -9,6 +9,7 @@ import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
 import SettingsPage from "./pages/SettingsPage";
 import KnowledgePage from "./pages/KnowledgePage";
 import PromptProfilesPage from "./pages/PromptProfilesPage";
+import UsagePage from "./pages/UsagePage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import DisconnectedBanner from "./components/DisconnectedBanner";
 
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/settings/models" element={<SettingsPage />} />
           <Route path="/settings/prompts" element={<PromptProfilesPage />} />
+          <Route path="/usage" element={<UsagePage />} />
           <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
           <Route path="/workspace/:id" element={<WorkspacePage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />

@@ -1,0 +1,167 @@
+[
+  {
+    "provider_type": "openai",
+    "model_name": "gpt-4o",
+    "display_name": "GPT-4o",
+    "context_window": 128000,
+    "max_output_tokens": 16384,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 2.50,
+    "output_price_per_1m": 10.00
+  },
+  {
+    "provider_type": "openai",
+    "model_name": "gpt-4o-mini",
+    "display_name": "GPT-4o Mini",
+    "context_window": 128000,
+    "max_output_tokens": 16384,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 0.15,
+    "output_price_per_1m": 0.60
+  },
+  {
+    "provider_type": "openai",
+    "model_name": "gpt-4-turbo",
+    "display_name": "GPT-4 Turbo",
+    "context_window": 128000,
+    "max_output_tokens": 4096,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 10.00,
+    "output_price_per_1m": 30.00
+  },
+  {
+    "provider_type": "openai",
+    "model_name": "o1",
+    "display_name": "o1",
+    "context_window": 200000,
+    "max_output_tokens": 100000,
+    "supports_json_mode": false,
+    "supports_tools": false,
+    "input_price_per_1m": 15.00,
+    "output_price_per_1m": 60.00
+  },
+  {
+    "provider_type": "openai",
+    "model_name": "o1-mini",
+    "display_name": "o1 Mini",
+    "context_window": 128000,
+    "max_output_tokens": 65536,
+    "supports_json_mode": false,
+    "supports_tools": false,
+    "input_price_per_1m": 3.00,
+    "output_price_per_1m": 12.00
+  },
+  {
+    "provider_type": "anthropic",
+    "model_name": "claude-3-5-sonnet-20241022",
+    "display_name": "Claude 3.5 Sonnet",
+    "context_window": 200000,
+    "max_output_tokens": 8192,
+    "supports_json_mode": false,
+    "supports_tools": true,
+    "input_price_per_1m": 3.00,
+    "output_price_per_1m": 15.00
+  },
+  {
+    "provider_type": "anthropic",
+    "model_name": "claude-3-5-haiku-20241022",
+    "display_name": "Claude 3.5 Haiku",
+    "context_window": 200000,
+    "max_output_tokens": 8192,
+    "supports_json_mode": false,
+    "supports_tools": true,
+    "input_price_per_1m": 0.80,
+    "output_price_per_1m": 4.00
+  },
+  {
+    "provider_type": "anthropic",
+    "model_name": "claude-3-opus-20240229",
+    "display_name": "Claude 3 Opus",
+    "context_window": 200000,
+    "max_output_tokens": 4096,
+    "supports_json_mode": false,
+    "supports_tools": true,
+    "input_price_per_1m": 15.00,
+    "output_price_per_1m": 75.00
+  },
+  {
+    "provider_type": "google",
+    "model_name": "gemini-2.0-flash",
+    "display_name": "Gemini 2.0 Flash",
+    "context_window": 1048576,
+    "max_output_tokens": 8192,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 0.10,
+    "output_price_per_1m": 0.40
+  },
+  {
+    "provider_type": "google",
+    "model_name": "gemini-1.5-pro",
+    "display_name": "Gemini 1.5 Pro",
+    "context_window": 2097152,
+    "max_output_tokens": 8192,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 1.25,
+    "output_price_per_1m": 5.00
+  },
+  {
+    "provider_type": "google",
+    "model_name": "gemini-1.5-flash",
+    "display_name": "Gemini 1.5 Flash",
+    "context_window": 1048576,
+    "max_output_tokens": 8192,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 0.075,
+    "output_price_per_1m": 0.30
+  },
+  {
+    "provider_type": "openrouter",
+    "model_name": "meta-llama/llama-3.1-8b-instruct",
+    "display_name": "Llama 3.1 8B Instruct",
+    "context_window": 131072,
+    "max_output_tokens": null,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 0.055,
+    "output_price_per_1m": 0.055
+  },
+  {
+    "provider_type": "openrouter",
+    "model_name": "meta-llama/llama-3.1-70b-instruct",
+    "display_name": "Llama 3.1 70B Instruct",
+    "context_window": 131072,
+    "max_output_tokens": null,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 0.52,
+    "output_price_per_1m": 0.75
+  },
+  {
+    "provider_type": "openrouter",
+    "model_name": "deepseek/deepseek-chat",
+    "display_name": "DeepSeek Chat (V3)",
+    "context_window": 65536,
+    "max_output_tokens": 8192,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 0.14,
+    "output_price_per_1m": 0.28
+  },
+  {
+    "provider_type": "openrouter",
+    "model_name": "qwen/qwen-2.5-72b-instruct",
+    "display_name": "Qwen 2.5 72B Instruct",
+    "context_window": 131072,
+    "max_output_tokens": null,
+    "supports_json_mode": true,
+    "supports_tools": true,
+    "input_price_per_1m": 0.35,
+    "output_price_per_1m": 0.40
+  }
+]

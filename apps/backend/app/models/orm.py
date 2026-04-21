@@ -272,11 +272,42 @@ class WorkflowStateORM(Base):
     workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="pending")
-    current_step: Mapped[int] = mapped_column(Integer, default=0)
-    total_steps: Mapped[int] = mapped_column(Integer, default=1)
-    input_snapshot: Mapped[str] = mapped_column(Text, default="{}")
-    step_results: Mapped[str] = mapped_column(Text, default="[]")
-    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ─── M7: Model Catalog ────────────────────────────────────────────────────────
+
+class ModelCatalogEntryORM(Base):
+    __tablename__ = "model_catalog_entries"
+
+    id: Mapped[str] = mapped_column(String(300), primary_key=True)  # "{provider_type}:{model_name}"
+    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    supports_json_mode: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    supports_tools: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    input_price_per_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    output_price_per_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pricing_currency: Mapped[str] = mapped_column(String(10), default="USD")
+    is_deprecated: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[str] = mapped_column(String(20), default="static")  # "static" | "api_fetched"
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class EmbeddingCatalogEntryORM(Base):
+    __tablename__ = "embedding_catalog_entries"
+
+    id: Mapped[str] = mapped_column(String(300), primary_key=True)  # "{provider_type}:{model_name}"
+    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_price_per_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default="static")
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

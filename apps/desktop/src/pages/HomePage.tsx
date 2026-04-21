@@ -65,6 +65,9 @@ export default function HomePage() {
           <button className={styles.btnSecondary} onClick={() => navigate("/settings/prompts")}>
             Prompt 配置
           </button>
+          <button className={styles.btnSecondary} onClick={() => navigate("/usage")}>
+            用量观测
+          </button>
           <button className={styles.btnPrimary} onClick={() => setShowNewForm(true)}>
             新建工作空间
           </button>

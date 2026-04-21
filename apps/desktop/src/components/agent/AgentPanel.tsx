@@ -4,10 +4,12 @@ import { Send, Plus, ShieldCheck, RefreshCw, BookOpen, FileText, ChevronDown, Ch
 import type {
   ChatSession, ChatMessage, WorkflowState,
   ChangePlan, ConsistencyReport, PatchProposal,
+  LLMProfile, ModelCatalogEntry,
 } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
 import { WorkflowProgress } from "./WorkflowProgress";
 import { PatchConfirmDialog } from "./PatchConfirmDialog";
+import ContextUsageBadge from "./ContextUsageBadge";
 import { apiFetch } from "@/lib/api";
 
 // ─── Layered AI response display ──────────────────────────────────────────────
@@ -222,6 +224,22 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     queryKey: ["workspace", workspaceId],
     queryFn: () => apiFetch<{ default_llm_profile_id: string | null }>(`/workspaces/${workspaceId}`),
     enabled: !!workspaceId,
+  });
+
+  // Load LLM profile and catalog to get context_window for badge
+  const { data: llmProfiles = [] } = useQuery({
+    queryKey: ["llm-profiles"],
+    queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
+    enabled: !!workspace?.default_llm_profile_id,
+  });
+  const activeProfile = llmProfiles.find((p) => p.id === workspace?.default_llm_profile_id);
+
+  const { data: catalogEntry } = useQuery({
+    queryKey: ["model-catalog-entry", activeProfile?.provider_type, activeProfile?.model_name],
+    queryFn: () => apiFetch<ModelCatalogEntry[]>(`/settings/model-catalog?provider_type=${activeProfile!.provider_type}`).then(
+      (entries) => entries.find((e) => e.model_name === activeProfile!.model_name) ?? null
+    ),
+    enabled: !!activeProfile,
   });
 
   // Auto-scroll to bottom
@@ -490,6 +508,16 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         <div style={{ padding: "6px 12px", background: "rgba(240,165,0,0.1)", borderTop: "1px solid rgba(240,165,0,0.3)", fontSize: 12, color: "#f0a500", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{modelWarning}</span>
           <button onClick={() => setModelWarning(null)} style={{ background: "none", color: "#f0a500", fontSize: 12, padding: "2px 6px" }}>✕</button>
+        </div>
+      )}
+
+      {/* Context usage badge */}
+      {messages.length > 0 && (
+        <div style={{ padding: "0 12px" }}>
+          <ContextUsageBadge
+            messages={messages.map((m) => m.content)}
+            contextWindow={catalogEntry?.context_window ?? null}
+          />
         </div>
       )}
 
