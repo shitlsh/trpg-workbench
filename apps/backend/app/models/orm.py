@@ -35,26 +35,60 @@ class WorkspaceORM(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     workspace_path: Mapped[str] = mapped_column(Text, nullable=False)
-    default_model_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    default_llm_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    rules_llm_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    embedding_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     rule_set: Mapped["RuleSetORM"] = relationship("RuleSetORM", back_populates="workspaces")
 
 
-class ModelProfileORM(Base):
-    __tablename__ = "model_profiles"
+# ─── M6: Model Profiles ───────────────────────────────────────────────────────
+
+class LLMProfileORM(Base):
+    __tablename__ = "llm_profiles"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)  # openai/anthropic/google/openrouter/openai_compatible
     base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
+    supports_json_mode: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    supports_tools: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class EmbeddingProfileORM(Base):
+    __tablename__ = "embedding_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)  # openai/openai_compatible
+    base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class LLMUsageRecordORM(Base):
+    __tablename__ = "llm_usage_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    llm_profile_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    task_type: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g. "create_module", "rules_review"
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 # ─── M2: Knowledge ────────────────────────────────────────────────────────────
@@ -67,7 +101,9 @@ class KnowledgeLibraryORM(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False, default="core_rules")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    embedding_config: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    embedding_config: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON (legacy, kept for reference)
+    embedding_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    embedding_model_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON snapshot at index time
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

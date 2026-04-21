@@ -27,7 +27,9 @@ class WorkspaceSchema(BaseModel):
     name: str
     description: str | None
     workspace_path: str
-    default_model_profile_id: str | None
+    default_llm_profile_id: str | None
+    rules_llm_profile_id: str | None
+    embedding_profile_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -42,10 +44,14 @@ class WorkspaceUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     rule_set_id: str | None = None
-    default_model_profile_id: str | None = None
+    default_llm_profile_id: str | None = None
+    rules_llm_profile_id: str | None = None
+    embedding_profile_id: str | None = None
 
 
-class ModelProfileSchema(BaseModel):
+# ─── M6: LLM Profiles ─────────────────────────────────────────────────────────
+
+class LLMProfileSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
@@ -54,28 +60,86 @@ class ModelProfileSchema(BaseModel):
     model_name: str
     temperature: float
     max_tokens: int
+    supports_json_mode: bool
+    supports_tools: bool
+    timeout_seconds: int
+    has_api_key: bool = False
     created_at: datetime
     updated_at: datetime
 
 
-class ModelProfileCreate(BaseModel):
+class LLMProfileCreate(BaseModel):
     name: str
     provider_type: str
     model_name: str
     base_url: str | None = None
-    api_key: str
+    api_key: str | None = None
     temperature: float = 0.7
     max_tokens: int = 4096
+    supports_json_mode: bool
+    supports_tools: bool
+    timeout_seconds: int = 60
 
 
-class ModelProfileUpdate(BaseModel):
+class LLMProfileUpdate(BaseModel):
     name: str | None = None
     provider_type: str | None = None
     model_name: str | None = None
     base_url: str | None = None
     api_key: str | None = None
+    clear_api_key: bool = False
     temperature: float | None = None
     max_tokens: int | None = None
+    supports_json_mode: bool | None = None
+    supports_tools: bool | None = None
+    timeout_seconds: int | None = None
+
+
+class LLMTestResult(BaseModel):
+    success: bool
+    latency_ms: int | None = None
+    error: str | None = None
+
+
+# ─── M6: Embedding Profiles ───────────────────────────────────────────────────
+
+class EmbeddingProfileSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    provider_type: str
+    base_url: str | None
+    model_name: str
+    dimensions: int | None
+    has_api_key: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class EmbeddingProfileCreate(BaseModel):
+    name: str
+    provider_type: str
+    model_name: str
+    base_url: str | None = None
+    api_key: str | None = None
+    dimensions: int | None = None
+
+
+class EmbeddingProfileUpdate(BaseModel):
+    name: str | None = None
+    provider_type: str | None = None
+    model_name: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    clear_api_key: bool = False
+    dimensions: int | None = None
+
+
+class EmbeddingTestResult(BaseModel):
+    success: bool
+    dimensions: int | None = None
+    latency_ms: int | None = None
+    error: str | None = None
 
 
 # ─── M2: Knowledge ────────────────────────────────────────────────────────────
@@ -88,6 +152,8 @@ class KnowledgeLibrarySchema(BaseModel):
     type: str
     description: str | None
     embedding_config: str | None
+    embedding_profile_id: str | None
+    embedding_model_snapshot: str | None
     document_count: int = 0
     created_at: datetime
     updated_at: datetime
