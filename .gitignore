@@ -67,5 +67,5 @@ htmlcov/
 # ── Skill eval workspaces (generated, not source) ────────────────
 .agents/skills/*-workspace/
 
-# ── Local development plans (not for commit) ─────────────────────
-.agents/plans/
+# ── Local development plans ──────────────────────────────────────
+# .agents/plans/ is intentionally tracked
