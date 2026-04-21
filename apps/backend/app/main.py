@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, workspaces, rule_sets, model_profiles
+from app.api import health, workspaces, rule_sets
 from app.api import knowledge_libraries, knowledge_documents, tasks, knowledge_search
 from app.api.assets import router as assets_router, asset_router
 from app.api.chat import router as chat_router
@@ -9,6 +9,8 @@ from app.api.workflows import router as workflows_router
 from app.api.agent_tools import router as agent_tools_router
 from app.api.prompt_profiles import router as prompt_profiles_router
 from app.api.logs import router as logs_router
+from app.api.llm_profiles import router as llm_profiles_router
+from app.api.embedding_profiles import router as embedding_profiles_router
 from app.storage.database import init_db
 from app.storage.seed import seed_default_data
 
@@ -32,7 +34,8 @@ async def on_startup():
 app.include_router(health.router)
 app.include_router(workspaces.router)
 app.include_router(rule_sets.router)
-app.include_router(model_profiles.router)
+app.include_router(llm_profiles_router)
+app.include_router(embedding_profiles_router)
 app.include_router(knowledge_libraries.router)
 app.include_router(knowledge_documents.router)
 app.include_router(tasks.router)

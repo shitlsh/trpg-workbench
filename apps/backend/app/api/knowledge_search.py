@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.storage.database import get_db
 from app.models.orm import (
@@ -8,8 +9,15 @@ from app.models.schemas import (
     WorkspaceLibraryBindingSchema, WorkspaceLibraryBindingCreate,
     SearchRequest, CitationSchema,
 )
+from app.services.model_routing import LibraryNotIndexedError
 
 router = APIRouter(tags=["knowledge"])
+
+
+class SearchResponse(BaseModel):
+    results: list[CitationSchema]
+    warnings: list[str] = []
+    error: str | None = None
 
 
 # ── Library bindings ──────────────────────────────────────────────────────────
@@ -60,12 +68,24 @@ def unbind_library(workspace_id: str, binding_id: str, db: Session = Depends(get
 
 # ── Search ────────────────────────────────────────────────────────────────────
 
-@router.post("/knowledge/search", response_model=list[CitationSchema])
+@router.post("/knowledge/search", response_model=SearchResponse)
 async def search_knowledge(body: SearchRequest, db: Session = Depends(get_db)):
     if not body.library_ids:
         raise HTTPException(status_code=400, detail="library_ids is required")
     if not body.query.strip():
         raise HTTPException(status_code=400, detail="query is required")
+
+    # Check that all libraries have been indexed
+    for lib_id in body.library_ids:
+        lib = db.get(KnowledgeLibraryORM, lib_id)
+        if not lib or not lib.embedding_model_snapshot:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": f"Library {lib_id} has not been indexed yet. Please ingest documents first.",
+                    "library_id": lib_id,
+                }
+            )
 
     # Build document map for citation enrichment
     docs = (
@@ -76,13 +96,18 @@ async def search_knowledge(body: SearchRequest, db: Session = Depends(get_db)):
     doc_map = {d.id: {"filename": d.filename} for d in docs}
 
     from app.knowledge.retriever import retrieve
-    citations = await retrieve(
-        query=body.query,
-        library_ids=body.library_ids,
-        top_k=body.top_k,
-        document_map=doc_map,
-    )
-    return [c.to_dict() for c in citations]
+    try:
+        citations = await retrieve(
+            query=body.query,
+            library_ids=body.library_ids,
+            top_k=body.top_k,
+            document_map=doc_map,
+        )
+        return SearchResponse(results=[c.to_dict() for c in citations])
+    except LibraryNotIndexedError as exc:
+        raise HTTPException(status_code=422, detail={"error": exc.message, "library_id": exc.library_id})
+    except Exception as exc:
+        return SearchResponse(results=[], warnings=[], error=str(exc))
 
 
 # ── Reindex ───────────────────────────────────────────────────────────────────
