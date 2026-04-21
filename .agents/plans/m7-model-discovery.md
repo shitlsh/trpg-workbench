@@ -421,34 +421,34 @@ export interface UsageRecord {
 
 ### 数据层
 
-- [ ] `orm.py`：新增 `ModelCatalogEntryORM` 表（`model_catalog_entries`）
-- [ ] `apps/backend/app/data/static_llm_catalog.json`：新建，初始包含 OpenAI gpt-4o/gpt-4o-mini/gpt-4-turbo、Anthropic claude-3-5-sonnet/claude-3-haiku、Google gemini-2.0-flash/gemini-1.5-pro、OpenRouter 常用模型
-- [ ] `apps/backend/app/data/static_embedding_catalog.json`：新建，包含 OpenAI text-embedding-3-small/large、Jina jina-embeddings-v3
-- [ ] `orm.py`：新增 `EmbeddingCatalogEntryORM` 表（`embedding_catalog_entries`）——用于 Embedding Profile 详情展示，不进入 usage 聚合，优先级低于 LLM catalog
-- [ ] `schemas.py`：新增 `ModelCatalogEntrySchema`、`UsageSummarySchema`、`UsageByModelSchema`、`UsageRecordSchema`
+- [x] `orm.py`：新增 `ModelCatalogEntryORM` 表（`model_catalog_entries`）
+- [x] `apps/backend/app/data/static_llm_catalog.json`：新建，初始包含 OpenAI gpt-4o/gpt-4o-mini/gpt-4-turbo、Anthropic claude-3-5-sonnet/claude-3-haiku、Google gemini-2.0-flash/gemini-1.5-pro、OpenRouter 常用模型
+- [x] `apps/backend/app/data/static_embedding_catalog.json`：新建，包含 OpenAI text-embedding-3-small/large、Jina jina-embeddings-v3
+- [x] `orm.py`：新增 `EmbeddingCatalogEntryORM` 表（`embedding_catalog_entries`）——用于 Embedding Profile 详情展示，不进入 usage 聚合，优先级低于 LLM catalog
+- [x] `schemas.py`：新增 `ModelCatalogEntrySchema`、`UsageSummarySchema`、`UsageByModelSchema`、`UsageRecordSchema`
 
 ### 服务层
 
-- [ ] `app/services/catalog_service.py`：新建，实现静态 catalog 加载（启动时写入 DB）、动态拉取（OpenRouter / Google）、合并去重逻辑
-- [ ] `app/services/usage_aggregator.py`：新建，实现按 workspace / model / 时间聚合查询；成本估算逻辑（查 catalog 得 pricing，计算 estimated_cost）
+- [x] `app/services/catalog_service.py`：新建，实现静态 catalog 加载（启动时写入 DB）、动态拉取（OpenRouter / Google）、合并去重逻辑
+- [x] `app/services/usage_aggregator.py`：新建，实现按 workspace / model / 时间聚合查询；成本估算逻辑（查 catalog 得 pricing，计算 estimated_cost）
 
 ### API 层
 
-- [ ] `app/api/model_catalog.py`：新建，GET list / GET single / PATCH 手动覆盖 / POST refresh
-- [ ] `app/api/usage.py`：新建，GET summary / GET by-workspace / GET by-model / GET recent
-- [ ] `app/main.py`：注册 `model_catalog`、`usage` 路由
+- [x] `app/api/model_catalog.py`：新建，GET list / GET single / PATCH 手动覆盖 / POST refresh
+- [x] `app/api/usage.py`：新建，GET summary / GET by-workspace / GET by-model / GET recent
+- [x] `app/main.py`：注册 `model_catalog`、`usage` 路由
 
 ### 前端
 
-- [ ] `apps/desktop/src/pages/SettingsPage.tsx`：新增 Tab 3"模型发现"，含 catalog 列表、刷新按钮、价格覆盖
-- [ ] `apps/desktop/src/pages/UsagePage.tsx`：新建，汇总卡片 + Workspace 分组 + Model 表格 + 最近请求列表
-- [ ] `apps/desktop/src/pages/WorkspaceSettingsPage.tsx`：模型路由绑定处显示 catalog 数据（context_window / pricing）
-- [ ] `apps/desktop/src/components/agent/ContextUsageBadge.tsx`：新建，本地估算 token 用量，显示进度条和 warning
-- [ ] `apps/desktop/src/App.tsx`：注册 `/usage` 路由
+- [x] `apps/desktop/src/pages/SettingsPage.tsx`：新增 Tab 3"模型发现"，含 catalog 列表、刷新按钮、价格覆盖
+- [x] `apps/desktop/src/pages/UsagePage.tsx`：新建，汇总卡片 + Workspace 分组 + Model 表格 + 最近请求列表
+- [x] `apps/desktop/src/pages/WorkspaceSettingsPage.tsx`：模型路由绑定处显示 catalog 数据（context_window / pricing）
+- [x] `apps/desktop/src/components/agent/ContextUsageBadge.tsx`：新建，本地估算 token 用量，显示进度条和 warning
+- [x] `apps/desktop/src/App.tsx`：注册 `/usage` 路由
 
 ### shared-schema
 
-- [ ] `packages/shared-schema/src/index.ts`：按上方"shared-schema 变更"章节新增 M7 类型
+- [x] `packages/shared-schema/src/index.ts`：按上方"shared-schema 变更"章节新增 M7 类型
 
 ---
 
