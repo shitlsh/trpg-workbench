@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiFetch, BACKEND_URL } from "../lib/api";
-import type { Workspace, RuleSet, ModelProfile } from "@trpg-workbench/shared-schema";
+import type { Workspace, RuleSet, LLMProfile, EmbeddingProfile } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
 
 export default function WorkspaceSettingsPage() {
@@ -23,15 +23,22 @@ export default function WorkspaceSettingsPage() {
     queryFn: () => apiFetch<RuleSet[]>("/rule-sets"),
   });
 
-  const { data: modelProfiles = [] } = useQuery({
-    queryKey: ["model-profiles"],
-    queryFn: () => apiFetch<ModelProfile[]>("/settings/model-profiles"),
+  const { data: llmProfiles = [] } = useQuery({
+    queryKey: ["llm-profiles"],
+    queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
+  });
+
+  const { data: embeddingProfiles = [] } = useQuery({
+    queryKey: ["embedding-profiles"],
+    queryFn: () => apiFetch<EmbeddingProfile[]>("/settings/embedding-profiles"),
   });
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [ruleSetId, setRuleSetId] = useState("");
-  const [defaultModelId, setDefaultModelId] = useState("");
+  const [defaultLlmId, setDefaultLlmId] = useState("");
+  const [rulesLlmId, setRulesLlmId] = useState("");
+  const [embeddingId, setEmbeddingId] = useState("");
 
   // Populate form fields once workspace data is available
   useEffect(() => {
@@ -39,7 +46,9 @@ export default function WorkspaceSettingsPage() {
       setName(workspace.name);
       setDescription(workspace.description ?? "");
       setRuleSetId(workspace.rule_set_id);
-      setDefaultModelId(workspace.default_model_profile_id ?? "");
+      setDefaultLlmId(workspace.default_llm_profile_id ?? "");
+      setRulesLlmId(workspace.rules_llm_profile_id ?? "");
+      setEmbeddingId(workspace.embedding_profile_id ?? "");
     }
   }, [workspace?.id]); // only re-init when workspace ID changes, not on every field update
 
@@ -58,7 +67,9 @@ export default function WorkspaceSettingsPage() {
       name: name.trim(),
       description: description.trim(),
       rule_set_id: ruleSetId,
-      default_model_profile_id: defaultModelId || null,
+      default_llm_profile_id: defaultLlmId || null,
+      rules_llm_profile_id: rulesLlmId || null,
+      embedding_profile_id: embeddingId || null,
     });
   }
 
@@ -101,11 +112,26 @@ export default function WorkspaceSettingsPage() {
               {ruleSets.map((rs) => <option key={rs.id} value={rs.id}>{rs.name}</option>)}
             </select>
           </label>
+          <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>模型路由</div>
           <label className={styles.label}>
-            默认模型
-            <select className={styles.select} value={defaultModelId} onChange={(e) => setDefaultModelId(e.target.value)}>
+            默认 LLM（用于创建模组、修改资产等所有 AI 任务）
+            <select className={styles.select} value={defaultLlmId} onChange={(e) => setDefaultLlmId(e.target.value)}>
               <option value="">不指定</option>
-              {modelProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
+              {llmProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
+            </select>
+          </label>
+          <label className={styles.label}>
+            规则审查 LLM（留空则使用默认 LLM）
+            <select className={styles.select} value={rulesLlmId} onChange={(e) => setRulesLlmId(e.target.value)}>
+              <option value="">使用默认 LLM</option>
+              {llmProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
+            </select>
+          </label>
+          <label className={styles.label}>
+            Embedding 向量化（用于知识库索引和检索）
+            <select className={styles.select} value={embeddingId} onChange={(e) => setEmbeddingId(e.target.value)}>
+              <option value="">不指定</option>
+              {embeddingProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
           <div className={styles.actions}>

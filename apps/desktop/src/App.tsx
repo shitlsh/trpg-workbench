@@ -6,6 +6,7 @@ import StartingScreen from "./pages/StartingScreen";
 import FailedScreen from "./pages/FailedScreen";
 import HomePage from "./pages/HomePage";
 import ModelProfilesPage from "./pages/ModelProfilesPage";
+import SettingsPage from "./pages/SettingsPage";
 import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
 import KnowledgePage from "./pages/KnowledgePage";
 import PromptProfilesPage from "./pages/PromptProfilesPage";
@@ -76,7 +77,8 @@ export default function App() {
       {status === "disconnected" && <DisconnectedBanner />}
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/settings/models" element={<ModelProfilesPage />} />
+          <Route path="/settings/models" element={<SettingsPage />} />
+          <Route path="/settings/models/legacy" element={<ModelProfilesPage />} />
           <Route path="/settings/prompts" element={<PromptProfilesPage />} />
           <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
           <Route path="/workspace/:id" element={<WorkspacePage />} />

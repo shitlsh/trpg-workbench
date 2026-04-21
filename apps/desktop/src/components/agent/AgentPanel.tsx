@@ -215,6 +215,14 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [rulesReview, setRulesReview] = useState<{ suggestions: RulesSuggestion[]; summary: string } | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
+  const [modelWarning, setModelWarning] = useState<string | null>(null);
+
+  // Load workspace to check model configuration
+  const { data: workspace } = useQuery({
+    queryKey: ["workspace", workspaceId],
+    queryFn: () => apiFetch<{ default_llm_profile_id: string | null }>(`/workspaces/${workspaceId}`),
+    enabled: !!workspaceId,
+  });
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -275,6 +283,12 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const handleSend = () => {
     const content = input.trim();
     if (!content) return;
+    // Pre-flight check: warn if no LLM configured
+    if (workspace && !workspace.default_llm_profile_id) {
+      setModelWarning("未配置默认 LLM。请前往工作空间设置 → 模型路由完成配置后再发送。");
+      return;
+    }
+    setModelWarning(null);
     setInput("");
     sendMutation.mutate(content);
   };
@@ -470,6 +484,14 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           <BookOpen size={11} /> 规则审查
         </button>
       </div>
+
+      {/* Model warning */}
+      {modelWarning && (
+        <div style={{ padding: "6px 12px", background: "rgba(240,165,0,0.1)", borderTop: "1px solid rgba(240,165,0,0.3)", fontSize: 12, color: "#f0a500", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>{modelWarning}</span>
+          <button onClick={() => setModelWarning(null)} style={{ background: "none", color: "#f0a500", fontSize: 12, padding: "2px 6px" }}>✕</button>
+        </div>
+      )}
 
       {/* Input area */}
       <div style={{

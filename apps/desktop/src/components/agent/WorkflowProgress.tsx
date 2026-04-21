@@ -158,6 +158,15 @@ export function WorkflowProgress({ onPatchesReady, onComplete }: WorkflowProgres
           <div style={{ fontSize: 11, color: "#e05252", marginBottom: 6 }}>
             {activeWorkflow.error_message ?? "执行失败"}
           </div>
+          {activeWorkflow.error_message?.includes("ModelNotConfiguredError") && (
+            <a
+              href="/settings/models"
+              onClick={(e) => { e.preventDefault(); window.location.href = "/settings/models"; }}
+              style={{ fontSize: 11, color: "var(--accent)", textDecoration: "underline", display: "block", marginBottom: 6 }}
+            >
+              → 前往模型配置页面设置 LLM Profile
+            </a>
+          )}
           {activeWorkflow.error_message?.includes("API key") && (
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
               提示：请检查模型配置页中的 API Key 和 Base URL 是否正确。
