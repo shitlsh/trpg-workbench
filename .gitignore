@@ -69,3 +69,4 @@ htmlcov/
 
 # ── Local development plans ──────────────────────────────────────
 # .agents/plans/ is intentionally tracked
+.githooks
