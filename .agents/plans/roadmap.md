@@ -27,6 +27,7 @@ M1 基础骨架
 | M7 | 模型发现与用量观测 | Provider catalog，动态模型发现，usage 统计，成本估算，context window 展示 | [m7-model-discovery.md](m7-model-discovery.md) |
 | M8 | 知识库预览、质量检查与增强解析扩展 | ingest 结果可视化，chunk/页级预览，检索测试，质量告警；图片/AI增强/rerank 作为后续扩展 | [m8-knowledge-preview.md](m8-knowledge-preview.md) |
 | M9 | 前端 Smoke Test、截图与帮助文档系统 | 关键页面 smoke test，截图产物，Getting Started / Help 文档生成，Tauri Help 菜单接入，应用内帮助页 | [m9-smoke-and-help.md](m9-smoke-and-help.md) |
+| M9a | 规则集统一管理 | 规则集 CRUD UI，知识库↔规则集绑定，PromptProfile 接入 Agent 运行时，工作空间知识库继承链路打通 | [m9a-ruleset-unification.md](m9a-ruleset-unification.md) |
 
 ---
 
