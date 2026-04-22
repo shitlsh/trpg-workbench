@@ -25,6 +25,7 @@ M1 基础骨架
 | M5 | 产品打磨 | 补全 Agent，图像生成，导出，体验完整 | [m5-polish.md](m5-polish.md) |
 | M6 | 模型配置管理 | LLM/Embedding 双 Profile，Workspace 路由绑定，模型决策层，usage 埋点 | [m6-model-management.md](m6-model-management.md) |
 | M7 | 模型发现与用量观测 | Provider catalog，动态模型发现，usage 统计，成本估算，context window 展示 | [m7-model-discovery.md](m7-model-discovery.md) |
+| M8 | 知识库预览、质量检查与增强解析扩展 | ingest 结果可视化，chunk/页级预览，检索测试，质量告警；图片/AI增强/rerank 作为后续扩展 | [m8-knowledge-preview.md](m8-knowledge-preview.md) |
 
 ---
 
