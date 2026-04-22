@@ -2,141 +2,171 @@
 name: tauri-ui-smoke-and-docs
 description: >
   Smoke-tests the trpg-workbench frontend against a local dev server, captures
-  annotated screenshots of every key page, and generates or updates the
-  in-app Help / Getting Started documentation from real UI state.
+  raw full-page screenshots of key pages, and generates Help / Getting Started
+  documentation drafts grounded in the real UI state.
   Use this skill whenever the user asks to: run a UI smoke test, take page
   screenshots, verify that key pages render correctly, generate or refresh
   help docs, update Getting Started content, prepare Tauri Help-menu content,
   or "document the current UI". Also use it proactively after large UI changes
-  to a milestone to verify nothing is visually broken.
+  (e.g., after a milestone lands) to verify nothing is visually broken and to
+  keep the help documentation current.
 ---
 
 # Skill: tauri-ui-smoke-and-docs
 
 ## Purpose
 
-This skill automates three tightly coupled tasks:
+This skill chains three tasks that belong together:
 
-1. **Smoke test** — visit every key page, assert that critical elements are
-   present, record pass/fail per page.
-2. **Screenshot capture** — save full-page PNG screenshots with timestamped
-   filenames for visual reference and future diffing.
-3. **Help doc generation** — produce Markdown help documents grounded in the
-   actual screenshots rather than guessed copy.
+1. **Smoke test** — navigate to each key page, assert that critical elements
+   are present, record pass/fail per page.
+2. **Screenshot capture** — save raw full-page PNGs as a visual record.
+3. **Help doc draft generation** — produce Markdown documents grounded in
+   what the screenshots and DOM actually show, not what the code is supposed
+   to render.
 
-Running all three together keeps the docs honest: they describe what users
-actually see, not what the code is supposed to show.
+Running the three together keeps the docs honest. Screenshots become
+the evidence base for writing step-by-step onboarding text.
+
+### Scope and boundaries
+
+- Covers the key user-facing pages and the critical paths through them.
+- Does **not** attempt complete E2E regression or interaction testing.
+- Does **not** replace unit tests or backend API tests.
+- Is intended for onboarding verification and help-doc generation, not as a
+  gate that blocks feature development.
 
 ---
 
 ## Prerequisites
 
-- Frontend dev server must be reachable (default `http://localhost:5173`).
-- Backend must be running (default `http://localhost:7821`), because many
-  pages make live API calls on mount.
-- Playwright Python must be installed in the project venv or globally.
-- Use the `webapp-testing` skill's `scripts/with_server.py` to orchestrate
-  server startup if either server is not already up.
+Before running, confirm:
 
-### Quick start (servers not running)
+- Frontend dev server is reachable — default `http://localhost:5173`, but
+  verify the actual port from `apps/desktop/package.json` or the running
+  process.
+- Backend is running — default `http://localhost:7821`. Many pages make live
+  API calls on mount; missing backend = blank/error state in screenshots.
+- A Playwright runtime is available. This project uses the `webapp-testing`
+  skill as the underlying testing toolkit. Check which runtime (`playwright`
+  Python package or `@playwright/test` Node package) is actually installed in
+  the project before writing any script. Prefer whichever is already present.
+
+### Starting servers if they are not already running
+
+Use the `webapp-testing` skill's `with_server.py` helper. Locate the script
+via the skill's installed path (ask the skill system or run
+`find .agents -name with_server.py` from the project root). Invoke with
+`--help` first to confirm usage, then start both servers before running the
+smoke script:
 
 ```bash
-python .agents/skills/webapp-testing/scripts/with_server.py \
+python <path-to-webapp-testing-skill>/scripts/with_server.py \
   --server "cd apps/backend && .venv/bin/python server.py" --port 7821 \
   --server "cd apps/desktop && pnpm dev" --port 5173 \
-  -- python .agents/skills/tauri-ui-smoke-and-docs/scripts/smoke_and_screenshot.py
+  -- python <your-smoke-script.py>
 ```
 
-### Quick start (servers already running)
-
-```bash
-python .agents/skills/tauri-ui-smoke-and-docs/scripts/smoke_and_screenshot.py
-```
+If servers are already running, run the smoke script directly.
 
 ---
 
 ## Key Pages
 
-Test and screenshot these routes **in order**. Each entry lists:
-- the URL path
-- a canonical slug used for filenames
-- the minimum DOM assertions that must pass for the page to be considered
-  "smoke-green"
+The table below lists the **recommended** target pages. Before running,
+confirm that these routes exist in the current frontend by checking
+`apps/desktop/src/App.tsx` (or equivalent router config). If any route
+differs from what is listed, use the actual current route.
 
-| Page | Route | Slug | Required elements |
-|------|-------|------|-------------------|
-| Home | `/` | `home` | workspace list or "新建工作空间" button |
-| Settings — Models | `/settings/models` | `settings-models` | "LLM 语言模型" tab, "Embedding 向量模型" tab |
-| Settings — Rerank | `/settings/models` → Rerank tab | `settings-rerank` | "Rerank 重排序" tab heading |
-| Knowledge | `/knowledge` | `knowledge` | "知识库管理" heading, "新建知识库" button |
-| Workspace (if one exists) | `/workspace/:id` | `workspace` | three-column layout, Agent panel |
-| Workspace Settings | `/workspace/:id/settings` | `workspace-settings` | "模型路由" section, "Rerank 重排序" section |
+| Slug | Recommended route | Minimum elements to assert |
+|------|------------------|---------------------------|
+| `home` | `/` | A "新建工作空间" button or a workspace list entry |
+| `settings-models` | `/settings/models` | Tab bar with at least one model-related tab |
+| `knowledge` | `/knowledge` | Page heading, upload or "新建知识库" button |
+| `workspace` | `/workspace/:id` | Three-column layout visible, Agent panel present |
+| `workspace-settings` | `/workspace/:id/settings` | A "模型路由" or equivalent model section |
 
-The Workspace and Workspace Settings pages require at least one workspace to
-exist. If none exists, mark those pages as "skipped" (not failed) in the
-summary and note this in the generated docs.
+**Workspace pages require an existing workspace.** If none exists, mark them
+as `skipped` (not `fail`) in the smoke report and note this in the help docs.
+
+Feel free to add pages that are part of the current milestone but not yet
+listed above. The list is a starting point, not a contract.
 
 ---
 
 ## Output Layout
 
-All outputs go into `docs/ui-snapshots/<YYYY-MM-DD>/`.
+All outputs go into `docs/ui-snapshots/<YYYY-MM-DD>/`. Use the UTC+8 date of
+the run. Do **not** create a `latest/` symlink. Instead, write a
+`docs/ui-snapshots/latest-manifest.json` that records which dated directory
+is the most recent:
 
-```
-docs/ui-snapshots/2026-04-22/
-├── screenshots/
-│   ├── home.png
-│   ├── settings-models.png
-│   ├── settings-rerank.png
-│   ├── knowledge.png
-│   ├── workspace.png            # only if workspace exists
-│   └── workspace-settings.png  # only if workspace exists
-├── smoke-report.md              # pass/fail table + error details
-└── help/
-    ├── getting-started.md
-    ├── model-setup.md
-    ├── knowledge-import.md
-    └── start-creating.md
+```json
+{
+  "date": "2026-04-22",
+  "dir": "docs/ui-snapshots/2026-04-22",
+  "run_at": "2026-04-22T10:39:00+08:00"
+}
 ```
 
-The `docs/ui-snapshots/latest/` symlink (or copy on Windows) always points
-to the most recent run.
+Directory structure:
+
+```
+docs/ui-snapshots/
+├── latest-manifest.json
+└── 2026-04-22/
+    ├── screenshots/
+    │   ├── home.png
+    │   ├── settings-models.png
+    │   ├── knowledge.png
+    │   ├── workspace.png           # only if workspace exists
+    │   └── workspace-settings.png # only if workspace exists
+    ├── smoke-report.md
+    └── help/
+        ├── getting-started.md
+        ├── model-setup.md
+        ├── knowledge-import.md
+        └── start-creating.md
+```
 
 ---
 
 ## Smoke Test Assertions
 
-For each page, navigate → wait for `networkidle` → assert.
+For each page: navigate → `wait_for_load_state("networkidle")` → assert.
 
-**Assert pattern (Python Playwright):**
+Assertion failures are **non-fatal**: record the failure with its error
+message, take the screenshot anyway, and continue to the next page. Only
+treat a page as `fail` if navigation or `networkidle` times out entirely.
+
+Example pattern (Python Playwright — use the appropriate runtime if Node is
+preferred):
+
 ```python
 page.goto("http://localhost:5173/knowledge")
 page.wait_for_load_state("networkidle")
 assert page.locator("text=知识库管理").count() > 0, "knowledge heading missing"
-assert page.locator("text=新建知识库").count() > 0, "new library button missing"
 ```
 
-Assertion failures are **non-fatal**: record the failure with the error
-message, take a screenshot anyway, and continue to the next page. A page is
-"red" only if navigation or networkidle times out entirely.
+Check the `webapp-testing` skill's examples directory for additional
+patterns before writing new boilerplate.
 
 ---
 
 ## Screenshot Conventions
 
-- Full-page capture: `page.screenshot(path=..., full_page=True)`
-- Resolution: use the default viewport (1280 × 800 to match Tauri's window
-  config in `tauri.conf.json`)
-- Do **not** crop or annotate programmatically — the raw full-page PNG is the
-  source of truth
-- After capture, embed the screenshot path in the smoke report for traceability
+- Capture: `page.screenshot(path=..., full_page=True)`
+- Viewport: 1280 × 800 (matches the Tauri window config in
+  `apps/desktop/src-tauri/tauri.conf.json`; confirm before running)
+- Raw output only — do **not** crop, annotate, or draw overlays
+  programmatically; any notes belong in `smoke-report.md`
+- One PNG per page slug; overwrite if re-running on the same date
 
 ---
 
 ## Smoke Report Format
 
-`smoke-report.md` must use this exact structure so future runs can be
-machine-compared:
+Use this structure so reports from different runs can be compared:
 
 ```markdown
 # Smoke Test Report — 2026-04-22
@@ -151,7 +181,6 @@ machine-compared:
 |------|--------|------------|-------|
 | home | ✅ pass | screenshots/home.png | |
 | settings-models | ✅ pass | screenshots/settings-models.png | |
-| settings-rerank | ✅ pass | screenshots/settings-rerank.png | |
 | knowledge | ✅ pass | screenshots/knowledge.png | |
 | workspace | ⏭ skipped | — | No workspace found |
 | workspace-settings | ⏭ skipped | — | No workspace found |
@@ -161,61 +190,66 @@ machine-compared:
 _None_
 ```
 
+Status values: `✅ pass`, `❌ fail`, `⏭ skipped`.
+
 ---
 
 ## Help Doc Generation
 
-After all screenshots are taken, generate the four Markdown help documents
-**by examining the screenshots and the real DOM state** — not by reciting
-what the code is supposed to do.
+After screenshots are taken, write the four help documents below into
+`docs/ui-snapshots/<date>/help/`. Base the content on what the screenshots
+and DOM inspection actually show — tab names, button labels, and section
+headings must match the real UI, not guesses or prior assumptions.
 
-The goal is documentation a non-technical user can follow on first launch.
-Write in plain Chinese (中文), matching the UI language. Keep each doc under
-600 words.
+**Two-stage sync rule:**
+- Stage 1 (always): generate docs into `docs/ui-snapshots/<date>/help/`.
+- Stage 2 (only on explicit request): copy the files into
+  `apps/desktop/src/help/` to update the in-app help source. Never update
+  the application source automatically.
+
+Write in plain Chinese (中文). Each doc should be readable by a first-time
+user. Aim for under 600 words per document.
 
 ### `getting-started.md`
 
-Cover the first-launch flow end to end:
-1. App starts, backend initialises
-2. User lands on Home — what they see
-3. Create first workspace — where the button is
-4. Where to go next (link to model-setup)
+Walk through the first-launch experience:
+- What the user sees when the app opens
+- How to create the first workspace
+- Where to configure models next
 
 ### `model-setup.md`
 
-Cover `/settings/models`:
-1. The three (now four) tabs: LLM / Embedding / 模型发现 / Rerank
-2. How to add an LLM profile (step by step from the screenshot)
-3. How to add an Embedding profile
-4. Optional: how to add a Rerank profile and why you'd want one
+Walk through the settings page for model configuration:
+- What tabs exist (enumerate from the actual screenshot, not from memory)
+- How to add each type of profile
+- What each profile type is used for in the app
 
 ### `knowledge-import.md`
 
-Cover `/knowledge`:
-1. Create a library (type choices and when to use each)
-2. Upload a PDF (drag-drop or click)
-3. Wait for ingest — progress bar
-4. Expand a document row to see manifest summary and quality warnings
-5. Preview chunks / page text
-6. Run a search test
+Walk through importing a PDF and verifying the result:
+- Creating a library
+- Uploading a PDF
+- Watching the ingest progress
+- Reviewing the document summary and any quality warnings
+- Previewing chunks and running a search test
 
 ### `start-creating.md`
 
-Cover `/workspace/:id` (the main workbench):
-1. Three-panel layout overview
-2. The Agent panel: how to type a prompt
-3. What "规则审查 / rules_review" does
-4. How to open an asset in the middle editor
-5. Where results go / how to approve patches
+Walk through the main workbench:
+- The three-panel layout
+- How to write a prompt in the Agent panel
+- What happens after submitting a prompt
+- How to review and save the result
 
 ---
 
-## Tauri Help Menu — Minimal Implementation Plan
+## Tauri Help Menu and In-App Help Page
 
-This section documents the **recommended approach** for wiring the generated
-docs into the Tauri application. Implement only when the user explicitly asks.
+This section describes the recommended approach for wiring the generated
+docs into the Tauri application. **Do not implement this during a smoke run;
+implement only when the user explicitly asks for M9 Tauri integration work.**
 
-### A. Where to store source documents
+### Document source location
 
 ```
 apps/desktop/src/help/
@@ -225,77 +259,45 @@ apps/desktop/src/help/
 └── start-creating.md
 ```
 
-These files are the canonical source. The smoke-and-docs skill writes its
-output here (overwriting the previous draft) so the docs always reflect the
-latest real UI. They are bundled into the Tauri binary via the `bundle.resources`
-field in `tauri.conf.json`:
+These files are the in-app canonical source. They are populated from
+`docs/ui-snapshots/<date>/help/` only when the user approves the sync.
+Tauri bundles them as resources:
 
 ```json
-"bundle": {
-  "resources": ["src/help/**/*"]
-}
+// tauri.conf.json — bundle section
+"resources": ["src/help/**/*"]
 ```
 
-At runtime the frontend reads them from `convertFileSrc(await
-resolveResource("help/getting-started.md"))`.
+At runtime the frontend reads them via `@tauri-apps/api/path`
+`resolveResource()`.
 
-### B. Tauri menu integration
+### Tauri menu integration (Option 1 — recommended)
 
-Add a native "Help" menu item in `tauri.conf.json` → `app.windows[0].menu`
-(or via Rust in `lib.rs` using `tauri::menu::MenuBuilder`). Two approaches:
+Register a Help menu item in `lib.rs` using `tauri::menu::MenuBuilder`.
+On click, emit a Tauri event to the frontend. The frontend listens and
+navigates to `/help/getting-started` via React Router. This keeps the SPA
+intact and reuses the existing theme and CSS variables.
 
-**Option 1 — simple: emit a Tauri event**
+An alternative (Option 2) is to open a second `WebviewWindow` pointing at a
+standalone `help.html`. This is simpler to isolate but adds a separate
+loading cycle and does not share the app's design system.
 
-In `lib.rs`:
-```rust
-.menu(tauri::menu::MenuBuilder::new(app)
-    .item(&MenuItem::with_id(app, "help_getting_started",
-          "Getting Started", true, None::<&str>)?)
-    .build()?)
-.on_menu_event(|app, event| {
-    if event.id() == "help_getting_started" {
-        app.emit("open_help", "getting-started").unwrap();
-    }
-})
-```
+### In-app help page
 
-In the frontend (`App.tsx`), listen:
-```typescript
-import { listen } from "@tauri-apps/api/event";
-listen("open_help", (e) => navigateToHelp(e.payload as string));
-```
-
-**Option 2 — open a second webview window**
-
-Simpler for a read-only help viewer; avoids polluting main app state.
-Register a second window in `tauri.conf.json` with `url: "help.html"` and
-create `help.html` as a standalone Markdown renderer using
-[marked](https://github.com/markedjs/marked).
-
-Recommendation: **Option 1** (emit event) is the better fit because:
-- The app is already a SPA with React Router — adding a route is trivial
-- A second window has a separate loading cycle and doesn't share styles
-- The help content can use the same dark theme and CSS variables
-
-### C. In-app help page
-
-Add a route `/help/:doc` in `App.tsx`. The page component:
-- Receives `:doc` (e.g., `getting-started`) as a param
-- Loads `src/help/<doc>.md` via Vite's `?raw` import or `fetch`
-- Renders with a lightweight Markdown renderer (e.g., `react-markdown`)
-- Includes a sidebar TOC linking to each of the four docs
-
-This keeps the implementation to ≈ 80 lines of React. No new dependencies
-are required if `react-markdown` is already installed; otherwise it is the
-only addition needed.
+Add a `/help/:doc` route to `App.tsx`. The page component loads the
+corresponding Markdown file, renders it (e.g., using `react-markdown`), and
+provides a sidebar linking to all four docs. The implementation is small
+(~80 lines of React) and requires no new dependencies if `react-markdown` is
+already installed.
 
 ---
 
-## Iteration Notes
+## When to Run This Skill
 
-- Run this skill whenever a UI milestone lands (e.g., after M7, M8 frontend work).
-- If the smoke report shows a red page, fix the UI bug first, then re-run the
-  skill before committing docs.
-- The `docs/ui-snapshots/` directory should be committed to the repo so the
-  team has a visual history of the UI over time.
-- Screenshots from this skill can also be used in PR descriptions.
+- After any milestone that changes key UI pages.
+- When preparing onboarding material or a demo.
+- When the user asks to verify the current UI state visually.
+- When updating in-app help content after a round of UI changes.
+
+If the smoke report shows a failed page, fix the UI issue first, then re-run
+before committing any docs or screenshots.
