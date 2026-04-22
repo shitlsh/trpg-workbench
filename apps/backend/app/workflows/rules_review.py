@@ -87,7 +87,7 @@ async def run_rules_review(
         if asset_context_str:
             full_question = f"{user_question}\n\n参考资产内容：\n{asset_context_str}"
 
-        result = run_rules_agent(full_question, knowledge_context, model=model)
+        result = run_rules_agent(full_question, knowledge_context, model=model, review_mode=True)
         suggestions = result.get("suggestions", [])
         update_step(db, wf, 3, STEP_NAMES[3], "completed",
                     summary=json.dumps(result, ensure_ascii=False))

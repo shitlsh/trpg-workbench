@@ -531,20 +531,20 @@ export type WorkflowStatus =
 
 #### P2-B1：modify_asset 澄清式支持
 
-- [ ] `modify_asset.py` 在 step 1 前加 clarification 检查（目标资产模糊 / 改动幅度不明时）
-- [ ] Director clarification prompt 增加 modify 场景的判断规则
+- [x] `modify_asset.py` 在 step 1 前加 clarification 检查（目标资产模糊 / 改动幅度不明时）
+- [x] Director clarification prompt 增加 modify 场景的判断规则
 
 #### P2-B2：rules_review structured output 升级
 
-- [ ] `rules_review.py` 输出改为结构化 JSON（每条建议含 severity / type / citation / affected_field / suggestion_patch）
-- [ ] `prompts/rules/review.txt` 明确输出 schema
-- [ ] 前端 `RulesReviewView` 按 severity 分组，每条建议可"一键应用"
+- [x] `rules_review.py` 输出改为结构化 JSON（每条建议含 severity / type / citation / affected_field / suggestion_patch）
+- [x] `prompts/rules/review.txt` 明确输出 schema
+- [x] 前端 `RulesReviewView` 按 severity 分组，每条建议可"一键应用"
 
 #### P2-B3：Consistency Agent Structured Outputs
 
-- [ ] `consistency.py` 利用 Agno structured outputs（`response_model=`）约束输出 schema
-- [ ] 返回 `auto_fixable: bool` 字段，标记可自动修复的 issue
-- [ ] 前端对 `auto_fixable=true` 的 issue 显示"一键修复"按钮
+- [x] `consistency.py` 利用 Agno structured outputs（`response_model=`）约束输出 schema
+- [x] 返回 `auto_fixable: bool` 字段，标记可自动修复的 issue
+- [x] 前端对 `auto_fixable=true` 的 issue 显示"一键修复"按钮
 
 ---
 

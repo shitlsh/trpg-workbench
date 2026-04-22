@@ -9,15 +9,17 @@ def run_rules_agent(
     question: str,
     knowledge_context: list[dict],
     model=None,
+    review_mode: bool = False,
 ) -> dict:
     """
     knowledge_context: list of Citation dicts from retriever
+    review_mode: if True, uses structured review prompt (adds severity/type/affected_field/suggestion_patch)
     Returns: {"suggestions": [...], "summary": str}
     """
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
-    mdl = model
-    agent = Agent(model=mdl, system_prompt=load_prompt("rules", "system"), markdown=False)
+    phase = "review" if review_mode else "system"
+    agent = Agent(model=model, system_prompt=load_prompt("rules", phase), markdown=False)
 
     ctx = json.dumps(knowledge_context, ensure_ascii=False, indent=2)
     prompt = f"""Knowledge context from rule books:
@@ -31,4 +33,13 @@ Question: {question}"""
     try:
         return json.loads(text)
     except Exception:
-        return {"suggestions": [{"text": text, "citation": None, "has_citation": False}], "summary": text}
+        fallback_suggestion = {
+            "severity": "info",
+            "type": "general_advice",
+            "text": text,
+            "citation": None,
+            "has_citation": False,
+            "affected_field": None,
+            "suggestion_patch": None,
+        }
+        return {"suggestions": [fallback_suggestion], "summary": text}

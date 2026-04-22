@@ -9,6 +9,10 @@ Check for:
 4. Clue breaks (clue chain has gaps – clues can't be found or don't connect)
 5. Branch conflicts (contradictory outcomes across branches)
 
+For each issue, determine whether it is auto-fixable:
+- auto_fixable = true: the fix is unambiguous (e.g. a simple name normalization, a missing field with a clear value)
+- auto_fixable = false: the fix requires creative judgment or user decision
+
 Respond ONLY with a JSON object:
 {
   "issues": [
@@ -17,7 +21,9 @@ Respond ONLY with a JSON object:
       "severity": "warning | error",
       "description": "...",
       "affected_assets": ["asset_slug_1", "asset_slug_2"],
-      "suggestion": "..."
+      "suggestion": "...",
+      "auto_fixable": true,
+      "suggested_fix": "the exact replacement value or patch hint (only when auto_fixable is true, else null)"
     }
   ],
   "overall_status": "clean | has_warnings | has_errors"

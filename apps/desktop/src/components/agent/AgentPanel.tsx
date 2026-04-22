@@ -4,7 +4,7 @@ import { Send, Plus, ShieldCheck, RefreshCw, BookOpen, FileText, ChevronDown, Ch
 import type {
   ChatSession, ChatMessage, WorkflowState,
   ChangePlan, ConsistencyReport, PatchProposal,
-  LLMProfile, ModelCatalogEntry, ClarificationQuestion,
+  LLMProfile, ModelCatalogEntry, ClarificationQuestion, RulesSuggestion,
 } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
 import { WorkflowProgress } from "./WorkflowProgress";
@@ -39,11 +39,11 @@ function ChangePlanView({ plan }: { plan: ChangePlan }) {
   );
 }
 
-interface RulesSuggestion {
-  text: string;
-  citation: { document: string; page_from: number; page_to: number } | null;
-  has_citation: boolean;
-}
+const SEVERITY_COLORS: Record<string, { bg: string; border: string; text: string; label: string }> = {
+  error:   { bg: "#2a0a0a", border: "#e05252", text: "#e05252", label: "错误" },
+  warning: { bg: "#2a1f00", border: "#f0a500", text: "#f0a500", label: "警告" },
+  info:    { bg: "#0a1a2a", border: "#4a90d9", text: "#4a90d9", label: "提示" },
+};
 
 function RulesReviewView({
   suggestions, summary, onApply,
@@ -52,42 +52,74 @@ function RulesReviewView({
   summary: string;
   onApply: (suggestion: RulesSuggestion) => void;
 }) {
+  const sorted = [...suggestions].sort((a, b) => {
+    const order: Record<string, number> = { error: 0, warning: 1, info: 2 };
+    return (order[a.severity ?? "info"] ?? 2) - (order[b.severity ?? "info"] ?? 2);
+  });
   return (
     <div>
       {summary && (
         <div style={{ fontSize: 12, marginBottom: 8, color: "var(--text-muted)" }}>{summary}</div>
       )}
-      {suggestions.map((s, i) => (
-        <div key={i} style={{
-          padding: "8px 10px", marginBottom: 6,
-          background: "var(--bg-surface)", border: "1px solid var(--border)",
-          borderRadius: 4, fontSize: 12,
-        }}>
-          <div style={{ lineHeight: 1.6, marginBottom: 4 }}>{s.text}</div>
-          {s.citation ? (
-            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              来源：{s.citation.document}，第 {s.citation.page_from}–{s.citation.page_to} 页
+      {sorted.map((s, i) => {
+        const sev = (s.severity ?? "info") as keyof typeof SEVERITY_COLORS;
+        const colors = SEVERITY_COLORS[sev] ?? SEVERITY_COLORS.info;
+        return (
+          <div key={i} style={{
+            padding: "8px 10px", marginBottom: 6,
+            background: colors.bg, border: `1px solid ${colors.border}`,
+            borderRadius: 4, fontSize: 12,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <span style={{
+                fontSize: 10, padding: "1px 5px", borderRadius: 10, fontWeight: 600,
+                background: colors.border + "33", color: colors.text,
+              }}>{colors.label}</span>
+              {s.affected_field && (
+                <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                  {s.affected_field}
+                </span>
+              )}
             </div>
-          ) : (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-              基于通用经验，未找到对应规则原文
-            </div>
-          )}
-          <button
-            onClick={() => onApply(s)}
-            style={{
-              marginTop: 6, fontSize: 11, padding: "2px 8px",
-              background: "var(--bg-hover)", border: "1px solid var(--border)",
-              borderRadius: 3, cursor: "pointer", color: "var(--text)",
-            }}
-          >应用此建议</button>
-        </div>
-      ))}
+            <div style={{ lineHeight: 1.6, marginBottom: 4 }}>{s.text}</div>
+            {s.suggestion_patch && (
+              <div style={{
+                padding: "4px 8px", background: "rgba(0,0,0,0.3)", borderRadius: 3,
+                fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)", marginBottom: 4,
+              }}>
+                {s.suggestion_patch}
+              </div>
+            )}
+            {s.citation ? (
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                来源：{s.citation.document}，第 {s.citation.page_from}–{s.citation.page_to} 页
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+                基于通用经验，未找到对应规则原文
+              </div>
+            )}
+            <button
+              onClick={() => onApply(s)}
+              style={{
+                marginTop: 6, fontSize: 11, padding: "2px 8px",
+                background: "var(--bg-hover)", border: "1px solid var(--border)",
+                borderRadius: 3, cursor: "pointer", color: "var(--text)",
+              }}
+            >应用此建议</button>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function ConsistencyView({ report }: { report: ConsistencyReport }) {
+function ConsistencyView({
+  report, onAutoFix,
+}: {
+  report: ConsistencyReport;
+  onAutoFix?: (suggestion: string) => void;
+}) {
   if (report.overall_status === "clean") {
     return <div style={{ fontSize: 12, color: "#52c97e" }}>✓ 一致性检查通过，未发现问题</div>;
   }
@@ -106,6 +138,16 @@ function ConsistencyView({ report }: { report: ConsistencyReport }) {
           <div style={{ marginTop: 3 }}>{issue.description}</div>
           {issue.suggestion && (
             <div style={{ marginTop: 3, color: "var(--text-muted)" }}>建议：{issue.suggestion}</div>
+          )}
+          {issue.auto_fixable && issue.suggested_fix && onAutoFix && (
+            <button
+              onClick={() => onAutoFix(issue.suggested_fix!)}
+              style={{
+                marginTop: 5, fontSize: 11, padding: "2px 8px",
+                background: "#1a3a1a", border: "1px solid #52c97e",
+                borderRadius: 3, cursor: "pointer", color: "#52c97e",
+              }}
+            >一键修复</button>
           )}
         </div>
       ))}
@@ -463,7 +505,10 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6,
           }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>一致性检查结果</div>
-            <ConsistencyView report={consistencyReport} />
+            <ConsistencyView
+              report={consistencyReport}
+              onAutoFix={(fix) => setInput(`请根据以下一致性修复建议修改相关资产：${fix}`)}
+            />
             <button
               onClick={() => setConsistencyReport(null)}
               style={{ marginTop: 6, fontSize: 11, background: "none", color: "var(--text-muted)" }}

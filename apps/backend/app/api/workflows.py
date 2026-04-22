@@ -8,7 +8,7 @@ from app.storage.database import get_db
 from app.models.orm import WorkflowStateORM, WorkspaceLibraryBindingORM, KnowledgeDocumentORM
 from app.models.schemas import WorkflowStateSchema, StartWorkflowRequest, ClarifyRequest
 from app.workflows.create_module import run_create_module, resume_create_module
-from app.workflows.modify_asset import run_modify_asset, apply_modify_asset_patches
+from app.workflows.modify_asset import run_modify_asset, apply_modify_asset_patches, resume_modify_asset
 from app.workflows.rules_review import run_rules_review
 from app.workflows.utils import get_workspace_context
 from app.services.model_routing import get_llm_for_task, get_reranker_for_workspace, ModelNotConfiguredError
@@ -197,6 +197,9 @@ async def clarify_workflow(wf_id: str, body: ClarifyRequest, db: Session = Depen
     if wf.type == "create_module":
         model = _resolve_model(wf.workspace_id, "create_module", db)
         wf = await resume_create_module(db, wf, model=model)
+    elif wf.type == "modify_asset":
+        model = _resolve_model(wf.workspace_id, "modify_asset", db)
+        wf = await resume_modify_asset(db, wf, model=model)
     else:
         raise HTTPException(status_code=400, detail=f"Cannot clarify workflow type: {wf.type}")
 

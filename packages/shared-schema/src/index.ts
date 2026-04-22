@@ -465,11 +465,28 @@ export interface ConsistencyIssue {
   description: string;
   affected_assets: string[];
   suggestion: string;
+  auto_fixable: boolean;
+  suggested_fix: string | null;
 }
 
 export interface ConsistencyReport {
   issues: ConsistencyIssue[];
   overall_status: "clean" | "has_warnings" | "has_errors";
+}
+
+export interface RulesSuggestion {
+  severity: "info" | "warning" | "error";
+  type: "stat_violation" | "missing_required_field" | "balance_concern" | "lore_inconsistency" | "general_advice";
+  text: string;
+  citation: { document: string; page_from: number; page_to: number } | null;
+  has_citation: boolean;
+  affected_field: string | null;
+  suggestion_patch: string | null;
+}
+
+export interface RulesReviewResult {
+  suggestions: RulesSuggestion[];
+  summary: string;
 }
 
 export interface AgentResponse {

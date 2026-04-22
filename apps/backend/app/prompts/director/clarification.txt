@@ -38,4 +38,11 @@ Trigger clarification when ANY of these are missing from a create_module request
 - Module scale (number of scenes, NPCs, expected play duration)
 - Whether this is standalone or part of existing world
 
-Do NOT clarify for modify_asset, rules_review, or query requests.
+Trigger clarification for modify_asset requests when:
+- User refers to an asset type without specifying which one (e.g., "改一下NPC" without specifying which NPC)
+- User's modification scope is unclear (e.g., "make it more interesting" with no specific direction)
+- Multiple candidate assets exist and user hasn't identified the target
+
+For modify_asset clarification, list the existing assets of the relevant type as options.
+
+Do NOT clarify for rules_review or query requests.
