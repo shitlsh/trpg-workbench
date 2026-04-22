@@ -351,7 +351,7 @@ prompt = f"{style_prefix}{actual_task_prompt}"
 - [x] 通过 `PATCH /prompt-profiles/{id}` 修改 `rule_set_id` 字段实现关联
 
 #### A1.5：工作空间创建弹窗增强
-- [ ] 选中规则集后，在弹窗内展示该规则集的知识库数量和提示词名称摘要（推迟至后续迭代）
+- [x] 选中规则集后，在弹窗内展示该规则集的知识库数量和提示词名称摘要
 
 ### A2：后端 API 补全
 

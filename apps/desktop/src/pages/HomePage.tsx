@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
-import type { Workspace, RuleSet, CreateWorkspaceRequest } from "@trpg-workbench/shared-schema";
+import type {
+  Workspace, RuleSet, CreateWorkspaceRequest,
+  RuleSetLibraryBinding, PromptProfile,
+} from "@trpg-workbench/shared-schema";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { HelpButton } from "../components/HelpButton";
 import styles from "./HomePage.module.css";
@@ -25,6 +28,23 @@ export default function HomePage() {
     queryKey: ["rule-sets"],
     queryFn: () => apiFetch<RuleSet[]>("/rule-sets"),
   });
+
+  // For the new-workspace modal: preview selected rule set's metadata
+  const { data: selectedRsBindings = [] } = useQuery({
+    queryKey: ["rule-sets", newRuleSetId, "library-bindings"],
+    queryFn: () => apiFetch<RuleSetLibraryBinding[]>(`/rule-sets/${newRuleSetId}/library-bindings`),
+    enabled: !!newRuleSetId,
+  });
+
+  const { data: allProfiles = [] } = useQuery({
+    queryKey: ["prompt-profiles"],
+    queryFn: () => apiFetch<PromptProfile[]>("/prompt-profiles"),
+    enabled: !!newRuleSetId,
+  });
+
+  const selectedRsPrompt = newRuleSetId
+    ? allProfiles.find((p) => p.rule_set_id === newRuleSetId) ?? null
+    : null;
 
   const createMutation = useMutation({
     mutationFn: (body: CreateWorkspaceRequest) =>
@@ -177,6 +197,28 @@ export default function HomePage() {
                   ))}
                 </select>
               </label>
+              {/* A1.5: Rule set preview */}
+              {newRuleSetId && (
+                <div style={{
+                  padding: "10px 12px",
+                  background: "rgba(124,106,247,0.06)",
+                  border: "1px solid rgba(124,106,247,0.2)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  gap: 16,
+                }}>
+                  <span>
+                    📚 知识库：<strong style={{ color: "var(--text)" }}>{selectedRsBindings.length} 个</strong>
+                  </span>
+                  <span>
+                    ✍️ 提示词：<strong style={{ color: "var(--text)" }}>
+                      {selectedRsPrompt ? selectedRsPrompt.name : "未指定"}
+                    </strong>
+                  </span>
+                </div>
+              )}
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={() => setShowNewForm(false)}>
                   取消
