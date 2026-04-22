@@ -164,14 +164,64 @@ Markdown 文件加载方式（两种可选）：
 
 ## Todo
 
-### A1：Smoke Test 与截图
+### A1：Smoke Test 脚本（从零实现）
 
-- [ ] 确认当前前端路由（检查 `App.tsx`）
-- [ ] 确认 Playwright 运行时（Python / Node，检查 `apps/desktop/package.json` 和后端 venv）
-- [ ] 编写 smoke test 脚本（基于 `webapp-testing` skill 的模式）
-- [ ] 实现五个关键页面的截图 + assertion
-- [ ] 生成 `smoke-report.md`
-- [ ] 生成 `docs/ui-snapshots/latest-manifest.json`
+> `tauri-ui-smoke-and-docs` skill 中提到的脚本**尚不存在**，A1 的第一项工作就是创建它。
+
+#### A1.0：决策前置
+
+在写任何脚本之前，先完成以下确认：
+
+- [ ] 读取 `apps/desktop/src/App.tsx`，列出当前实际路由（不依赖 plan 中的推荐值）
+- [ ] 检查 `apps/desktop/package.json` 和 `apps/backend/.venv`，确认 Playwright 运行时：
+  - Python：`apps/backend/.venv/lib/python*/site-packages/playwright`
+  - Node：`apps/desktop/node_modules/playwright` 或 `@playwright/test`
+  - **以实际存在的运行时为准，不假定哪个已安装**
+
+#### A1.1：确定脚本位置与输出目录
+
+脚本放在项目根目录下的专用目录，与其他 tooling 脚本并排：
+
+```
+scripts/smoke/
+└── smoke_and_screenshot.py   # 或 .js/.ts，取决于 A1.0 的运行时决策
+```
+
+输出目录：
+
+```
+docs/ui-snapshots/<YYYY-MM-DD>/
+├── screenshots/
+├── smoke-report.md
+└── help/          ← A2 阶段填充，A1 阶段可为空目录
+```
+
+`docs/ui-snapshots/latest-manifest.json` 由脚本自动写入。
+
+#### A1.2：最小可运行版本（P0 页面，无断言）
+
+第一版脚本只做一件事：启动 Playwright，访问三个 P0 页面，各截一张图，不报错即为成功。
+
+目标：能在本地 `pnpm dev` + 后端运行的环境下跑通，产出三张 PNG。
+
+验收：
+- [ ] 脚本存在于 `scripts/smoke/`，有 `--help` 输出
+- [ ] 在 dev server 已运行的前提下可直接执行（单步命令，无需额外配置）
+- [ ] 产出 `home.png`、`settings-models.png`、`knowledge.png`（文件 > 10KB）
+
+#### A1.3：加入断言与完整页面集
+
+在 A1.2 跑通后扩展：
+
+- [ ] 为三个 P0 页面添加最小 DOM 断言（以实际 UI 为准，不硬编码文案）
+- [ ] 加入 P1 页面（workspace、workspace-settings）；若无 workspace 则 `skipped`
+- [ ] 所有断言失败非致命：记录错误，继续执行下一页面
+
+#### A1.4：生成 smoke-report.md 和 latest-manifest.json
+
+- [ ] 脚本结束时写入 `smoke-report.md`（格式见 plan 的 Smoke Report 节）
+- [ ] 写入 `docs/ui-snapshots/latest-manifest.json`
+- [ ] README 或脚本顶部注释中说明如何运行（dev server 已启动时和未启动时两种入口）
 
 ### A2：帮助文档草稿
 
