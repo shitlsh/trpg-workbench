@@ -30,6 +30,11 @@ class WorkspaceSchema(BaseModel):
     default_llm_profile_id: str | None
     rules_llm_profile_id: str | None
     embedding_profile_id: str | None
+    rerank_profile_id: str | None
+    rerank_enabled: bool
+    rerank_top_n: int
+    rerank_top_k: int
+    rerank_apply_to_task_types: str | None  # JSON
     created_at: datetime
     updated_at: datetime
 
@@ -47,6 +52,11 @@ class WorkspaceUpdate(BaseModel):
     default_llm_profile_id: str | None = None
     rules_llm_profile_id: str | None = None
     embedding_profile_id: str | None = None
+    rerank_profile_id: str | None = None
+    rerank_enabled: bool | None = None
+    rerank_top_n: int | None = None
+    rerank_top_k: int | None = None
+    rerank_apply_to_task_types: str | None = None  # JSON list
 
 
 # ─── M6: LLM Profiles ─────────────────────────────────────────────────────────
@@ -460,3 +470,113 @@ class UsageRecordSchema(BaseModel):
     total_tokens: int | None
     estimated_cost_usd: float | None
     created_at: datetime
+
+
+# ─── M8: Rerank Profiles ──────────────────────────────────────────────────────
+
+class RerankProfileSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    provider_type: str
+    base_url: str | None
+    model_name: str
+    has_api_key: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class RerankProfileCreate(BaseModel):
+    name: str
+    provider_type: str
+    model_name: str = "jina-reranker-v2-base-multilingual"
+    base_url: str | None = None
+    api_key: str | None = None
+
+
+class RerankProfileUpdate(BaseModel):
+    name: str | None = None
+    provider_type: str | None = None
+    model_name: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    clear_api_key: bool = False
+
+
+class RerankTestResult(BaseModel):
+    success: bool
+    latency_ms: int | None = None
+    error: str | None = None
+
+
+# ─── M8: Knowledge Preview ────────────────────────────────────────────────────
+
+class QualityWarningSchema(BaseModel):
+    type: str   # scanned_fallback/partial/has_table/has_multi_column/page_range_anomaly/empty_page
+    detail: str
+    affected_pages: list[int] | None = None
+
+
+class KnowledgeDocumentSummarySchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    library_id: str
+    filename: str
+    page_count: int | None
+    chunk_count: int | None
+    parse_status: str
+    parse_quality_notes: str | None
+    embedding_provider: str | None
+    embedding_model: str | None
+    indexed_at: str | None
+    quality_warnings: list[QualityWarningSchema] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class PageTextPreviewSchema(BaseModel):
+    page_number: int
+    raw_text: str
+    cleaned_text: str | None
+    chunk_ids: list[str]
+
+
+class ChunkListItemSchema(BaseModel):
+    chunk_id: str
+    chunk_index: int
+    page_from: int
+    page_to: int
+    section_title: str | None
+    char_count: int
+    content: str | None = None  # only when fetching single chunk
+    parse_quality: str
+    has_table: bool
+    has_multi_column: bool
+
+
+class SearchTestRequest(BaseModel):
+    query: str
+    library_ids: list[str]
+    top_k: int = 5
+    top_n: int = 20
+    use_rerank: bool = False
+    workspace_id: str | None = None  # to resolve rerank profile
+
+
+class SearchTestResultSchema(BaseModel):
+    chunk_id: str
+    content: str
+    document_filename: str
+    page_from: int
+    page_to: int
+    section_title: str | None
+    vector_score: float
+    rerank_score: float | None
+    reranked: bool
+
+
+class SearchTestResponse(BaseModel):
+    results: list[SearchTestResultSchema]
+    reranked: bool
+    warnings: list[str] = []
+    error: str | None = None

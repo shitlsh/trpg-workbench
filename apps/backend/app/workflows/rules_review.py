@@ -68,9 +68,13 @@ async def run_rules_review(
         knowledge_context = []
         if knowledge_retriever:
             try:
-                knowledge_context = await asyncio.to_thread(
-                    knowledge_retriever, user_question, workspace_id
-                )
+                import asyncio, inspect
+                if inspect.iscoroutinefunction(knowledge_retriever):
+                    knowledge_context = await knowledge_retriever(user_question, workspace_id)
+                else:
+                    knowledge_context = await asyncio.to_thread(
+                        knowledge_retriever, user_question, workspace_id
+                    )
             except Exception:
                 knowledge_context = []
         update_step(db, wf, 2, STEP_NAMES[2], "completed",

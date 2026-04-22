@@ -38,6 +38,11 @@ class WorkspaceORM(Base):
     default_llm_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     rules_llm_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     embedding_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    rerank_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    rerank_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    rerank_top_n: Mapped[int] = mapped_column(Integer, default=20)
+    rerank_top_k: Mapped[int] = mapped_column(Integer, default=5)
+    rerank_apply_to_task_types: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -275,7 +280,19 @@ class WorkflowStateORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
-# ─── M7: Model Catalog ────────────────────────────────────────────────────────
+# ─── M8: Rerank Profiles ──────────────────────────────────────────────────────
+
+class RerankProfileORM(Base):
+    __tablename__ = "rerank_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)  # jina/cohere/openai_compatible
+    base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 class ModelCatalogEntryORM(Base):
     __tablename__ = "model_catalog_entries"

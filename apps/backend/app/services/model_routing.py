@@ -1,7 +1,7 @@
-"""Model routing service: resolves which LLM/Embedding profile to use for a given task."""
+"""Model routing service: resolves which LLM/Embedding/Rerank profile to use for a given task."""
 import json
 from sqlalchemy.orm import Session
-from app.models.orm import WorkspaceORM, LLMProfileORM, EmbeddingProfileORM, KnowledgeLibraryORM
+from app.models.orm import WorkspaceORM, LLMProfileORM, EmbeddingProfileORM, KnowledgeLibraryORM, RerankProfileORM
 
 
 class ModelNotConfiguredError(Exception):
@@ -110,3 +110,30 @@ def get_embedding_for_query(library_id: str, db: Session) -> EmbeddingProfileORM
         )
 
     return profile
+
+
+def get_reranker_for_workspace(workspace_id: str, task_type: str, db: Session) -> RerankProfileORM | None:
+    """
+    Resolve the rerank profile for a workspace + task_type.
+    Returns None if rerank is disabled, not configured, or task_type is not in apply_to_task_types.
+    Never raises — rerank is optional and its absence is not an error.
+    """
+    workspace = db.get(WorkspaceORM, workspace_id)
+    if not workspace:
+        return None
+    if not workspace.rerank_enabled:
+        return None
+    if not workspace.rerank_profile_id:
+        return None
+
+    # Check task_type filter
+    if workspace.rerank_apply_to_task_types:
+        try:
+            allowed = json.loads(workspace.rerank_apply_to_task_types)
+            if task_type not in allowed:
+                return None
+        except Exception:
+            return None
+
+    profile = db.get(RerankProfileORM, workspace.rerank_profile_id)
+    return profile  # may be None if profile was deleted

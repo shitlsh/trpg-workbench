@@ -5,13 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
-from app.models.orm import WorkflowStateORM
+from app.models.orm import WorkflowStateORM, WorkspaceLibraryBindingORM, KnowledgeDocumentORM
 from app.models.schemas import WorkflowStateSchema, StartWorkflowRequest
 from app.workflows.create_module import run_create_module, resume_create_module
 from app.workflows.modify_asset import run_modify_asset, apply_modify_asset_patches
 from app.workflows.rules_review import run_rules_review
 from app.workflows.utils import get_workspace_context
-from app.services.model_routing import get_llm_for_task, ModelNotConfiguredError
+from app.services.model_routing import get_llm_for_task, get_reranker_for_workspace, ModelNotConfiguredError
 from app.agents.model_adapter import model_from_profile
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -36,6 +36,92 @@ def _resolve_model(workspace_id: str, task_type: str, db: Session):
         )
 
 
+async def _build_knowledge_retriever(workspace_id: str, task_type: str, db: Session):
+    """
+    Build a knowledge retriever function for the given workspace + task_type.
+    Integrates optional rerank if workspace has rerank enabled for this task_type.
+    Returns None if no libraries are bound to the workspace.
+    """
+    from app.models.orm import WorkspaceORM
+    from app.services.model_routing import get_embedding_for_query, LibraryNotIndexedError
+
+    bindings = (
+        db.query(WorkspaceLibraryBindingORM)
+        .filter(
+            WorkspaceLibraryBindingORM.workspace_id == workspace_id,
+            WorkspaceLibraryBindingORM.enabled == True,
+        )
+        .order_by(WorkspaceLibraryBindingORM.priority.desc())
+        .all()
+    )
+    if not bindings:
+        return None
+
+    library_ids = [b.library_id for b in bindings]
+
+    # Resolve rerank profile (may be None — rerank is optional)
+    workspace = db.get(WorkspaceORM, workspace_id)
+    rerank_profile = get_reranker_for_workspace(workspace_id, task_type, db)
+    rerank_top_n = workspace.rerank_top_n if workspace else 20
+    rerank_top_k = workspace.rerank_top_k if workspace else 5
+
+    # Build document map
+    docs = db.query(KnowledgeDocumentORM).filter(
+        KnowledgeDocumentORM.library_id.in_(library_ids)
+    ).all()
+    doc_map = {d.id: {"filename": d.filename} for d in docs}
+
+    # Resolve embedder from the first indexed library
+    try:
+        embedding_profile = get_embedding_for_query(library_ids[0], db)
+    except (LibraryNotIndexedError, ModelNotConfiguredError):
+        return None  # No indexed library — retrieval will be skipped silently
+
+    from app.agents.model_adapter import embedding_from_profile
+    embedder = embedding_from_profile(embedding_profile)
+
+    # Capture rerank state for closure
+    rp = rerank_profile
+    rp_top_n = rerank_top_n
+    rp_top_k = rerank_top_k
+
+    async def retriever(query: str, _workspace_id: str):
+        from app.knowledge.retriever import retrieve
+        retrieve_k = rp_top_n if rp else rp_top_k
+
+        citations = await retrieve(
+            query=query,
+            library_ids=library_ids,
+            top_k=retrieve_k,
+            embedder=embedder,
+            document_map=doc_map,
+        )
+
+        if rp and citations:
+            from app.utils.secrets import decrypt_secret as decrypt
+            from app.services.rerank_adapter import rerank as do_rerank
+            api_key = decrypt(rp.api_key_encrypted) if rp.api_key_encrypted else None
+            texts = [c.content for c in citations]
+            try:
+                reranked = do_rerank(
+                    query, texts,
+                    provider_type=rp.provider_type,
+                    model_name=rp.model_name,
+                    api_key=api_key,
+                    base_url=rp.base_url,
+                    top_n=rp_top_k,
+                )
+                # Rebuild citations in reranked order
+                return [citations[r.index] for r in reranked]
+            except Exception:
+                # Rerank failed — silently fall back to vector results
+                return citations[:rp_top_k]
+
+        return citations[:rp_top_k]
+
+    return retriever
+
+
 @router.post("", response_model=WorkflowStateSchema, status_code=201)
 async def start_workflow(body: StartWorkflowRequest, background_tasks: BackgroundTasks,
                          db: Session = Depends(get_db)):
@@ -51,7 +137,9 @@ async def start_workflow(body: StartWorkflowRequest, background_tasks: Backgroun
     elif body.type == "rules_review":
         asset_ids = body.input.get("asset_ids", [])
         model = _resolve_model(body.workspace_id, "rules_review", db)
-        wf = await run_rules_review(db, body.workspace_id, user_intent, asset_ids, model=model)
+        knowledge_retriever = await _build_knowledge_retriever(body.workspace_id, "rules_review", db)
+        wf = await run_rules_review(db, body.workspace_id, user_intent, asset_ids, model=model,
+                                     knowledge_retriever=knowledge_retriever)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown workflow type: {body.type}")
 

@@ -42,6 +42,11 @@ export interface Workspace {
   default_llm_profile_id: string | null;
   rules_llm_profile_id: string | null;
   embedding_profile_id: string | null;
+  rerank_profile_id: string | null;
+  rerank_enabled: boolean;
+  rerank_top_n: number;
+  rerank_top_k: number;
+  rerank_apply_to_task_types: string | null; // JSON
   created_at: string;
   updated_at: string;
 }
@@ -572,4 +577,122 @@ export interface UsageRecord {
   total_tokens: number | null;
   estimated_cost_usd: number | null;
   created_at: string;
+}
+
+// ─── M8: Rerank Profiles ──────────────────────────────────────────────────────
+
+export type RerankProviderType = "jina" | "cohere" | "openai_compatible";
+
+export interface RerankProfile {
+  id: string;
+  name: string;
+  provider_type: RerankProviderType;
+  model: string;
+  base_url: string | null;
+  has_api_key: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateRerankProfileRequest {
+  name: string;
+  provider_type: RerankProviderType;
+  model: string;
+  api_key?: string;
+  base_url?: string;
+}
+
+export interface UpdateRerankProfileRequest {
+  name?: string;
+  provider_type?: RerankProviderType;
+  model?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  base_url?: string;
+}
+
+export interface WorkspaceRerankConfig {
+  rerank_profile_id: string | null;
+  rerank_enabled: boolean;
+  rerank_top_n: number;
+  rerank_top_k: number;
+  rerank_apply_to_task_types: string[]; // parsed from JSON
+}
+
+export interface RerankTestResult {
+  success: boolean;
+  latency_ms?: number;
+  error?: string;
+}
+
+// ─── M8: Knowledge Preview ────────────────────────────────────────────────────
+
+export interface QualityWarning {
+  type: "scanned_fallback" | "partial" | "has_table" | "has_multi_column" | "page_range_anomaly" | "empty_page";
+  detail: string;
+  affected_pages?: number[];
+}
+
+export interface KnowledgeDocumentSummary {
+  id: string;
+  library_id: string;
+  filename: string;
+  page_count: number | null;
+  chunk_count: number | null;
+  parse_status: ParseStatus;
+  parse_quality_notes: string | null;
+  embedding_provider: string | null;
+  embedding_model: string | null;
+  indexed_at: string | null;
+  quality_warnings: QualityWarning[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PageTextPreview {
+  page_number: number;
+  raw_text: string;
+  cleaned_text: string | null;
+  chunk_ids: string[];
+}
+
+export interface ChunkListItem {
+  chunk_id: string;
+  chunk_index: number;
+  page_from: number;
+  page_to: number;
+  section_title: string | null;
+  char_count: number;
+  content?: string; // only when fetching single chunk
+  parse_quality: string;
+  has_table: boolean;
+  has_multi_column: boolean;
+}
+
+export interface SearchTestResult {
+  chunk_id: string;
+  content: string;
+  document_filename: string;
+  page_from: number;
+  page_to: number;
+  section_title: string | null;
+  vector_score: number;
+  rerank_score: number | null;
+  reranked: boolean;
+}
+
+export interface SearchTestRequest {
+  query: string;
+  library_ids: string[];
+  top_k?: number;
+  top_n?: number;
+  use_rerank?: boolean;
+  workspace_id?: string;
+}
+
+export interface SearchTestResponse {
+  results: SearchTestResult[];
+  reranked: boolean;
+  warnings: string[];
+  error: string | null;
 }
