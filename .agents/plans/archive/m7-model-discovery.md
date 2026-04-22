@@ -2,6 +2,8 @@
 
 **前置条件**：M6 完成（LLM/Embedding Profile 管理、Workspace 路由绑定、usage 埋点全部就绪）。
 
+**状态：✅ 已完成（完成，具体提交待补充）**
+
 **目标**：在 M6 的基础数据之上，增加三类增强能力：
 1. **模型发现**：静态 catalog + 可选动态拉取，让用户不必纯手填 model_name
 2. **用量观测**：将 M6 埋下的 `llm_usage_records` 数据变成可读的统计视图

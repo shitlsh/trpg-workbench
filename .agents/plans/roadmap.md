@@ -2,32 +2,50 @@
 
 ## 总览
 
-5 个里程碑，顺序推进。M2 和 M3 在 M1 完成后可并行启动，但 M4 必须等 M2 和 M3 都完成。
+核心功能链路已通过 M1–M10 全部完成。当前唯一进行中里程碑为 M11。
 
 ```
-M1 基础骨架
-  ├── M2 知识库 MVP ──┐
-  └── M3 资产系统 ────┤
-                     ├── M4 Agent 创作
-                     └──────────────── M5 产品打磨
+✅ M1 基础骨架
+  ├── ✅ M2 知识库 MVP ──┐
+  └── ✅ M3 资产系统 ────┤
+                        ├── ✅ M4 Agent 创作
+                        └────────────────── ✅ M5 产品打磨
+                                                 └── ✅ M6 模型配置管理
+                                                       └── ✅ M7 模型发现
+                                                             └── ✅ M8 知识库预览
+                                                                   └── ✅ M9 Smoke/Help
+                                                                         └── ✅ M9a 规则集统一
+                                                                               └── ✅ M10 Agent 编排
+                                                                                     └── 🔧 M11 Onboarding
 ```
+
+> 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
 
 ---
 
 ## 里程碑概览
 
+### 已完成（归档）
+
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M1 | 基础骨架 | 前后端互通，Workspace CRUD，模型配置可保存 | [m1-foundation.md](m1-foundation.md) |
-| M2 | 知识库 MVP | PDF 导入→解析→向量化→检索→引用显示 全链路 | [m2-knowledge.md](m2-knowledge.md) |
-| M3 | 资产系统 | 三栏编辑器，资产 CRUD，双视图，Revision 回溯 | [m3-asset-system.md](m3-asset-system.md) |
-| M4 | Agent 创作 | 对话驱动生成/修改资产，Workflow 持久化 | [m4-agent-creation.md](m4-agent-creation.md) |
-| M5 | 产品打磨 | 补全 Agent，图像生成，导出，体验完整 | [m5-polish.md](m5-polish.md) |
-| M6 | 模型配置管理 | LLM/Embedding 双 Profile，Workspace 路由绑定，模型决策层，usage 埋点 | [m6-model-management.md](m6-model-management.md) |
-| M7 | 模型发现与用量观测 | Provider catalog，动态模型发现，usage 统计，成本估算，context window 展示 | [m7-model-discovery.md](m7-model-discovery.md) |
-| M8 | 知识库预览、质量检查与增强解析扩展 | ingest 结果可视化，chunk/页级预览，检索测试，质量告警；图片/AI增强/rerank 作为后续扩展 | [m8-knowledge-preview.md](m8-knowledge-preview.md) |
-| M9 | 前端 Smoke Test、截图与帮助文档系统 | 关键页面 smoke test，截图产物，Getting Started / Help 文档生成，Tauri Help 菜单接入，应用内帮助页 | [m9-smoke-and-help.md](m9-smoke-and-help.md) |
-| M9a | 规则集统一管理 | 规则集 CRUD UI，知识库↔规则集绑定，PromptProfile 接入 Agent 运行时，工作空间知识库继承链路打通 | [m9a-ruleset-unification.md](m9a-ruleset-unification.md) |
+| M1 ✅ | 基础骨架 | 前后端互通，Workspace CRUD，模型配置可保存 | [archive/m1-foundation.md](archive/m1-foundation.md) |
+| M2 ✅ | 知识库 MVP | PDF 导入→解析→向量化→检索→引用显示 全链路 | [archive/m2-knowledge.md](archive/m2-knowledge.md) |
+| M3 ✅ | 资产系统 | 三栏编辑器，资产 CRUD，双视图，Revision 回溯 | [archive/m3-asset-system.md](archive/m3-asset-system.md) |
+| M4 ✅ | Agent 创作 | 对话驱动生成/修改资产，Workflow 持久化 | [archive/m4-agent-creation.md](archive/m4-agent-creation.md) |
+| M5 ✅ | 产品打磨 | 补全 Agent，图像生成，导出，体验完整 | [archive/m5-polish.md](archive/m5-polish.md) |
+| M6 ✅ | 模型配置管理 | LLM/Embedding 双 Profile，Workspace 路由绑定，模型决策层，usage 埋点 | [archive/m6-model-management.md](archive/m6-model-management.md) |
+| M7 ✅ | 模型发现与用量观测 | Provider catalog，动态模型发现，usage 统计，成本估算，context window 展示 | [archive/m7-model-discovery.md](archive/m7-model-discovery.md) |
+| M8 ✅ | 知识库预览、质量检查与增强解析扩展 | ingest 结果可视化，chunk/页级预览，检索测试，质量告警 | [archive/m8-knowledge-preview.md](archive/m8-knowledge-preview.md) |
+| M9 ✅ | 前端 Smoke Test、截图与帮助文档系统 | 关键页面 smoke test，截图产物，Help 文档，Tauri Help 菜单接入 | [archive/m9-smoke-and-help.md](archive/m9-smoke-and-help.md) |
+| M9a ✅ | 规则集统一管理 | 规则集 CRUD UI，知识库↔规则集绑定，PromptProfile 接入 Agent 运行时，工作空间知识库继承链路打通 | [archive/m9a-ruleset-unification.md](archive/m9a-ruleset-unification.md) |
+| M10 ✅ | Agent 编排升级、澄清式交互与 Prompt 体系化 | 澄清式对话，Workflow 持久化修复，Prompt 模板体系，Director/Plot/NPC Agent 升级 | [archive/m10-agent-orchestration.md](archive/m10-agent-orchestration.md) |
+
+### 进行中 / 待启动
+
+| # | 名称 | 目标 | 计划文件 |
+|---|------|------|---------|
+| M11 🔧 | 首次配置引导与 Onboarding 体验 | Setup Wizard（分步配置，LLM/Embedding/Rerank/工作空间），Inline Hint + Gemini/Jina 推荐默认值，冷启动引导链路打通 | [m11-onboarding.md](m11-onboarding.md) |
 
 ---
 
