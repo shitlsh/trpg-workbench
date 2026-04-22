@@ -57,6 +57,8 @@ def seed_default_data():
             if not existing:
                 db.add(RuleSetORM(**rs_data))
 
+        db.flush()  # ensure rule_sets are visible before inserting prompt_profiles
+
         for pp_data in DEFAULT_PROMPT_PROFILES:
             existing = db.get(PromptProfileORM, pp_data["id"])
             if not existing:

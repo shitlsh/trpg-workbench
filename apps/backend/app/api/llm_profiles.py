@@ -6,7 +6,7 @@ from app.models.orm import LLMProfileORM, WorkspaceORM
 from app.models.schemas import (
     LLMProfileSchema, LLMProfileCreate, LLMProfileUpdate, LLMTestResult
 )
-from app.utils.secrets import encrypt_secret, decrypt
+from app.utils.secrets import encrypt_secret, decrypt_secret as decrypt
 
 router = APIRouter(prefix="/settings/llm-profiles", tags=["llm-profiles"])
 
