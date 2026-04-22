@@ -62,11 +62,11 @@
 ```
 RuleSet（规则集）
   ├── PromptProfile（风格提示词，1个规则集最多1个活跃）
-  └── KnowledgeLibrary[]（关联的知识库，可多个）
+  └── KnowledgeLibrary[]（归属该规则集的知识库，一对多）
 ```
 
 - RuleSet 是**用户可创建和管理的**，不再只有内置项
-- KnowledgeLibrary **不归属**某个 RuleSet（知识库仍是全局资产），而是**被规则集引用**（多对多关系）
+- KnowledgeLibrary **归属**某个 RuleSet，在规则集管理页内创建和上传，不再是全局平铺的独立资产
 - PromptProfile 通过 `rule_set_id` 关联到规则集（现有字段，调整为业务上有意义的 1:1 关系）
 - 工作空间选择规则集后，继承规则集的知识库集合和提示词——这是运行时行为，不只是 metadata
 
@@ -82,16 +82,15 @@ PromptProfile 是**创作风格提示词**，负责：
 ### 知识库与规则集的关系
 
 ```
-KnowledgeLibrary（全局资产，独立存在）
-    ↑  被引用（多对多）
-RuleSetLibraryBinding（新表）
-    ↓  被归属
 RuleSet
+  └── KnowledgeLibrary[]（一对多，归属关系）
+        └── KnowledgeDocument / KnowledgeChunk
 ```
 
-- 同一个知识库可以被多个规则集引用（例如"通用奇幻世界观"知识库可同时用于多个规则集）
-- 删除规则集不删除知识库，只删除 binding
-- 工作空间的知识库来源：RuleSet 的绑定列表 + 工作空间级别的额外绑定（可覆盖扩充）
+- 知识库**归属**某个规则集，在规则集管理页内创建、上传和管理
+- 删除规则集时，其下的知识库也一并删除（或提示用户确认）
+- 知识库不跨规则集复用；需要在多个规则集中使用同类资料，需分别上传
+- 原有的全局知识库页（`/knowledge`）职责调整：**变为规则集管理页的入口或完全合并**（见 A5 导航调整）
 
 ---
 
@@ -111,26 +110,24 @@ RuleSet
 
 **A2：后端 RuleSet API 补全**
 9. `PATCH /rule-sets/{id}` — 编辑规则集名称/描述（内置项拒绝）
-10. `DELETE /rule-sets/{id}` — 删除规则集（检查工作空间依赖）
-11. 新增 `RuleSetLibraryBinding` 表和对应 CRUD API：
-    - `GET /rule-sets/{id}/library-bindings`
-    - `POST /rule-sets/{id}/library-bindings`
-    - `DELETE /rule-sets/{id}/library-bindings/{binding_id}`
+10. `DELETE /rule-sets/{id}` — 删除规则集（检查工作空间依赖；有依赖则拒绝，无依赖则级联删除其下知识库）
+11. `KnowledgeLibraryORM` 添加 `rule_set_id` 外键（迁移），知识库在创建时必须指定所属规则集
+12. 知识库 CRUD API 调整：`POST /knowledge-libraries` 新增必填字段 `rule_set_id`；新增 `GET /rule-sets/{id}/libraries` 按规则集列出知识库
+13. `shared-schema` 更新：补充新 API 的 TypeScript 类型
 
 **A3：PromptProfile 接入 Agent 运行时**
-12. 修改 `get_workspace_context()`（`workflows/utils.py`）：查询工作空间所属规则集，获取该规则集绑定的 PromptProfile，将其 `system_prompt` 加入 workspace_context
-13. 修改 `workflows/create_module.py` 和 `workflows/modify_asset.py`：将 workspace_context 中的 `style_prompt` 作为前置上下文传入各专项 Agent
-14. 注入方式：在每个专项 Agent 调用时，将 `style_prompt` 拼接到用户 prompt 的前面（作为系统级风格约束），而非替换 Agent 的 system_prompt 常量
+14. 修改 `get_workspace_context()`（`workflows/utils.py`）：查询工作空间所属规则集，获取该规则集绑定的 PromptProfile，将其 `system_prompt` 加入 workspace_context
+15. 修改 `workflows/create_module.py` 和 `workflows/modify_asset.py`：将 workspace_context 中的 `style_prompt` 作为前置上下文传入各专项 Agent
+16. 注入方式：在每个专项 Agent 调用时，将 `style_prompt` 拼接到用户 prompt 的前面（作为系统级风格约束），而非替换 Agent 的 system_prompt 常量
 
-**A4：知识库绑定改走规则集路径**
-15. 修改 `workflows/utils.py`：`get_workspace_context()` 中额外返回知识库 ID 列表——来源为该工作空间所属规则集的 `RuleSetLibraryBinding`（优先）+ 工作空间自身的 `WorkspaceLibraryBinding`（追加扩充）
-16. 工作空间级别的额外绑定 UI：在 `WorkspaceSettingsPage` 中新增「额外知识库」区域，允许为单个工作空间追加规则集之外的知识库
-17. 现有 `WorkspaceLibraryBinding` 语义调整为"工作空间级扩充"，不再是唯一绑定路径
+**A4：工作空间知识库来源简化**
+17. 修改 `workflows/utils.py`：`get_workspace_context()` 的 `library_ids` 来源改为：该工作空间所属规则集下的所有知识库（直接查 `KnowledgeLibrary.rule_set_id`）+ 工作空间自身的 `WorkspaceLibraryBinding`（额外扩充）
+18. 工作空间级别的额外绑定 UI：在 `WorkspaceSettingsPage` 中新增「额外知识库」区域，允许为单个工作空间追加规则集之外的知识库（WorkspaceLibraryBinding 保持现有语义）
 
-**A5：导航与帮助文档更新**
-18. 顶部导航：「知识库」和「Prompt 配置」两个入口合并或重组，新增「规则集」入口
-19. 更新四篇帮助文档，反映新的 UI 结构和操作流程
-20. 修正 `knowledge-import.md` 中错误的知识库绑定描述
+**A5：导航与页面整合**
+19. 顶部导航：「知识库」入口**合并进规则集页**；「Prompt 配置」独立入口移除；主导航变为「规则集 | 模型配置 | 用量观测」
+20. `/knowledge` 路由调整为重定向到 `/settings/rule-sets`，或保留为独立的知识库浏览页（只读展示所有库，不含上传操作）
+21. 更新四篇帮助文档，反映新的 UI 结构和操作流程
 
 ### M9a 后续扩展（B 类）
 
@@ -259,8 +256,8 @@ pp = db.query(PromptProfileORM).filter_by(rule_set_id=ws.rule_set_id).first()
 if pp:
     style_prompt = pp.system_prompt
 
-# 2. 合并知识库 ID：规则集绑定 + 工作空间额外绑定
-rs_libs = [b.library_id for b in db.query(RuleSetLibraryBindingORM).filter_by(rule_set_id=ws.rule_set_id).all()]
+# 2. 合并知识库 ID：规则集归属的知识库 + 工作空间额外绑定
+rs_libs = [lib.id for lib in db.query(KnowledgeLibraryORM).filter_by(rule_set_id=ws.rule_set_id).all()]
 ws_libs = [b.library_id for b in db.query(WorkspaceLibraryBindingORM).filter_by(workspace_id=workspace_id, enabled=True).all()]
 library_ids = list(dict.fromkeys(rs_libs + ws_libs))  # 去重，保持顺序
 
@@ -293,9 +290,9 @@ prompt = f"{style_prefix}{actual_task_prompt}"
 
 | 变更类型 | 路由 | 说明 |
 |---------|------|------|
-| 新增 | `/settings/rule-sets` | 规则集管理页 |
-| 保留 | `/settings/prompts` | PromptProfile 管理页（不再出现在主导航，但路由保留） |
-| 保留 | `/knowledge` | 全局知识库管理页（独立存在，不合并） |
+| 新增 | `/settings/rule-sets` | 规则集管理页（含知识库和提示词管理） |
+| 保留 | `/settings/prompts` | PromptProfile 管理页（不再出现在主导航，路由保留供规则集页面跳转） |
+| 调整 | `/knowledge` | 重定向至 `/settings/rule-sets`，或保留为只读的知识库浏览视图 |
 
 ---
 
@@ -305,7 +302,7 @@ prompt = f"{style_prefix}{actual_task_prompt}"
 
 ### `trpg-workbench-architecture/SKILL.md`
 
-- **核心业务模型层次关系**：需更新，说明 RuleSet 与 KnowledgeLibrary 的关系变为 `RuleSetLibraryBinding`（多对多），而非当前架构图中 KnowledgeLibrary 直接归属 RuleSet 的一对多层次
+- **核心业务模型层次关系**：需更新，明确 KnowledgeLibrary 归属 RuleSet（一对多，通过 `rule_set_id` 外键），不再是全局独立资产
 - **`workspace_context` 结构**：需说明新增 `style_prompt` 和 `library_ids` 字段
 - **设置目录**：`settings/prompt_profiles.json` 已由数据库管理，该条可删除
 

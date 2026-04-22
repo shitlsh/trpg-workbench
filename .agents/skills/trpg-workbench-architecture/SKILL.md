@@ -62,10 +62,9 @@ E. 数据层       SQLite + 本地文件系统 + 本地向量索引
 ```
 RuleSet（规则集，用户可创建和管理）
   ├── PromptProfile（创作风格提示词，通过 rule_set_id 关联，1 个规则集最多 1 个活跃提示词）
-  └── RuleSetLibraryBinding（规则集与知识库的多对多关联）
-        └── KnowledgeLibrary（全局知识库资产，独立存在，可被多个规则集引用）
-              └── KnowledgeDocument（具体 PDF 文件）
-                    └── KnowledgeChunk（切块 + 向量引用）
+  └── KnowledgeLibrary[]（归属该规则集，一对多，通过 KnowledgeLibrary.rule_set_id 外键）
+        └── KnowledgeDocument（具体 PDF 文件）
+              └── KnowledgeChunk（切块 + 向量引用）
 
 Workspace（工作空间）── 归属一个 RuleSet
   ├── WorkspaceLibraryBinding（工作空间级额外知识库绑定，补充规则集之外的知识库）
@@ -88,8 +87,8 @@ ImageGenerationJob（图像生成任务，绑定 Asset）
 - **每次 Asset 落盘都必须写 AssetRevision**，不允许直接覆盖
 - **KnowledgeChunk 必须保留 page_from / page_to**，引用必须追溯到页码
 - **Asset 必须同时维护 content_json 和 content_md**，缺一不可
-- **KnowledgeLibrary 是全局资产**，不归属任何 RuleSet；通过 `RuleSetLibraryBinding` 被引用
-- **WorkspaceLibraryBinding 是工作空间级扩充**，用于为单个工作空间追加规则集之外的知识库；工作空间实际可用的知识库 = 规则集绑定的库 + 工作空间额外绑定的库
+- **KnowledgeLibrary 归属某个 RuleSet**（一对多，通过 `KnowledgeLibrary.rule_set_id` 外键）；在规则集管理页内创建和管理，不是全局独立资产
+- **WorkspaceLibraryBinding 是工作空间级扩充**，用于为单个工作空间追加规则集之外的知识库；工作空间实际可用的知识库 = 规则集归属的库 + 工作空间额外绑定的库
 
 ### `workspace_context` 结构（Agent 运行时传入）
 
