@@ -71,6 +71,13 @@ def pause_workflow(db: Session, wf: WorkflowStateORM):
     db.commit()
 
 
+def pause_for_clarification(db: Session, wf: WorkflowStateORM, clarification_questions: list):
+    wf.status = "waiting_for_clarification"
+    wf.clarification_questions = json.dumps(clarification_questions, ensure_ascii=False)
+    wf.updated_at = _now()
+    db.commit()
+
+
 def get_workspace_context(db: Session, workspace_id: str) -> dict:
     ws = db.get(WorkspaceORM, workspace_id)
     if not ws:

@@ -2,28 +2,7 @@
 import json
 from agno.agent import Agent
 from app.agents.model_adapter import strip_code_fence
-
-RULES_SYSTEM = """You are the Rules Agent for a TRPG workbench.
-Your job is to answer rule questions using the provided knowledge context.
-
-Rules:
-- Every suggestion MUST cite the source document and page number
-- If no relevant rule is found, state "基于通用经验，未找到对应规则原文"
-- Do NOT modify any assets
-- Respond in the same language as the user's question (Chinese if asked in Chinese)
-
-Respond ONLY with a JSON object:
-{
-  "suggestions": [
-    {
-      "text": "...",
-      "citation": {"document": "...", "page_from": 0, "page_to": 0} | null,
-      "has_citation": true | false
-    }
-  ],
-  "summary": "brief summary of findings"
-}
-"""
+from app.prompts import load_prompt
 
 
 def run_rules_agent(
@@ -38,7 +17,7 @@ def run_rules_agent(
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
     mdl = model
-    agent = Agent(model=mdl, system_prompt=RULES_SYSTEM, markdown=False)
+    agent = Agent(model=mdl, system_prompt=load_prompt("rules", "system"), markdown=False)
 
     ctx = json.dumps(knowledge_context, ensure_ascii=False, indent=2)
     prompt = f"""Knowledge context from rule books:

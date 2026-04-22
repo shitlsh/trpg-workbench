@@ -4,11 +4,12 @@ import { Send, Plus, ShieldCheck, RefreshCw, BookOpen, FileText, ChevronDown, Ch
 import type {
   ChatSession, ChatMessage, WorkflowState,
   ChangePlan, ConsistencyReport, PatchProposal,
-  LLMProfile, ModelCatalogEntry,
+  LLMProfile, ModelCatalogEntry, ClarificationQuestion,
 } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
 import { WorkflowProgress } from "./WorkflowProgress";
 import { PatchConfirmDialog } from "./PatchConfirmDialog";
+import { ClarificationCard } from "./ClarificationCard";
 import ContextUsageBadge from "./ContextUsageBadge";
 import { apiFetch } from "@/lib/api";
 
@@ -218,6 +219,10 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const [rulesReview, setRulesReview] = useState<{ suggestions: RulesSuggestion[]; summary: string } | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const [modelWarning, setModelWarning] = useState<string | null>(null);
+  const [clarificationQuestions, setClarificationQuestions] = useState<ClarificationQuestion[] | null>(null);
+  const [clarificationPreliminaryPlan, setClarificationPreliminaryPlan] = useState<string | null>(null);
+  const [clarificationWorkflowId, setClarificationWorkflowId] = useState<string | null>(null);
+  const [isSubmittingClarification, setIsSubmittingClarification] = useState(false);
 
   // Load workspace to check model configuration
   const { data: workspace } = useQuery({
@@ -260,6 +265,25 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     }
   }, [workspaceId]);
 
+  const handleClarificationSubmit = async (answers: Record<string, string | string[]>) => {
+    if (!clarificationWorkflowId) return;
+    setIsSubmittingClarification(true);
+    try {
+      const wf = await apiFetch<WorkflowState>(`/workflows/${clarificationWorkflowId}/clarify`, {
+        method: "POST",
+        body: JSON.stringify({ answers }),
+      });
+      setClarificationQuestions(null);
+      setClarificationPreliminaryPlan(null);
+      setActiveWorkflow(wf);
+      setWorkflowPolling(true);
+    } catch {
+      // silently ignore
+    } finally {
+      setIsSubmittingClarification(false);
+    }
+  };
+
   const sendMutation = useMutation({
     mutationFn: async (content: string) => {
       if (!session) throw new Error("No session");
@@ -291,7 +315,14 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             }),
           });
           setActiveWorkflow(wf);
-          setWorkflowPolling(true);
+          if (wf.status === "waiting_for_clarification" && wf.clarification_questions) {
+            setClarificationWorkflowId(wf.id);
+            setClarificationQuestions(wf.clarification_questions);
+            setClarificationPreliminaryPlan(null);
+            setWorkflowPolling(false); // don't poll until user answers
+          } else {
+            setWorkflowPolling(true);
+          }
         } catch {}
       }
     },
@@ -414,6 +445,15 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             onComplete={() => {
               qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
             }}
+          />
+        )}
+
+        {clarificationQuestions && (
+          <ClarificationCard
+            questions={clarificationQuestions}
+            preliminaryPlan={clarificationPreliminaryPlan}
+            onSubmit={handleClarificationSubmit}
+            isSubmitting={isSubmittingClarification}
           />
         )}
 

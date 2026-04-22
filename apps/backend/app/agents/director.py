@@ -2,41 +2,15 @@
 import json
 from agno.agent import Agent
 from app.agents.model_adapter import strip_code_fence
-
-DIRECTOR_SYSTEM = """You are the Director Agent for a TRPG workbench application.
-Your ONLY job is to:
-1. Parse the user's intent
-2. Decide which assets are affected
-3. Choose the appropriate workflow or sub-agents
-4. Generate a concise change plan for user confirmation
-
-You MUST NOT generate any asset content yourself.
-You MUST respond ONLY with a valid JSON object matching this exact schema:
-{
-  "intent": "create_asset | modify_asset | rules_review | image_gen | query",
-  "affected_asset_types": ["npc", "stage", ...],
-  "workflow": "create_module | modify_asset | rules_review | generate_image | null",
-  "agents_to_call": ["plot", "npc", ...],
-  "change_plan": "human-readable description of what will be created/changed",
-  "requires_user_confirm": true
-}
-
-Rules:
-- If the user wants to create a full module (多个资产), workflow = "create_module"
-- If modifying a single asset field, workflow = "modify_asset"
-- If asking a rules question, workflow = "rules_review", agents_to_call = ["rules"]
-- For simple queries with no file changes, workflow = null, intent = "query"
-- For image generation requests, workflow = "generate_image", intent = "image_gen"
-- Always set requires_user_confirm = true for create/modify operations
-- agents_to_call can include: "plot", "npc", "monster", "lore", "rules", "consistency", "document"
-- Respond ONLY with JSON, no extra text
-"""
+from app.prompts import load_prompt
 
 
 def run_director(
     user_message: str,
     workspace_context: dict,
     model=None,
+    allow_clarification: bool = False,
+    clarification_answers: dict | None = None,
 ) -> dict:
     """
     Run Director Agent.
@@ -45,18 +19,34 @@ def run_director(
       "rule_set": str,
       "existing_assets": [{"type": str, "name": str, "slug": str}]
     }
-    Returns: ChangePlan dict
+    allow_clarification: if True, Director may return a clarification result instead of execution plan
+    clarification_answers: if provided, inject answers into context and run in planning mode
+    Returns: ChangePlan dict (execution mode) or ClarificationResult dict (clarification mode)
     """
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
-    mdl = model
+    
+    # Determine which phase to use
+    if clarification_answers:
+        # User answered clarification questions – run planning mode
+        system_prompt = load_prompt("director", "planning")
+        context_with_answers = {**workspace_context, "clarification_answers": clarification_answers}
+        context_str = json.dumps(context_with_answers, ensure_ascii=False, indent=2)
+    elif allow_clarification:
+        # First call – check if we need clarification
+        system_prompt = load_prompt("director", "clarification")
+        context_str = json.dumps(workspace_context, ensure_ascii=False, indent=2)
+    else:
+        # Direct execution (legacy behavior)
+        system_prompt = load_prompt("director", "system")
+        context_str = json.dumps(workspace_context, ensure_ascii=False, indent=2)
+    
     agent = Agent(
-        model=mdl,
-        system_prompt=DIRECTOR_SYSTEM,
+        model=model,
+        system_prompt=system_prompt,
         markdown=False,
     )
 
-    context_str = json.dumps(workspace_context, ensure_ascii=False, indent=2)
     prompt = f"""Workspace context:
 {context_str}
 
@@ -66,10 +56,17 @@ User request: {user_message}"""
     text = strip_code_fence(response.content if hasattr(response, "content") else str(response))
 
     try:
-        return json.loads(text)
+        result = json.loads(text)
+        # If clarification mode but LLM decided no clarification needed, ensure mode is set
+        if allow_clarification and not clarification_answers:
+            if not result.get("needs_clarification"):
+                result["mode"] = result.get("mode", "execution")
+        return result
     except json.JSONDecodeError:
-        # Fallback: return a safe default
+        # Fallback: return a safe default execution plan
         return {
+            "mode": "execution",
+            "needs_clarification": False,
             "intent": "query",
             "affected_asset_types": [],
             "workflow": None,

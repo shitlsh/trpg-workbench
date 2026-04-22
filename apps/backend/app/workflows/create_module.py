@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.workflows.utils import (
     create_workflow, update_step, complete_workflow,
-    fail_workflow, pause_workflow, get_workspace_context,
+    fail_workflow, pause_workflow, pause_for_clarification, get_workspace_context,
 )
 from app.agents.director import run_director
 from app.agents.rules import run_rules_agent
@@ -65,13 +65,20 @@ async def run_create_module(
         update_step(db, wf, 1, STEP_NAMES[1], "completed",
                     summary=f"工作空间：{ws_ctx.get('workspace_name')}")
 
-        # ── Step 2: Director – change plan ─────────────────────────────────
+        # ── Step 0: Director – clarification check ─────────────────────────
+        # (Step 0 is optional, only triggered if Director needs clarification)
         update_step(db, wf, 2, STEP_NAMES[2], "running")
-        change_plan = run_director(user_intent, ws_ctx, model=model)
-        # Pause for user confirmation (caller must call /workflows/:id/confirm)
-        # Store change_plan in step result
+        director_result = run_director(user_intent, ws_ctx, model=model, allow_clarification=True)
+
+        if director_result.get("needs_clarification"):
+            # Director wants clarification – pause and wait for user answers
+            questions = director_result.get("clarification_questions", [])
+            pause_for_clarification(db, wf, questions)
+            return wf  # Frontend will show ClarificationCard
+
+        # No clarification needed – store change plan and wait for user confirm
         update_step(db, wf, 2, STEP_NAMES[2], "waiting_confirm",
-                    summary=json.dumps(change_plan, ensure_ascii=False))
+                    summary=json.dumps(director_result, ensure_ascii=False))
         pause_workflow(db, wf)
         return wf  # Caller must resume after user confirms
 
@@ -86,9 +93,9 @@ async def resume_create_module(
     model=None,
     knowledge_retriever=None,
 ) -> WorkflowStateORM:
-    """Continue a paused create_module workflow after user confirmation."""
-    step_results = json.loads(wf.step_results)
-    input_snapshot = json.loads(wf.input_snapshot)
+    """Continue a paused/clarification create_module workflow."""
+    step_results = json.loads(wf.step_results or "[]")
+    input_snapshot = json.loads(wf.input_snapshot or "{}")
     user_intent = input_snapshot.get("user_intent", "")
     workspace_id = wf.workspace_id
 
@@ -99,16 +106,59 @@ async def resume_create_module(
     if ws_ctx.get("style_prompt"):
         style_prefix = f"[创作风格约束]\n{ws_ctx['style_prompt']}\n\n"
 
-    # Get the change_plan from step 2
+    # Check if clarification answers are present (user just answered clarification questions)
+    clarification_answers = None
+    if wf.clarification_answers:
+        try:
+            clarification_answers = json.loads(wf.clarification_answers)
+        except Exception:
+            clarification_answers = None
+
+    # If we have clarification answers but step 2 doesn't yet have an execution plan,
+    # run Director in planning mode to get the plan
     step2 = next((s for s in step_results if s["step"] == 2), None)
     change_plan: dict = {}
-    if step2 and step2.get("summary"):
+
+    if clarification_answers and (not step2 or step2.get("status") != "waiting_confirm"):
+        # Re-run Director with answers to get execution plan
+        wf.status = "planning"
+        db.commit()
+
+        # Build answers summary for style prefix injection
+        answers_summary = "\n".join(
+            f"- {k}: {v if isinstance(v, str) else ', '.join(v)}"
+            for k, v in clarification_answers.items()
+        )
+        answers_prefix = f"[用户创作偏好]\n{answers_summary}\n\n"
+
+        director_result = run_director(
+            user_intent, ws_ctx, model=model,
+            allow_clarification=False,
+            clarification_answers=clarification_answers,
+        )
+        change_plan = director_result
+        update_step(db, wf, 2, STEP_NAMES[2], "waiting_confirm",
+                    summary=json.dumps(change_plan, ensure_ascii=False))
+        pause_workflow(db, wf)
+        return wf  # Wait for user to confirm the execution plan
+
+    elif step2 and step2.get("summary"):
         try:
             change_plan = json.loads(step2["summary"])
         except Exception:
             change_plan = {}
 
+    # Build answers prefix if available
+    answers_prefix = ""
+    if clarification_answers:
+        answers_summary = "\n".join(
+            f"- {k}: {v if isinstance(v, str) else ', '.join(v)}"
+            for k, v in clarification_answers.items()
+        )
+        answers_prefix = f"[用户创作偏好]\n{answers_summary}\n\n"
+
     premise = change_plan.get("change_plan", user_intent)
+    full_prefix = style_prefix + answers_prefix
     wf.status = "running"
     db.commit()
 
@@ -123,19 +173,19 @@ async def resume_create_module(
                 )
             except Exception:
                 knowledge_context = []
-        rules_result = run_rules_agent(style_prefix + premise, knowledge_context, model=model)
+        rules_result = run_rules_agent(full_prefix + premise, knowledge_context, model=model)
         update_step(db, wf, 3, STEP_NAMES[3], "completed",
                     summary=rules_result.get("summary", "规则检索完成"))
 
         # ── Step 4: Plot Agent – outline ────────────────────────────────────
         update_step(db, wf, 4, STEP_NAMES[4], "running")
-        outline = run_plot_agent(style_prefix + premise, "outline", knowledge_context, ws_ctx, model=model)
+        outline = run_plot_agent(full_prefix + premise, "outline", knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 4, STEP_NAMES[4], "completed",
                     summary=outline.get("title", "大纲生成完成"))
 
         # ── Step 5: Plot Agent – stages ─────────────────────────────────────
         update_step(db, wf, 5, STEP_NAMES[5], "running")
-        stages_result = run_plot_agent(style_prefix + premise, "stages", knowledge_context, ws_ctx, model=model)
+        stages_result = run_plot_agent(full_prefix + premise, "stages", knowledge_context, ws_ctx, model=model)
         stages = stages_result.get("stages", [])
         update_step(db, wf, 5, STEP_NAMES[5], "completed",
                     summary=f"生成 {len(stages)} 个场景")
@@ -143,15 +193,14 @@ async def resume_create_module(
         # ── Step 6: NPC Agent ───────────────────────────────────────────────
         update_step(db, wf, 6, STEP_NAMES[6], "running")
         stage_summaries = [s.get("description", s.get("name", "")) for s in stages]
-        npcs = run_npc_agent(style_prefix + premise, stage_summaries, 3, knowledge_context, ws_ctx, model=model)
+        npcs = run_npc_agent(full_prefix + premise, stage_summaries, 3, knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 6, STEP_NAMES[6], "completed",
                     summary=f"生成 {len(npcs)} 个 NPC")
 
         # ── Step 7: Monster Agent ───────────────────────────────────────────
         update_step(db, wf, 7, STEP_NAMES[7], "running")
-        # Extract monster hints from change_plan if available; else let agent decide
         monster_hints = change_plan.get("monster_hints", [])
-        monsters = run_monster_agent(style_prefix + premise, monster_hints, knowledge_context, ws_ctx, model=model)
+        monsters = run_monster_agent(full_prefix + premise, monster_hints, knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 7, STEP_NAMES[7], "completed",
                     summary=f"生成 {len(monsters)} 个怪物/实体")
 
@@ -159,7 +208,7 @@ async def resume_create_module(
         update_step(db, wf, 8, STEP_NAMES[8], "running")
         location_hints = [s.get("name", "") for s in stages[:3]]
         lore_result = run_lore_agent(
-            style_prefix + premise, location_hints, knowledge_context, ws_ctx,
+            full_prefix + premise, location_hints, knowledge_context, ws_ctx,
             location_count=max(2, len(stages[:3])),
             lore_note_count=2,
             model=model,
@@ -171,7 +220,7 @@ async def resume_create_module(
 
         # ── Step 9: Clue chain ──────────────────────────────────────────────
         update_step(db, wf, 9, STEP_NAMES[9], "running")
-        clues_result = run_plot_agent(style_prefix + premise, "clues", knowledge_context, ws_ctx, model=model)
+        clues_result = run_plot_agent(full_prefix + premise, "clues", knowledge_context, ws_ctx, model=model)
         clues = clues_result.get("clues", [])
         update_step(db, wf, 9, STEP_NAMES[9], "completed",
                     summary=f"生成 {len(clues)} 条线索")
@@ -234,7 +283,6 @@ async def resume_create_module(
                 content_json = patch.get("content_json", "{}")
                 summary_text = patch.get("change_summary", "由 AI 创建")
 
-                # Check if asset exists
                 existing = db.query(AssetORM).filter(
                     AssetORM.workspace_id == workspace_id,
                     AssetORM.type == asset_type,

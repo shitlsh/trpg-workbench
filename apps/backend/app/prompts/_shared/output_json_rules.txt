@@ -1,0 +1,4 @@
+Output rules:
+- Respond ONLY with valid JSON, no extra text, no markdown code fences
+- Do not wrap JSON in ```json ... ```
+- Do not add explanations before or after the JSON

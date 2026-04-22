@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
 from app.models.orm import WorkflowStateORM, WorkspaceLibraryBindingORM, KnowledgeDocumentORM
-from app.models.schemas import WorkflowStateSchema, StartWorkflowRequest
+from app.models.schemas import WorkflowStateSchema, StartWorkflowRequest, ClarifyRequest
 from app.workflows.create_module import run_create_module, resume_create_module
 from app.workflows.modify_asset import run_modify_asset, apply_modify_asset_patches
 from app.workflows.rules_review import run_rules_review
@@ -176,6 +176,29 @@ async def confirm_workflow(wf_id: str, db: Session = Depends(get_db)):
         wf = await apply_modify_asset_patches(db, wf)
     else:
         raise HTTPException(status_code=400, detail=f"Cannot confirm workflow type: {wf.type}")
+
+    db.refresh(wf)
+    return wf
+
+
+@router.post("/{wf_id}/clarify", response_model=WorkflowStateSchema)
+async def clarify_workflow(wf_id: str, body: ClarifyRequest, db: Session = Depends(get_db)):
+    """Accept clarification answers and resume the workflow."""
+    wf = _get_wf(wf_id, db)
+    if wf.status != "waiting_for_clarification":
+        raise HTTPException(status_code=400, detail="Workflow is not waiting for clarification")
+
+    import json
+    wf.clarification_answers = json.dumps(body.answers, ensure_ascii=False)
+    wf.status = "executing"
+    wf.updated_at = __import__('datetime').datetime.now(__import__('datetime').timezone.utc)
+    db.commit()
+
+    if wf.type == "create_module":
+        model = _resolve_model(wf.workspace_id, "create_module", db)
+        wf = await resume_create_module(db, wf, model=model)
+    else:
+        raise HTTPException(status_code=400, detail=f"Cannot clarify workflow type: {wf.type}")
 
     db.refresh(wf)
     return wf

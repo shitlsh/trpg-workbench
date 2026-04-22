@@ -350,12 +350,14 @@ class WorkflowStateSchema(BaseModel):
     workspace_id: str
     type: str
     status: str
-    current_step: int
-    total_steps: int
-    input_snapshot: str
-    step_results: str
-    result_summary: str | None
-    error_message: str | None
+    current_step: int = 0
+    total_steps: int = 0
+    input_snapshot: str | None = None
+    clarification_questions: str | None = None
+    clarification_answers: str | None = None
+    step_results: str | None = None
+    result_summary: str | None = None
+    error_message: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -364,6 +366,10 @@ class StartWorkflowRequest(BaseModel):
     type: str
     workspace_id: str
     input: dict
+
+
+class ClarifyRequest(BaseModel):
+    answers: dict  # Record[str, str | list[str]]
 
 
 class ApplyPatchRequest(BaseModel):

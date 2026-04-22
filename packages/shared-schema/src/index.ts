@@ -387,7 +387,15 @@ export interface ChatMessage {
 }
 
 export type WorkflowType = "create_module" | "modify_asset" | "rules_review" | "generate_image";
-export type WorkflowStatus = "pending" | "running" | "paused" | "completed" | "failed";
+export type WorkflowStatus =
+  | "pending"
+  | "planning"
+  | "waiting_for_clarification"
+  | "executing"
+  | "paused"
+  | "awaiting_confirmation"
+  | "completed"
+  | "failed";
 
 export interface WorkflowStepResult {
   step: number;
@@ -395,6 +403,24 @@ export interface WorkflowStepResult {
   status: "pending" | "running" | "completed" | "failed" | "waiting_confirm";
   summary: string | null;
   error?: string | null;
+}
+
+export interface ClarificationOption {
+  id: string;
+  label: string;
+  description: string | null;
+}
+
+export interface ClarificationQuestion {
+  id: string;
+  question: string;
+  type: "single_choice" | "multi_choice" | "free_text";
+  options: ClarificationOption[];
+  recommended_default: string | null;
+}
+
+export interface ClarifyRequest {
+  answers: Record<string, string | string[]>;
 }
 
 export interface WorkflowState {
@@ -405,6 +431,8 @@ export interface WorkflowState {
   current_step: number;
   total_steps: number;
   input_snapshot: string; // JSON string
+  clarification_questions: ClarificationQuestion[] | null;
+  clarification_answers: Record<string, string | string[]> | null;
   step_results: string;   // JSON array string
   result_summary: string | null;
   error_message: string | null;

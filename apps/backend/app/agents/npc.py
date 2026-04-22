@@ -2,29 +2,7 @@
 import json
 from agno.agent import Agent
 from app.agents.model_adapter import strip_code_fence
-
-NPC_SYSTEM = """You are the NPC Agent for a TRPG workbench.
-Your job is to create detailed NPC characters: identity, appearance, personality, motivation, secrets, relationships.
-You do NOT design plot structure, monster stats, or rule judgments.
-
-Respond in Chinese unless specified otherwise.
-Respond ONLY with a JSON array of NPC objects:
-[
-  {
-    "name": "...",
-    "slug": "...",
-    "role": "...",
-    "appearance": "...",
-    "personality": "...",
-    "background": "...",
-    "motivation": "...",
-    "secret": "...",
-    "relationship_to_players": "...",
-    "speech_style": "...",
-    "notes": ""
-  }
-]
-"""
+from app.prompts import load_prompt
 
 
 def run_npc_agent(
@@ -38,7 +16,7 @@ def run_npc_agent(
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
     mdl = model
-    agent = Agent(model=mdl, system_prompt=NPC_SYSTEM, markdown=False)
+    agent = Agent(model=mdl, system_prompt=load_prompt("npc", "system"), markdown=False)
 
     ctx = json.dumps(knowledge_context[:3], ensure_ascii=False) if knowledge_context else "None"
     stages_str = "\n".join(f"- {s}" for s in stage_summaries) if stage_summaries else "Not yet defined"

@@ -3,31 +3,7 @@ This agent NEVER writes files or database rows. It only returns patch data."""
 import json
 from agno.agent import Agent
 from app.agents.model_adapter import strip_code_fence
-
-DOCUMENT_SYSTEM = """You are the Document Agent for a TRPG workbench.
-Your ONLY job is to format raw content into structured asset data.
-You do NOT create new content, do NOT write files, do NOT make creative judgments.
-
-For each asset you receive, output a patch proposal:
-{
-  "asset_id": "...",
-  "asset_name": "...",
-  "asset_type": "...",
-  "asset_slug": "...",
-  "content_json": "{valid json string}",
-  "content_md": "# Title\\n\\n## Section\\ncontent...",
-  "change_summary": "brief description of what changed"
-}
-
-Output a JSON array of patch proposals.
-Use proper Markdown headings matching the asset type conventions:
-- NPC: ## 外貌描述, ## 背景故事, ## 动机, ## 与玩家的关系, ## 备注
-- Stage: ## 场景描述, ## 目标, ## 关键NPC, ## 关键地点, ## 备注
-- Outline: ## 故事前提, ## 主题, ## 基调, ## 幕次结构, ## 备注
-- Clue: ## 线索描述, ## 发现条件, ## 指向何处, ## 备注
-- Location: ## 外观描述, ## 历史背景, ## 当前状态, ## 备注
-For other types use: ## 描述, ## 备注
-"""
+from app.prompts import load_prompt
 
 
 def run_document_agent(
@@ -42,7 +18,7 @@ def run_document_agent(
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
     mdl = model
-    agent = Agent(model=mdl, system_prompt=DOCUMENT_SYSTEM, markdown=False)
+    agent = Agent(model=mdl, system_prompt=load_prompt("document", "system"), markdown=False)
 
     ctx = json.dumps(raw_assets, ensure_ascii=False, indent=2)
     prompt = f"""Format the following raw assets into structured patch proposals:

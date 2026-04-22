@@ -102,7 +102,18 @@ ImageGenerationJob（图像生成任务，绑定 Asset）
 }
 ```
 
-Agent 使用 `style_prompt` 时，应将其作为 prompt prefix 注入，**不得替换 Agent 自身的硬编码 system_prompt 常量**。
+Agent 使用 `style_prompt` 时，应将其作为 prompt prefix 注入，**不得替换 Agent 自身的硬编码 system_prompt 常量（M10 后：通过 `load_prompt()` 加载的 prompt）**。
+
+M10 prompt prefix 注入顺序：
+```
+[创作风格约束]             ← style_prompt
+{style_prompt}
+
+[用户创作偏好]             ← clarification_answers（仅 create_module resume 时有值）
+{answers_summary}
+
+{task_prompt}              ← 实际任务描述
+```
 
 ---
 
@@ -178,6 +189,7 @@ trpg-workbench/
         knowledge/               # PDF 处理与检索
         storage/                 # SQLite + 文件操作
         models/                  # 数据模型定义（Pydantic）
+        prompts/                 # Prompt Registry（M10）：load_prompt() + 各 Agent prompt 文件
         utils/
       tests/
   packages/

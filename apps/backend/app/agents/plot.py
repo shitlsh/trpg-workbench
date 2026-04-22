@@ -2,38 +2,7 @@
 import json
 from agno.agent import Agent
 from app.agents.model_adapter import strip_code_fence
-
-PLOT_SYSTEM = """You are the Plot Agent for a TRPG workbench.
-Your job is to create story structure, scene (stage) lists, and clue chains.
-You do NOT create NPC details, monster stats, or rule judgments.
-
-Respond in Chinese unless specified otherwise.
-Respond ONLY with a JSON object matching the requested output_type.
-
-For output_type "outline":
-{
-  "title": "...",
-  "premise": "...",
-  "theme": "...",
-  "tone": "...",
-  "summary": "...",
-  "act_count": 3
-}
-
-For output_type "stages":
-{
-  "stages": [
-    {"name": "...", "slug": "...", "description": "...", "objectives": ["..."], "key_npcs": [], "key_locations": []}
-  ]
-}
-
-For output_type "clues":
-{
-  "clues": [
-    {"name": "...", "slug": "...", "description": "...", "leads_to": "...", "found_at": "..."}
-  ]
-}
-"""
+from app.prompts import load_prompt
 
 
 def run_plot_agent(
@@ -46,7 +15,7 @@ def run_plot_agent(
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
     mdl = model
-    agent = Agent(model=mdl, system_prompt=PLOT_SYSTEM, markdown=False)
+    agent = Agent(model=mdl, system_prompt=load_prompt("plot", "system"), markdown=False)
 
     ctx = json.dumps(knowledge_context[:3], ensure_ascii=False) if knowledge_context else "None"
     prompt = f"""Module premise: {premise}
