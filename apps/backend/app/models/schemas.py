@@ -20,6 +20,27 @@ class RuleSetCreate(BaseModel):
     genre: str | None = None
 
 
+class RuleSetUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    genre: str | None = None
+
+
+class RuleSetLibraryBindingSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    rule_set_id: str
+    library_id: str
+    priority: int
+    created_at: datetime
+    library: "KnowledgeLibrarySchema | None" = None
+
+
+class RuleSetLibraryBindingCreate(BaseModel):
+    library_id: str
+    priority: int = 0
+
+
 class WorkspaceSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -380,6 +401,7 @@ class PromptProfileUpdate(BaseModel):
     system_prompt: str | None = None
     style_notes: str | None = None
     output_schema_hint: str | None = None
+    rule_set_id: str | None = None
 
 
 # ─── M7: Model Catalog ────────────────────────────────────────────────────────

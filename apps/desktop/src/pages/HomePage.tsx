@@ -58,14 +58,14 @@ export default function HomePage() {
       <header className={styles.header}>
         <h1 className={styles.logo}>TRPG Workbench</h1>
         <div className={styles.headerActions}>
+          <button className={styles.btnSecondary} onClick={() => navigate("/settings/rule-sets")}>
+            规则集
+          </button>
           <button className={styles.btnSecondary} onClick={() => navigate("/knowledge")}>
             知识库
           </button>
           <button className={styles.btnSecondary} onClick={() => navigate("/settings/models")}>
             模型配置
-          </button>
-          <button className={styles.btnSecondary} onClick={() => navigate("/settings/prompts")}>
-            Prompt 配置
           </button>
           <button className={styles.btnSecondary} onClick={() => navigate("/usage")}>
             用量观测

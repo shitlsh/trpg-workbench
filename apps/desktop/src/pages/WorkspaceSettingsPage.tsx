@@ -1,9 +1,151 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
+import { Library, Plus, X } from "lucide-react";
 import { apiFetch, BACKEND_URL } from "../lib/api";
-import type { Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry, EmbeddingCatalogEntry, RerankProfile } from "@trpg-workbench/shared-schema";
+import type {
+  Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry,
+  EmbeddingCatalogEntry, RerankProfile, WorkspaceLibraryBinding,
+  CreateBindingRequest, KnowledgeLibrary, RuleSetLibraryBinding,
+} from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
+
+// ─── Extra Libraries Section ───────────────────────────────────────────────────
+
+function ExtraLibrariesSection({ workspaceId, ruleSetId }: { workspaceId: string; ruleSetId: string }) {
+  const queryClient = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+
+  const { data: allLibraries = [] } = useQuery({
+    queryKey: ["knowledge", "libraries"],
+    queryFn: () => apiFetch<KnowledgeLibrary[]>("/knowledge/libraries"),
+  });
+
+  const { data: rsBindings = [] } = useQuery({
+    queryKey: ["rule-sets", ruleSetId, "library-bindings"],
+    queryFn: () => apiFetch<RuleSetLibraryBinding[]>(`/rule-sets/${ruleSetId}/library-bindings`),
+    enabled: !!ruleSetId,
+  });
+
+  const { data: wsBindings = [] } = useQuery({
+    queryKey: ["workspace", workspaceId, "library-bindings"],
+    queryFn: () => apiFetch<WorkspaceLibraryBinding[]>(`/workspaces/${workspaceId}/library-bindings`),
+  });
+
+  const addMutation = useMutation({
+    mutationFn: (body: CreateBindingRequest) =>
+      apiFetch<WorkspaceLibraryBinding>(`/workspaces/${workspaceId}/library-bindings`, {
+        method: "POST", body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspace", workspaceId, "library-bindings"] });
+      setShowAdd(false);
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (bindingId: string) =>
+      apiFetch(`/workspaces/${workspaceId}/library-bindings/${bindingId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspace", workspaceId, "library-bindings"] });
+    },
+  });
+
+  const rsLibIds = rsBindings.map((b) => b.library_id);
+  const wsLibIds = wsBindings.map((b) => b.library_id);
+  const rsLibs = allLibraries.filter((l) => rsLibIds.includes(l.id));
+
+  return (
+    <div style={{ marginTop: 32, padding: 20, border: "1px solid var(--border)", borderRadius: 8 }}>
+      <div style={{ fontWeight: 600, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+        <Library size={15} /> 额外知识库（规则集之外的补充）
+      </div>
+
+      {ruleSetId && rsLibs.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
+            当前规则集已关联 {rsLibs.length} 个知识库（继承，不可在此修改）：
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {rsLibs.map((l) => (
+              <span key={l.id} style={{
+                padding: "2px 10px", background: "rgba(124,106,247,0.12)",
+                color: "var(--accent)", borderRadius: 100, fontSize: 12,
+              }}>
+                {l.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+        {wsBindings.length === 0 && (
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>暂无额外绑定的知识库</p>
+        )}
+        {wsBindings.map((b) => {
+          const lib = allLibraries.find((l) => l.id === b.library_id);
+          return (
+            <div key={b.id} style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "6px 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 13,
+            }}>
+              <Library size={13} color="var(--text-muted)" />
+              <span style={{ flex: 1 }}>{lib?.name ?? b.library_id}</span>
+              <button
+                onClick={() => removeMutation.mutate(b.id)}
+                style={{ background: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2 }}
+                title="移除"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {!showAdd ? (
+        <button
+          onClick={() => setShowAdd(true)}
+          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, padding: "6px 12px", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text)" }}
+        >
+          <Plus size={13} /> 添加额外知识库
+        </button>
+      ) : (
+        <div style={{ border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
+          <div style={{ padding: "6px 8px", background: "var(--bg-surface)", fontSize: 12, color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
+            选择要添加的知识库：
+          </div>
+          {allLibraries.filter((l) => !wsLibIds.includes(l.id)).map((l) => (
+            <div
+              key={l.id}
+              onClick={() => addMutation.mutate({ library_id: l.id })}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 12px", fontSize: 13, cursor: "pointer",
+                borderBottom: "1px solid var(--border)",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+            >
+              <Library size={13} color="var(--text-muted)" />
+              <span style={{ flex: 1 }}>{l.name}</span>
+              {rsLibIds.includes(l.id) && (
+                <span style={{ fontSize: 11, color: "var(--accent)" }}>规则集已含</span>
+              )}
+            </div>
+          ))}
+          {allLibraries.filter((l) => !wsLibIds.includes(l.id)).length === 0 && (
+            <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "10px 12px" }}>所有知识库已添加</p>
+          )}
+          <div style={{ padding: "8px 12px" }}>
+            <button onClick={() => setShowAdd(false)} style={{ fontSize: 12, color: "var(--text-muted)", background: "none", cursor: "pointer" }}>关闭</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CatalogHint({ profile, catalog }: { profile: LLMProfile | EmbeddingProfile | undefined; catalog: (ModelCatalogEntry | EmbeddingCatalogEntry)[] }) {
   if (!profile) return null;
@@ -261,6 +403,9 @@ export default function WorkspaceSettingsPage() {
             {updateMutation.isError && <span className={styles.error}>{(updateMutation.error as Error).message}</span>}
           </div>
         </form>
+
+        {/* Extra Knowledge Libraries section */}
+        <ExtraLibrariesSection workspaceId={id!} ruleSetId={ruleSetId} />
 
         {/* Export section */}
         <div style={{

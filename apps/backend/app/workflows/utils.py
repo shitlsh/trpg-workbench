@@ -2,7 +2,11 @@
 import json
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from app.models.orm import WorkflowStateORM, WorkspaceORM, AssetORM
+from app.models.orm import (
+    WorkflowStateORM, WorkspaceORM, AssetORM,
+    KnowledgeLibraryORM, WorkspaceLibraryBindingORM,
+    PromptProfileORM, RuleSetLibraryBindingORM,
+)
 
 
 def _now():
@@ -75,9 +79,32 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
         AssetORM.workspace_id == workspace_id,
         AssetORM.status != "deleted",
     ).all()
+
+    # style_prompt: from the PromptProfile bound to the workspace's rule set
+    style_prompt = None
+    if ws.rule_set_id:
+        pp = db.query(PromptProfileORM).filter_by(rule_set_id=ws.rule_set_id).first()
+        if pp:
+            style_prompt = pp.system_prompt
+
+    # library_ids: rule set library bindings + workspace extra bindings
+    rs_libs = [
+        b.library_id
+        for b in db.query(RuleSetLibraryBindingORM).filter_by(rule_set_id=ws.rule_set_id).all()
+    ] if ws.rule_set_id else []
+    ws_libs = [
+        b.library_id
+        for b in db.query(WorkspaceLibraryBindingORM).filter_by(
+            workspace_id=workspace_id, enabled=True
+        ).all()
+    ]
+    library_ids = list(dict.fromkeys(rs_libs + ws_libs))  # deduplicate, preserve order
+
     return {
         "workspace_name": ws.name,
         "rule_set": ws.rule_set_id,
+        "style_prompt": style_prompt,
+        "library_ids": library_ids,
         "existing_assets": [
             {"type": a.type, "name": a.name, "slug": a.slug}
             for a in assets

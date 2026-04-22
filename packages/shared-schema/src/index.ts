@@ -31,6 +31,26 @@ export interface CreateRuleSetRequest {
   genre?: string;
 }
 
+export interface UpdateRuleSetRequest {
+  name?: string;
+  description?: string;
+  genre?: string;
+}
+
+export interface RuleSetLibraryBinding {
+  id: string;
+  rule_set_id: string;
+  library_id: string;
+  priority: number;
+  created_at: string;
+  library?: KnowledgeLibrary | null;
+}
+
+export interface CreateRuleSetLibraryBindingRequest {
+  library_id: string;
+  priority?: number;
+}
+
 // ─── Workspace ────────────────────────────────────────────────────────────────
 
 export interface Workspace {
@@ -490,6 +510,7 @@ export interface UpdatePromptProfileRequest {
   name?: string;
   system_prompt?: string;
   style_notes?: string;
+  rule_set_id?: string | null;
 }
 
 // ─── M7: Model Catalog ────────────────────────────────────────────────────────

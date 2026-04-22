@@ -9,21 +9,24 @@ import gettingStarted from "../help/getting-started.md?raw";
 import modelSetup from "../help/model-setup.md?raw";
 import knowledgeImport from "../help/knowledge-import.md?raw";
 import startCreating from "../help/start-creating.md?raw";
+import ruleSetManagement from "../help/rule-set-management.md?raw";
 
 // ── Docs registry ─────────────────────────────────────────────────────────────
 
 const DOCS: Record<string, { title: string; content: string }> = {
-  "getting-started": { title: "快速入门",       content: gettingStarted },
-  "model-setup":     { title: "模型配置指南",   content: modelSetup },
-  "knowledge-import":{ title: "知识库导入指南", content: knowledgeImport },
-  "start-creating":  { title: "开始创作",       content: startCreating },
+  "getting-started":    { title: "快速入门",       content: gettingStarted },
+  "model-setup":        { title: "模型配置指南",   content: modelSetup },
+  "knowledge-import":   { title: "知识库导入指南", content: knowledgeImport },
+  "rule-set-management":{ title: "规则集管理",     content: ruleSetManagement },
+  "start-creating":     { title: "开始创作",       content: startCreating },
 };
 
 const NAV_ITEMS = [
-  { id: "getting-started",  label: "快速入门" },
-  { id: "model-setup",      label: "模型配置" },
-  { id: "knowledge-import", label: "知识库导入" },
-  { id: "start-creating",   label: "开始创作" },
+  { id: "getting-started",     label: "快速入门" },
+  { id: "model-setup",         label: "模型配置" },
+  { id: "knowledge-import",    label: "知识库导入" },
+  { id: "rule-set-management", label: "规则集管理" },
+  { id: "start-creating",      label: "开始创作" },
 ];
 
 // ── Component ────────────────────────────────────────────────────────────────

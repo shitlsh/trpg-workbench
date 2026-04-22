@@ -2,7 +2,7 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M9 已完成**
+> **当前状态：M9a 已完成**
 
 ---
 
@@ -138,6 +138,7 @@ cargo tauri dev
 | M7 模型发现与用量观测 | 静态+动态 model catalog、usage 聚合统计、成本估算、context window | ✅ 完成 |
 | M8 知识库预览与 Rerank | 知识库文档预览、分块浏览、Rerank 模型接入 | ✅ 完成 |
 | M9 Smoke Test 与帮助文档 | 前端 smoke 脚本、截图、应用内帮助页、Tauri Help 菜单 | ✅ 完成 |
+| M9a 规则集统一管理 | RuleSet 管理 UI、知识库绑定、PromptProfile 接入 Agent 运行时、工作空间额外知识库 | ✅ 完成 |
 
 详细计划见 `.agents/plans/`，架构与约束见 `.agents/skills/`。
 

@@ -13,6 +13,7 @@ import PromptProfilesPage from "./pages/PromptProfilesPage";
 import UsagePage from "./pages/UsagePage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import HelpPage from "./pages/HelpPage";
+import RuleSetPage from "./pages/RuleSetPage";
 import DisconnectedBanner from "./components/DisconnectedBanner";
 
 const POLL_INTERVAL = 500;
@@ -89,6 +90,7 @@ export default function App() {
       {status === "disconnected" && <DisconnectedBanner />}
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/settings/rule-sets" element={<RuleSetPage />} />
         <Route path="/settings/models" element={<SettingsPage />} />
         <Route path="/settings/prompts" element={<PromptProfilesPage />} />
         <Route path="/usage" element={<UsagePage />} />

@@ -53,9 +53,14 @@ async def run_modify_asset(
     try:
         ws_ctx = get_workspace_context(db, workspace_id)
 
+        # Build style prefix from workspace's rule set PromptProfile
+        style_prefix = ""
+        if ws_ctx.get("style_prompt"):
+            style_prefix = f"[创作风格约束]\n{ws_ctx['style_prompt']}\n\n"
+
         # ── Step 1: Director intent analysis ───────────────────────────────
         update_step(db, wf, 1, STEP_NAMES[1], "running")
-        change_plan = run_director(user_intent, ws_ctx, model=model)
+        change_plan = run_director(style_prefix + user_intent, ws_ctx, model=model)
         update_step(db, wf, 1, STEP_NAMES[1], "completed",
                     summary=change_plan.get("change_plan", ""))
 
@@ -93,19 +98,19 @@ async def run_modify_asset(
         for asset_ctx in assets:
             asset_type = asset_ctx["asset_type"]
             if asset_type == "npc":
-                raw = run_npc_agent(user_intent, [], 1, knowledge_context, ws_ctx, model=model)
+                raw = run_npc_agent(style_prefix + user_intent, [], 1, knowledge_context, ws_ctx, model=model)
                 raw_content = raw[0] if raw else {}
             elif asset_type == "monster":
-                raw = run_monster_agent(user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx, model=model)
+                raw = run_monster_agent(style_prefix + user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx, model=model)
                 raw_content = raw[0] if raw else {}
             elif asset_type in ("location", "lore_note"):
-                raw = run_lore_agent(user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx,
+                raw = run_lore_agent(style_prefix + user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx,
                                      location_count=1, lore_note_count=1, model=model)
                 locs = raw.get("locations", [])
                 lnotes = raw.get("lore_notes", [])
                 raw_content = locs[0] if locs and asset_type == "location" else (lnotes[0] if lnotes else {})
             else:
-                raw = run_plot_agent(user_intent, "outline", knowledge_context, ws_ctx, model=model)
+                raw = run_plot_agent(style_prefix + user_intent, "outline", knowledge_context, ws_ctx, model=model)
                 raw_content = raw
             raw_assets_for_doc.append({
                 "asset_id": asset_ctx["asset_id"],

@@ -94,6 +94,11 @@ async def resume_create_module(
 
     ws_ctx = get_workspace_context(db, workspace_id)
 
+    # Build style prefix from workspace's rule set PromptProfile
+    style_prefix = ""
+    if ws_ctx.get("style_prompt"):
+        style_prefix = f"[创作风格约束]\n{ws_ctx['style_prompt']}\n\n"
+
     # Get the change_plan from step 2
     step2 = next((s for s in step_results if s["step"] == 2), None)
     change_plan: dict = {}
@@ -118,19 +123,19 @@ async def resume_create_module(
                 )
             except Exception:
                 knowledge_context = []
-        rules_result = run_rules_agent(premise, knowledge_context, model=model)
+        rules_result = run_rules_agent(style_prefix + premise, knowledge_context, model=model)
         update_step(db, wf, 3, STEP_NAMES[3], "completed",
                     summary=rules_result.get("summary", "规则检索完成"))
 
         # ── Step 4: Plot Agent – outline ────────────────────────────────────
         update_step(db, wf, 4, STEP_NAMES[4], "running")
-        outline = run_plot_agent(premise, "outline", knowledge_context, ws_ctx, model=model)
+        outline = run_plot_agent(style_prefix + premise, "outline", knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 4, STEP_NAMES[4], "completed",
                     summary=outline.get("title", "大纲生成完成"))
 
         # ── Step 5: Plot Agent – stages ─────────────────────────────────────
         update_step(db, wf, 5, STEP_NAMES[5], "running")
-        stages_result = run_plot_agent(premise, "stages", knowledge_context, ws_ctx, model=model)
+        stages_result = run_plot_agent(style_prefix + premise, "stages", knowledge_context, ws_ctx, model=model)
         stages = stages_result.get("stages", [])
         update_step(db, wf, 5, STEP_NAMES[5], "completed",
                     summary=f"生成 {len(stages)} 个场景")
@@ -138,7 +143,7 @@ async def resume_create_module(
         # ── Step 6: NPC Agent ───────────────────────────────────────────────
         update_step(db, wf, 6, STEP_NAMES[6], "running")
         stage_summaries = [s.get("description", s.get("name", "")) for s in stages]
-        npcs = run_npc_agent(premise, stage_summaries, 3, knowledge_context, ws_ctx, model=model)
+        npcs = run_npc_agent(style_prefix + premise, stage_summaries, 3, knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 6, STEP_NAMES[6], "completed",
                     summary=f"生成 {len(npcs)} 个 NPC")
 
@@ -146,7 +151,7 @@ async def resume_create_module(
         update_step(db, wf, 7, STEP_NAMES[7], "running")
         # Extract monster hints from change_plan if available; else let agent decide
         monster_hints = change_plan.get("monster_hints", [])
-        monsters = run_monster_agent(premise, monster_hints, knowledge_context, ws_ctx, model=model)
+        monsters = run_monster_agent(style_prefix + premise, monster_hints, knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 7, STEP_NAMES[7], "completed",
                     summary=f"生成 {len(monsters)} 个怪物/实体")
 
@@ -154,7 +159,7 @@ async def resume_create_module(
         update_step(db, wf, 8, STEP_NAMES[8], "running")
         location_hints = [s.get("name", "") for s in stages[:3]]
         lore_result = run_lore_agent(
-            premise, location_hints, knowledge_context, ws_ctx,
+            style_prefix + premise, location_hints, knowledge_context, ws_ctx,
             location_count=max(2, len(stages[:3])),
             lore_note_count=2,
             model=model,
@@ -166,7 +171,7 @@ async def resume_create_module(
 
         # ── Step 9: Clue chain ──────────────────────────────────────────────
         update_step(db, wf, 9, STEP_NAMES[9], "running")
-        clues_result = run_plot_agent(premise, "clues", knowledge_context, ws_ctx, model=model)
+        clues_result = run_plot_agent(style_prefix + premise, "clues", knowledge_context, ws_ctx, model=model)
         clues = clues_result.get("clues", [])
         update_step(db, wf, 9, STEP_NAMES[9], "completed",
                     summary=f"生成 {len(clues)} 条线索")

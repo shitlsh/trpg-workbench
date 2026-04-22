@@ -324,63 +324,66 @@ prompt = f"{style_prefix}{actual_task_prompt}"
 
 ## Todo
 
+> **M9a 已完成**（完成于 2026-04-22）
+
 ### A1：规则集管理页面（前端）
 
 #### A1.1：路由与骨架
-- [ ] 新建 `apps/desktop/src/pages/RuleSetPage.tsx` 和 `RuleSetPage.module.css`
-- [ ] 在 `App.tsx` 中注册 `/settings/rule-sets` 路由
-- [ ] 调整顶部导航：将「Prompt 配置」替换为「规则集」，保留「知识库」
+- [x] 新建 `apps/desktop/src/pages/RuleSetPage.tsx` 和 `RuleSetPage.module.css`
+- [x] 在 `App.tsx` 中注册 `/settings/rule-sets` 路由
+- [x] 调整顶部导航：将「Prompt 配置」替换为「规则集」，保留「知识库」
 
 #### A1.2：规则集列表与详情
-- [ ] 左侧列表：展示所有规则集，内置项加徽章
-- [ ] 右侧详情：选中规则集后显示关联提示词（可更换）和关联知识库列表（可添加/移除）
-- [ ] 创建规则集弹窗（名称、描述、genre）
-- [ ] 编辑规则集弹窗（内置项禁用名称/描述编辑）
-- [ ] 删除确认弹窗（有依赖工作空间时展示列表并禁止删除）
+- [x] 左侧列表：展示所有规则集，内置项加徽章
+- [x] 右侧详情：选中规则集后显示关联提示词（可更换）和关联知识库列表（可添加/移除）
+- [x] 创建规则集弹窗（名称、描述、genre）
+- [x] 编辑规则集弹窗（内置项禁用名称/描述编辑）
+- [x] 删除确认弹窗（有依赖工作空间时展示提示并禁止删除）
 
 #### A1.3：规则集知识库绑定 UI
-- [ ] 「添加知识库」弹窗：从全局知识库列表多选
-- [ ] 「移除知识库」操作
-- [ ] 调用 `POST/DELETE /rule-sets/{id}/library-bindings`
+- [x] 「添加知识库」弹窗：从全局知识库列表选择
+- [x] 「移除知识库」操作
+- [x] 调用 `POST/DELETE /rule-sets/{id}/library-bindings`
 
 #### A1.4：规则集提示词关联 UI
-- [ ] 「指定/更换提示词」弹窗：从 PromptProfile 列表选择
-- [ ] 「查看/编辑」跳转到 `/settings/prompts`
-- [ ] 调用 `PATCH /rule-sets/{id}`（或通过 PromptProfile 的 `rule_set_id` 字段关联）
+- [x] 「指定/更换提示词」弹窗：从 PromptProfile 列表选择
+- [x] 「查看/编辑」跳转到 `/settings/prompts`
+- [x] 通过 `PATCH /prompt-profiles/{id}` 修改 `rule_set_id` 字段实现关联
 
 #### A1.5：工作空间创建弹窗增强
-- [ ] 选中规则集后，在弹窗内展示该规则集的知识库数量和提示词名称摘要
+- [ ] 选中规则集后，在弹窗内展示该规则集的知识库数量和提示词名称摘要（推迟至后续迭代）
 
 ### A2：后端 API 补全
 
-- [ ] `PATCH /rule-sets/{id}` — 编辑名称/描述（内置项返回 403）
-- [ ] `DELETE /rule-sets/{id}` — 检查工作空间依赖（有依赖返回 409 并附列表）
-- [ ] 新建 `RuleSetLibraryBindingORM` 和 Alembic migration
-- [ ] `GET /rule-sets/{id}/library-bindings`
-- [ ] `POST /rule-sets/{id}/library-bindings`（重复绑定返回 409）
-- [ ] `DELETE /rule-sets/{id}/library-bindings/{binding_id}`
-- [ ] `shared-schema` 更新：补充新 API 的 TypeScript 类型
+- [x] `PATCH /rule-sets/{id}` — 编辑名称/描述（内置项返回 403）
+- [x] `DELETE /rule-sets/{id}` — 检查工作空间依赖（有依赖返回 409 并附列表）
+- [x] 新建 `RuleSetLibraryBindingORM`（`create_all` 自动建表，无需 Alembic migration）
+- [x] `GET /rule-sets/{id}/library-bindings`
+- [x] `POST /rule-sets/{id}/library-bindings`（重复绑定返回 409）
+- [x] `DELETE /rule-sets/{id}/library-bindings/{binding_id}`
+- [x] `shared-schema` 更新：`UpdateRuleSetRequest`、`RuleSetLibraryBinding`、`CreateRuleSetLibraryBindingRequest`
+- [x] `PromptProfileUpdate` schema 补充 `rule_set_id` 字段；`UpdatePromptProfileRequest` TS 类型同步更新
 
 ### A3：PromptProfile 接入 Agent 运行时
 
-- [ ] 修改 `get_workspace_context()`：查询规则集 PromptProfile 并加入 `style_prompt`
-- [ ] 修改 `get_workspace_context()`：合并知识库 ID 列表（规则集绑定 + 工作空间额外绑定）
-- [ ] 修改 `create_module.py`：专项 Agent 调用时注入 `style_prompt` 前缀
-- [ ] 修改 `modify_asset.py`：同上
+- [x] 修改 `get_workspace_context()`：查询规则集 PromptProfile 并加入 `style_prompt`
+- [x] 修改 `get_workspace_context()`：合并知识库 ID 列表（规则集绑定 + 工作空间额外绑定，去重保序）
+- [x] 修改 `create_module.py`：专项 Agent 调用时注入 `style_prompt` 前缀（`[创作风格约束]`）
+- [x] 修改 `modify_asset.py`：同上
 
 ### A4：工作空间设置页知识库区域
 
-- [ ] `WorkspaceSettingsPage.tsx` 新增「额外知识库」区域
-- [ ] 显示从规则集继承的知识库（只读）
-- [ ] 工作空间额外绑定的知识库管理（添加/移除）
-- [ ] 调用 `WorkspaceLibraryBinding` 相关 API
+- [x] `WorkspaceSettingsPage.tsx` 新增 `ExtraLibrariesSection` 组件
+- [x] 显示从规则集继承的知识库（只读展示）
+- [x] 工作空间额外绑定的知识库管理（添加/移除）
+- [x] 调用 `WorkspaceLibraryBinding` 相关 API
 
 ### A5：文档与帮助更新
 
-- [ ] 更新 `apps/desktop/src/help/getting-started.md`：反映新导航结构
-- [ ] 更新 `apps/desktop/src/help/knowledge-import.md`：修正知识库绑定描述，说明通过规则集关联
-- [ ] 新增帮助文档 `rule-set-management.md`：规则集的概念和使用流程
-- [ ] 更新 HelpPage 侧边导航，加入新文档入口
+- [x] 更新 `apps/desktop/src/help/getting-started.md`：导航表反映新结构（规则集替换 Prompt 配置）
+- [x] 更新 `apps/desktop/src/help/knowledge-import.md`：知识库绑定说明改为规则集关联 + 额外绑定两种方式
+- [x] 新增帮助文档 `rule-set-management.md`：规则集概念与完整操作流程
+- [x] 更新 `HelpPage.tsx` 侧边导航，加入「规则集管理」文档入口
 
 ---
 
