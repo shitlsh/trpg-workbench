@@ -130,7 +130,7 @@ interface ChunkListItem {
   }
 }
 
-// 检索测试结果（A1/A2 共用，reranked 字段标注结果来源）
+// 检索测试结果（A1/A2 共用）
 interface SearchTestResult {
   chunk_id: string
   content: string
@@ -138,8 +138,9 @@ interface SearchTestResult {
   page_from: number
   page_to: number
   section_title: string | null
-  relevance_score: number
-  reranked: boolean   // true = 经过 rerank 排序；false = 原始向量相似度排序
+  vector_score: number        // 向量相似度分数 [0,1]，始终返回
+  rerank_score: number | null // reranker 分数，仅启用 rerank 时返回，否则为 null
+  reranked: boolean           // true = 经过 rerank 排序；false = 原始向量排序
 }
 ```
 
@@ -235,23 +236,23 @@ provider_type       string         # "jina" | "cohere" | "openai_compatible"
 model               string         # 默认：jina-reranker-v2-base-multilingual
 api_key             string encrypted
 base_url            string | null  # openai_compatible 时需要
-top_n               int default 20 # retrieve 候选数（> top_k）
-top_k               int default 5  # rerank 后保留数
 created_at          datetime
 updated_at          datetime
 ```
 
 #### Workspace RAG 配置扩展
 
-在 `WorkspaceORM`（或独立的 `WorkspaceRAGConfigORM`）新增：
+在 `WorkspaceORM` 新增（top_n/top_k/enabled/task_types 属于 per-workspace 调参，不属于 provider 配置）：
 
 ```
 rerank_profile_id          string | null FK → rerank_profiles.id
 rerank_enabled             bool default false
-rerank_apply_to_task_types JSON   # 列表，默认：["rules_review"]
-                                  # 可选项：rules_review / plot_creation /
-                                  #         npc_creation / monster_creation /
-                                  #         lore_creation / consistency_check
+rerank_top_n               int default 20   # retrieve 候选数（> top_k）
+rerank_top_k               int default 5    # rerank 后保留数
+rerank_apply_to_task_types JSON             # 默认：["rules_review"]
+                                            # 可选：rules_review / plot_creation /
+                                            #       npc_creation / monster_creation /
+                                            #       lore_creation / consistency_check
 ```
 
 #### 默认推荐模型
@@ -267,18 +268,16 @@ rerank_apply_to_task_types JSON   # 列表，默认：["rules_review"]
 ```typescript
 type RerankProviderType = "jina" | "cohere" | "openai_compatible"
 
+// RerankProfile 只保存 provider 连接信息，不含调参字段
 interface RerankProfile {
   id: string
   name: string
   provider_type: RerankProviderType
   model: string
   base_url: string | null
-  top_n: number
-  top_k: number
+  has_api_key: boolean   // api_key 不返回明文
   created_at: string
   updated_at: string
-  // api_key 不返回明文，仅返回 has_api_key: boolean
-  has_api_key: boolean
 }
 
 interface CreateRerankProfileRequest {
@@ -287,13 +286,14 @@ interface CreateRerankProfileRequest {
   model: string
   api_key: string
   base_url?: string
-  top_n?: number
-  top_k?: number
 }
 
+// WorkspaceRerankConfig 含调参字段（top_n/top_k/enabled/task_types）
 interface WorkspaceRerankConfig {
   rerank_profile_id: string | null
   rerank_enabled: boolean
+  rerank_top_n: number
+  rerank_top_k: number
   rerank_apply_to_task_types: string[]
 }
 ```
@@ -307,17 +307,27 @@ POST   /settings/rerank-profiles
 GET    /settings/rerank-profiles/{id}
 PATCH  /settings/rerank-profiles/{id}
 DELETE /settings/rerank-profiles/{id}
-POST   /settings/rerank-profiles/{id}/test    → 测试 API key 是否有效
+POST   /settings/rerank-profiles/{id}/test
+       # 最小测试约定：
+       # - 使用配置的 api_key 向 provider 发送一个最短 rerank 请求
+       #   （query="test", documents=["hello", "world"]）
+       # - 验证 API key 有效、网络可达、返回排序结果
+       # - 不验证 model 是否匹配业务场景，只验证连接与鉴权
 
 # Workspace rerank 路由配置
 GET    /workspaces/{id}/rerank-config
 PATCH  /workspaces/{id}/rerank-config
 
-# 检索测试支持 rerank 对比
+# 检索测试（search/test）支持 rerank，top_n/top_k 作为本次请求覆盖值
 POST   /knowledge/libraries/{library_id}/search/test
-       body: { "query": "...", "top_k": 10, "use_rerank": true }
-       → 若 use_rerank=true 且 workspace 已配置有效 RerankProfile，执行 rerank
-       → 返回结果中 reranked=true/false 标注
+       body: {
+         "query": "...",
+         "top_k": 5,          # 可选，覆盖 workspace 默认 rerank_top_k
+         "top_n": 20,         # 可选，覆盖 workspace 默认 rerank_top_n
+         "use_rerank": false   # 明确指定本次是否启用 rerank（优先级高于 workspace rerank_enabled）
+       }
+       # rerank 只作用于已按 library/type/priority 过滤后的候选集，不做全库 rerank
+       # 返回结果中 reranked=true/false 标注，含 vector_score 和 rerank_score（null 时未 rerank）
 ```
 
 ### 后端 Rerank Adapter
@@ -329,13 +339,16 @@ POST   /knowledge/libraries/{library_id}/search/test
 # - CohereRerankAdapter：调用 Cohere Rerank API
 # - OpenAICompatibleRerankAdapter：调用 base_url/rerank
 
-# 检索链路（示意）
-def search_with_optional_rerank(query, library_ids, rerank_config):
-    candidates = vector_search(query, top_n=rerank_config.top_n)
-    if rerank_config.enabled and rerank_profile is not None:
-        results = rerank_adapter.rerank(query, candidates)[:rerank_config.top_k]
+# 检索链路（示意）——rerank 只作用于已过滤候选集
+def search_with_optional_rerank(query, workspace_id, library_filter, rerank_config, override_top_n=None, override_top_k=None):
+    top_n = override_top_n or rerank_config.rerank_top_n
+    top_k = override_top_k or rerank_config.rerank_top_k
+    # 先按 library/type/priority 过滤，再 retrieve
+    candidates = vector_search(query, library_filter=library_filter, top_n=top_n)
+    if rerank_config.rerank_enabled and rerank_profile is not None:
+        results = rerank_adapter.rerank(query, candidates)[:top_k]
         return results, reranked=True
-    return candidates[:rerank_config.top_k], reranked=False
+    return candidates[:top_k], reranked=False
 ```
 
 ### 前端（A2）
@@ -494,11 +507,12 @@ POST /knowledge/documents/{id}/images/{img_id}/tag
 
 ### A2 完成条件
 
-6. RerankProfile CRUD 可用（含 /test 验证）
-7. Workspace 可绑定 RerankProfile 并配置 apply_to_task_types
-8. 检索测试支持 use_rerank 对比，双栏视图正确展示排序差异
+6. RerankProfile CRUD 可用（含 /test 验证——发送最小 rerank 请求确认 API key 有效）
+7. Workspace 可绑定 RerankProfile 并配置 top_n / top_k / apply_to_task_types
+8. 检索测试支持 use_rerank + top_n/top_k 覆盖，双栏视图展示 vector_score 与 rerank_score 差异
 9. 未配置 rerank 时，现有检索链路不受影响
-10. B 类能力的数据结构设计已文档化（本 plan），代码中无 B 类实现代码
+10. **rules_review workflow 已接入可选 rerank**：task_type = rules_review 时，若 workspace rerank_enabled=true 且绑定有效 RerankProfile，检索结果经过 rerank 排序
+11. B 类能力的数据结构设计已文档化（本 plan），代码中无 B 类实现代码
 
 ---
 
