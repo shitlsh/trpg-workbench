@@ -2,7 +2,7 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M7 已完成**
+> **当前状态：M9 已完成**
 
 ---
 
@@ -87,9 +87,11 @@ PIP_USER=false TRPG_DATA_DIR=~/trpg-workbench-data .venv/bin/python3 server.py
 **方式二：完整桌面应用（Tauri + React + Python）**
 
 ```bash
-# 先确保 Rust 工具链已 source
-source "$HOME/.cargo/env"
+# 推荐方式：使用项目内置启动脚本（自动管理后端 + 前端 + 退出清理）
+bash scripts/dev.sh
 
+# 或手动启动（先确保 Rust 工具链已 source）
+source "$HOME/.cargo/env"
 cd apps/desktop
 cargo tauri dev
 # Tauri 会自动拉起前端 Vite dev server 和 Python 后端
@@ -134,6 +136,8 @@ cargo tauri dev
 | M5 产品打磨 | 图像生成、导出、Prompt 配置、规则审查 | ✅ 完成 |
 | M6 模型配置管理 | LLM/Embedding Profile、Workspace 路由绑定、usage 埋点 | ✅ 完成 |
 | M7 模型发现与用量观测 | 静态+动态 model catalog、usage 聚合统计、成本估算、context window | ✅ 完成 |
+| M8 知识库预览与 Rerank | 知识库文档预览、分块浏览、Rerank 模型接入 | ✅ 完成 |
+| M9 Smoke Test 与帮助文档 | 前端 smoke 脚本、截图、应用内帮助页、Tauri Help 菜单 | ✅ 完成 |
 
 详细计划见 `.agents/plans/`，架构与约束见 `.agents/skills/`。
 

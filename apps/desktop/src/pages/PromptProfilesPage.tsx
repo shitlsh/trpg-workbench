@@ -67,7 +67,7 @@ export default function PromptProfilesPage() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 style={inputStyle}
-                placeholder="例：我的 COC 风格"
+                placeholder="例：我的恐怖调查风格"
               />
             </div>
             <div style={{ marginBottom: 8 }}>
