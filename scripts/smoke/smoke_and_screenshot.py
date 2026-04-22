@@ -158,74 +158,75 @@ def smoke_and_screenshot(
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(viewport=VIEWPORT)
-        page = context.new_page()
+        try:
+            context = browser.new_context(viewport=VIEWPORT)
+            page = context.new_page()
 
-        for slug, url, assertions, priority in pages:
-            result = {"slug": slug, "status": "pass", "screenshot": None, "notes": "", "errors": []}
-            screenshot_rel = f"screenshots/{slug}.png"
-            screenshot_abs = out_dir / screenshot_rel
+            for slug, url, assertions, priority in pages:
+                result = {"slug": slug, "status": "pass", "screenshot": None, "notes": "", "errors": []}
+                screenshot_rel = f"screenshots/{slug}.png"
+                screenshot_abs = out_dir / screenshot_rel
 
-            try:
-                page.goto(url, timeout=NAV_TIMEOUT)
-                page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
-            except PWTimeout:
-                result["status"] = "fail"
-                result["errors"].append("Navigation or networkidle timed out")
-                results.append(result)
-                continue
-            except Exception as exc:
-                result["status"] = "fail"
-                result["errors"].append(f"Navigation error: {exc}")
-                results.append(result)
-                continue
-
-            # Screenshot (always, even if assertions fail)
-            try:
-                page.screenshot(path=str(screenshot_abs), full_page=True)
-                result["screenshot"] = screenshot_rel
-            except Exception as exc:
-                result["errors"].append(f"Screenshot failed: {exc}")
-
-            # Assertions (non-fatal)
-            for locator_text, description in assertions:
                 try:
-                    count = page.locator(f"text={locator_text}").count()
-                    if count == 0:
-                        result["status"] = "fail"
-                        result["errors"].append(f"Assertion failed: '{locator_text}' ({description}) not found")
+                    page.goto(url, timeout=NAV_TIMEOUT)
+                    page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
+                except PWTimeout:
+                    result["status"] = "fail"
+                    result["errors"].append("Navigation or networkidle timed out")
+                    results.append(result)
+                    continue
                 except Exception as exc:
                     result["status"] = "fail"
-                    result["errors"].append(f"Assertion error for '{locator_text}': {exc}")
+                    result["errors"].append(f"Navigation error: {exc}")
+                    results.append(result)
+                    continue
 
-            results.append(result)
+                # Screenshot (always, even if assertions fail)
+                try:
+                    page.screenshot(path=str(screenshot_abs), full_page=True)
+                    result["screenshot"] = screenshot_rel
+                except Exception as exc:
+                    result["errors"].append(f"Screenshot failed: {exc}")
 
-        # settings-models: also verify tab switching renders content
-        settings_result = next((r for r in results if r["slug"] == "settings-models"), None)
-        if settings_result and settings_result["status"] != "fail":
-            try:
-                page.goto(frontend_url + "/settings/models", timeout=NAV_TIMEOUT)
-                page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
-                # Click through available model tabs and confirm no crash (no error boundary text)
-                for tab_text in ["Embedding", "Rerank", "LLM"]:
-                    tabs = page.locator(f"text={tab_text}").all()
-                    if tabs:
-                        try:
-                            tabs[0].click()
-                            page.wait_for_timeout(600)
-                            # Take a screenshot per-tab for reference
-                            tab_slug = f"settings-{tab_text.lower()}"
-                            page.screenshot(
-                                path=str(out_dir / "screenshots" / f"{tab_slug}.png"),
-                                full_page=True,
-                            )
-                        except Exception as exc:
-                            settings_result["errors"].append(f"Tab '{tab_text}' click/render error: {exc}")
-                            settings_result["status"] = "fail"
-            except Exception as exc:
-                settings_result["errors"].append(f"Tab-switching check error: {exc}")
+                # Assertions (non-fatal)
+                for locator_text, description in assertions:
+                    try:
+                        count = page.locator(f"text={locator_text}").count()
+                        if count == 0:
+                            result["status"] = "fail"
+                            result["errors"].append(f"Assertion failed: '{locator_text}' ({description}) not found")
+                    except Exception as exc:
+                        result["status"] = "fail"
+                        result["errors"].append(f"Assertion error for '{locator_text}': {exc}")
 
-        browser.close()
+                results.append(result)
+
+            # settings-models: also verify tab switching renders content
+            settings_result = next((r for r in results if r["slug"] == "settings-models"), None)
+            if settings_result and settings_result["status"] != "fail":
+                try:
+                    page.goto(frontend_url + "/settings/models", timeout=NAV_TIMEOUT)
+                    page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
+                    # Click through available model tabs and confirm no crash
+                    for tab_text in ["Embedding", "Rerank", "LLM"]:
+                        tabs = page.locator(f"text={tab_text}").all()
+                        if tabs:
+                            try:
+                                tabs[0].click()
+                                page.wait_for_timeout(600)
+                                tab_slug = f"settings-{tab_text.lower()}"
+                                page.screenshot(
+                                    path=str(out_dir / "screenshots" / f"{tab_slug}.png"),
+                                    full_page=True,
+                                )
+                            except Exception as exc:
+                                settings_result["errors"].append(f"Tab '{tab_text}' click/render error: {exc}")
+                                settings_result["status"] = "fail"
+                except Exception as exc:
+                    settings_result["errors"].append(f"Tab-switching check error: {exc}")
+
+        finally:
+            browser.close()
 
     return results
 
