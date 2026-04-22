@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiFetch, BACKEND_URL } from "../lib/api";
-import type { Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry, EmbeddingCatalogEntry } from "@trpg-workbench/shared-schema";
+import type { Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry, EmbeddingCatalogEntry, RerankProfile } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
 
 function CatalogHint({ profile, catalog }: { profile: LLMProfile | EmbeddingProfile | undefined; catalog: (ModelCatalogEntry | EmbeddingCatalogEntry)[] }) {
@@ -54,6 +54,11 @@ export default function WorkspaceSettingsPage() {
     queryFn: () => apiFetch<EmbeddingProfile[]>("/settings/embedding-profiles"),
   });
 
+  const { data: rerankProfiles = [] } = useQuery({
+    queryKey: ["rerank-profiles"],
+    queryFn: () => apiFetch<RerankProfile[]>("/settings/rerank-profiles"),
+  });
+
   const { data: llmCatalog = [] } = useQuery({
     queryKey: ["model-catalog"],
     queryFn: () => apiFetch<ModelCatalogEntry[]>("/settings/model-catalog"),
@@ -70,6 +75,10 @@ export default function WorkspaceSettingsPage() {
   const [defaultLlmId, setDefaultLlmId] = useState("");
   const [rulesLlmId, setRulesLlmId] = useState("");
   const [embeddingId, setEmbeddingId] = useState("");
+  const [rerankProfileId, setRerankProfileId] = useState<string>("");
+  const [rerankEnabled, setRerankEnabled] = useState(false);
+  const [rerankTopN, setRerankTopN] = useState(5);
+  const [rerankTopK, setRerankTopK] = useState(20);
 
   // Populate form fields once workspace data is available
   useEffect(() => {
@@ -80,6 +89,10 @@ export default function WorkspaceSettingsPage() {
       setDefaultLlmId(workspace.default_llm_profile_id ?? "");
       setRulesLlmId(workspace.rules_llm_profile_id ?? "");
       setEmbeddingId(workspace.embedding_profile_id ?? "");
+      setRerankProfileId(workspace.rerank_profile_id ?? "");
+      setRerankEnabled(workspace.rerank_enabled ?? false);
+      setRerankTopN(workspace.rerank_top_n ?? 5);
+      setRerankTopK(workspace.rerank_top_k ?? 20);
     }
   }, [workspace?.id]); // only re-init when workspace ID changes, not on every field update
 
@@ -101,6 +114,10 @@ export default function WorkspaceSettingsPage() {
       default_llm_profile_id: defaultLlmId || null,
       rules_llm_profile_id: rulesLlmId || null,
       embedding_profile_id: embeddingId || null,
+      rerank_profile_id: rerankProfileId || null,
+      rerank_enabled: rerankEnabled,
+      rerank_top_n: rerankTopN,
+      rerank_top_k: rerankTopK,
     });
   }
 
@@ -178,6 +195,36 @@ export default function WorkspaceSettingsPage() {
               {embeddingProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
+
+          <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Rerank 重排序（可选）</div>
+          <label className={styles.label}>
+            Rerank 配置（留空则不使用 Rerank）
+            <select className={styles.select} value={rerankProfileId} onChange={(e) => setRerankProfileId(e.target.value)}>
+              <option value="">不使用 Rerank</option>
+              {rerankProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model})</option>)}
+            </select>
+          </label>
+          {rerankProfileId && (
+            <>
+              <label className={styles.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <input type="checkbox" checked={rerankEnabled} onChange={(e) => setRerankEnabled(e.target.checked)} />
+                启用 Rerank（开启后知识库检索将自动 Rerank）
+              </label>
+              <div style={{ display: "flex", gap: 16 }}>
+                <label className={styles.label} style={{ flex: 1 }}>
+                  top_k（初始候选数）
+                  <input className={styles.input} type="number" min={1} max={100} value={rerankTopK} onChange={(e) => setRerankTopK(Math.max(1, parseInt(e.target.value) || 20))} />
+                </label>
+                <label className={styles.label} style={{ flex: 1 }}>
+                  top_n（Rerank 后保留数）
+                  <input className={styles.input} type="number" min={1} max={50} value={rerankTopN} onChange={(e) => setRerankTopN(Math.max(1, parseInt(e.target.value) || 5))} />
+                </label>
+              </div>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -8 }}>
+                先检索 top_k 个候选，Rerank 后保留 top_n 个。top_n 须小于等于 top_k。
+              </p>
+            </>
+          )}
           <div className={styles.actions}>
             <button type="submit" className={styles.btnPrimary} disabled={!name.trim() || !ruleSetId || updateMutation.isPending}>
               {updateMutation.isPending ? "保存中..." : "保存"}

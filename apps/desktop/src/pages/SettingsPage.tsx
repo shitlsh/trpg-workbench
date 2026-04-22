@@ -8,6 +8,8 @@ import type {
   LLMTestResult, EmbeddingTestResult,
   ModelCatalogEntry, EmbeddingCatalogEntry, UpdateModelCatalogEntryRequest,
   CatalogRefreshRequest, CatalogRefreshResult,
+  RerankProfile, CreateRerankProfileRequest, UpdateRerankProfileRequest,
+  RerankProviderType, RerankTestResult,
 } from "@trpg-workbench/shared-schema";
 import styles from "./ModelProfilesPage.module.css";
 
@@ -634,9 +636,213 @@ function CatalogSection() {
   );
 }
 
+// ─── Rerank Section ───────────────────────────────────────────────────────────
+
+const RERANK_PROVIDERS: { value: RerankProviderType; label: string }[] = [
+  { value: "jina", label: "Jina AI" },
+  { value: "cohere", label: "Cohere" },
+  { value: "openai_compatible", label: "OpenAI Compatible" },
+];
+
+const RERANK_DEFAULT_MODELS: Record<RerankProviderType, string> = {
+  jina: "jina-reranker-v2-base-multilingual",
+  cohere: "rerank-multilingual-v3.0",
+  openai_compatible: "",
+};
+
+const EMPTY_RERANK: CreateRerankProfileRequest = {
+  name: "", provider_type: "jina", model: "jina-reranker-v2-base-multilingual",
+  api_key: "", base_url: "",
+};
+
+function RerankSection() {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [editTarget, setEditTarget] = useState<RerankProfile | null>(null);
+  const [form, setForm] = useState<CreateRerankProfileRequest>(EMPTY_RERANK);
+  const [deleteTarget, setDeleteTarget] = useState<RerankProfile | null>(null);
+  const [testResult, setTestResult] = useState<RerankTestResult | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  const { data: profiles = [], isLoading } = useQuery({
+    queryKey: ["rerank-profiles"],
+    queryFn: () => apiFetch<RerankProfile[]>("/settings/rerank-profiles"),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (body: CreateRerankProfileRequest) =>
+      apiFetch<RerankProfile>("/settings/rerank-profiles", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["rerank-profiles"] }); closeForm(); },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateRerankProfileRequest }) =>
+      apiFetch<RerankProfile>(`/settings/rerank-profiles/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["rerank-profiles"] }); closeForm(); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/settings/rerank-profiles/${id}`, { method: "DELETE" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["rerank-profiles"] }); setDeleteTarget(null); },
+  });
+
+  function openNew() {
+    setEditTarget(null);
+    setForm({ ...EMPTY_RERANK });
+    setTestResult(null);
+    setShowForm(true);
+  }
+
+  function openEdit(p: RerankProfile) {
+    setEditTarget(p);
+    setForm({ name: p.name, provider_type: p.provider_type, model: p.model, api_key: "", base_url: p.base_url ?? "" });
+    setTestResult(null);
+    setShowForm(true);
+  }
+
+  function closeForm() { setShowForm(false); setEditTarget(null); setTestResult(null); }
+
+  function handleProviderChange(provider: RerankProviderType) {
+    setForm((f) => ({ ...f, provider_type: provider, model: RERANK_DEFAULT_MODELS[provider] }));
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const body = { ...form };
+    if (!body.api_key) delete (body as Record<string, unknown>).api_key;
+    if (!body.base_url) delete (body as Record<string, unknown>).base_url;
+    if (editTarget) {
+      const patch: UpdateRerankProfileRequest = { ...body };
+      if (!body.api_key) delete patch.api_key;
+      updateMutation.mutate({ id: editTarget.id, body: patch });
+    } else {
+      createMutation.mutate(body);
+    }
+  }
+
+  async function handleTest() {
+    if (!editTarget) return;
+    setTesting(true); setTestResult(null);
+    try {
+      const result = await apiFetch<RerankTestResult>(`/settings/rerank-profiles/${editTarget.id}/test`, { method: "POST" });
+      setTestResult(result);
+    } catch (e) {
+      setTestResult({ success: false, error: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+  const showBaseUrl = form.provider_type === "openai_compatible";
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
+          配置 Rerank 重排序供应商（默认推荐：Jina jina-reranker-v2-base-multilingual）
+        </span>
+        <button className={styles.btnPrimary} onClick={openNew}>新增 Rerank 配置</button>
+      </div>
+      {isLoading && <p className={styles.muted}>加载中...</p>}
+      {!isLoading && profiles.length === 0 && (
+        <div className={styles.empty}>
+          <p>还没有 Rerank 配置</p>
+          <button className={styles.btnPrimary} onClick={openNew}>新增第一个</button>
+        </div>
+      )}
+      <div className={styles.list}>
+        {profiles.map((p) => (
+          <div key={p.id} className={styles.item}>
+            <div className={styles.itemInfo}>
+              <span className={styles.itemName}>{p.name}</span>
+              <span className={styles.tag}>{RERANK_PROVIDERS.find((r) => r.value === p.provider_type)?.label ?? p.provider_type}</span>
+              <span className={styles.itemModel}>{p.model}</span>
+              {p.has_api_key && <span style={{ fontSize: 11, color: "#52c97e" }}>● Key 已配置</span>}
+            </div>
+            <div className={styles.itemActions}>
+              <button className={styles.btnSecondary} onClick={() => openEdit(p)}>编辑</button>
+              <button className={styles.btnDanger} onClick={() => setDeleteTarget(p)}>删除</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showForm && (
+        <div className={styles.overlay} onClick={closeForm}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>{editTarget ? "编辑 Rerank 配置" : "新增 Rerank 配置"}</h2>
+            <form onSubmit={handleSubmit} className={styles.form}>
+              <label className={styles.label}>
+                配置名称 *
+                <input className={styles.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：Jina Reranker" autoFocus />
+              </label>
+              <label className={styles.label}>
+                供应商 *
+                <select className={styles.select} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as RerankProviderType)}>
+                  {RERANK_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
+              </label>
+              <label className={styles.label}>
+                模型名称 *
+                <input className={styles.input} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="例：jina-reranker-v2-base-multilingual" />
+              </label>
+              {showBaseUrl && (
+                <label className={styles.label}>
+                  Base URL *
+                  <input className={styles.input} value={form.base_url ?? ""} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://..." />
+                </label>
+              )}
+              <label className={styles.label}>
+                API Key {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
+                <input className={styles.input} type="password" value={form.api_key ?? ""} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="jina_..." />
+              </label>
+              <div className={styles.formActions}>
+                <button type="button" className={styles.btnSecondary} onClick={closeForm}>取消</button>
+                {editTarget && (
+                  <button type="button" className={styles.btnSecondary} onClick={handleTest} disabled={testing}>
+                    {testing ? "测试中..." : "测试连接"}
+                  </button>
+                )}
+                <button type="submit" className={styles.btnPrimary} disabled={isPending || !form.name || !form.model}>
+                  {isPending ? "保存中..." : "保存"}
+                </button>
+              </div>
+              {testResult && (
+                <div style={{ fontSize: 12, padding: "8px 10px", borderRadius: 4, background: testResult.success ? "rgba(82,201,126,0.1)" : "rgba(224,82,82,0.1)", color: testResult.success ? "#52c97e" : "#e05252" }}>
+                  {testResult.success ? `✓ 连接成功 (${testResult.latency_ms}ms)` : `✗ ${testResult.error}`}
+                </div>
+              )}
+              {(createMutation.isError || updateMutation.isError) && (
+                <p className={styles.error}>{((createMutation.error || updateMutation.error) as Error).message}</p>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className={styles.overlay} onClick={() => setDeleteTarget(null)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>确认删除</h2>
+            <p className={styles.confirmText}>确定要删除「<strong>{deleteTarget.name}</strong>」？</p>
+            <div className={styles.formActions}>
+              <button className={styles.btnSecondary} onClick={() => setDeleteTarget(null)}>取消</button>
+              <button className={styles.btnDanger} onClick={() => deleteMutation.mutate(deleteTarget.id)} disabled={deleteMutation.isPending}>
+                {deleteMutation.isPending ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+            {deleteMutation.isError && <p className={styles.error}>{(deleteMutation.error as Error).message}</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
-type TabKey = "llm" | "embedding" | "catalog";
+type TabKey = "llm" | "embedding" | "catalog" | "rerank";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -663,11 +869,13 @@ export default function SettingsPage() {
         <button style={tabStyle(tab === "llm")} onClick={() => setTab("llm")}>LLM 语言模型</button>
         <button style={tabStyle(tab === "embedding")} onClick={() => setTab("embedding")}>Embedding 向量模型</button>
         <button style={tabStyle(tab === "catalog")} onClick={() => setTab("catalog")}>模型发现</button>
+        <button style={tabStyle(tab === "rerank")} onClick={() => setTab("rerank")}>Rerank 重排序</button>
       </div>
       <main className={styles.main}>
         {tab === "llm" && <LLMSection />}
         {tab === "embedding" && <EmbeddingSection />}
         {tab === "catalog" && <CatalogSection />}
+        {tab === "rerank" && <RerankSection />}
       </main>
     </div>
   );
