@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { checkHealth } from "./lib/api";
 import { useBackendStore } from "./stores/backendStore";
 import { useThemeStore, applyTheme } from "./stores/themeStore";
@@ -17,28 +17,6 @@ import DisconnectedBanner from "./components/DisconnectedBanner";
 
 const POLL_INTERVAL = 500;
 const STARTUP_TIMEOUT = 30_000;
-
-// ── Tauri Help menu listener (must be inside BrowserRouter) ──────────────────
-
-function TauriHelpListener() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
-
-    let unlisten: (() => void) | undefined;
-
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      listen<string>("open_help", (event) => {
-        navigate(`/help/${event.payload}`);
-      }).then((fn) => { unlisten = fn; });
-    });
-
-    return () => { unlisten?.(); };
-  }, [navigate]);
-
-  return null;
-}
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
@@ -109,7 +87,6 @@ export default function App() {
   return (
     <BrowserRouter>
       {status === "disconnected" && <DisconnectedBanner />}
-      <TauriHelpListener />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/settings/models" element={<SettingsPage />} />

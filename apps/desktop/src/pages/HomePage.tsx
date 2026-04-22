@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import type { Workspace, RuleSet, CreateWorkspaceRequest } from "@trpg-workbench/shared-schema";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { HelpButton } from "../components/HelpButton";
 import styles from "./HomePage.module.css";
 
 export default function HomePage() {
@@ -73,6 +74,7 @@ export default function HomePage() {
             新建工作空间
           </button>
           <ThemeToggle />
+          <HelpButton />
         </div>
       </header>
 
