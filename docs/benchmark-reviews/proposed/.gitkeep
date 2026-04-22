@@ -1,0 +1,5 @@
+# Proposed — 新提出的 review 结论
+
+此目录存放尚未决策的 benchmark review 结论。
+
+运行 `desktop-benchmark-review` skill 后，将每个高价值借鉴点单独存为一个 `.md` 文件，等待 review 和决策。
