@@ -55,10 +55,11 @@ Before running, confirm:
 ### Starting servers if they are not already running
 
 Use the `webapp-testing` skill's `with_server.py` helper. Locate the script
-via the skill's installed path (ask the skill system or run
-`find .agents -name with_server.py` from the project root). Invoke with
-`--help` first to confirm usage, then start both servers before running the
-smoke script:
+via the skill's actual installed path in this project — do not assume a fixed
+directory. The skill system will expose the path when the skill is loaded; if
+in doubt, ask the skill system or search the project for `with_server.py`
+using whatever file-search tool is available. Invoke with `--help` first to
+confirm usage, then start both servers before running the smoke script:
 
 ```bash
 python <path-to-webapp-testing-skill>/scripts/with_server.py \
@@ -81,7 +82,7 @@ differs from what is listed, use the actual current route.
 | Slug | Recommended route | Minimum elements to assert |
 |------|------------------|---------------------------|
 | `home` | `/` | A "新建工作空间" button or a workspace list entry |
-| `settings-models` | `/settings/models` | Tab bar with at least one model-related tab |
+| `settings-models` | `/settings/models` | Tab bar present; each model-related tab (LLM, Embedding, and any others present) can be clicked and renders content without a crash |
 | `knowledge` | `/knowledge` | Page heading, upload or "新建知识库" button |
 | `workspace` | `/workspace/:id` | Three-column layout visible, Agent panel present |
 | `workspace-settings` | `/workspace/:id/settings` | A "模型路由" or equivalent model section |

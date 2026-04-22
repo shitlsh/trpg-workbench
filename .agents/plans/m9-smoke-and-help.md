@@ -155,10 +155,10 @@ HelpPage
 ```
 
 Markdown 文件加载方式（两种可选）：
-- **Vite `?raw` import**（开发期）：`import content from "../help/getting-started.md?raw"`
-- **`resolveResource()` + `readTextFile()`**（打包后 Tauri 环境）：在运行时读取 bundled resource
+- **Vite `?raw` import**（开发期，第一版优先保证此路径可用）：`import content from "../help/getting-started.md?raw"`
+- **`resolveResource()` + `readTextFile()`**（打包后 Tauri 环境）：在运行时读取 bundled resource；此路径作为后续验证项，不要求第一步同时打通
 
-实现约 80 行 React，无需引入重型依赖（如果 `react-markdown` 已安装则零新依赖）。
+第一版 HelpPage 只需在 `pnpm tauri dev` 模式下可用即为验收通过。
 
 ---
 
@@ -228,7 +228,7 @@ docs/ui-snapshots/<YYYY-MM-DD>/
 - [ ] 基于截图和 DOM 生成 `getting-started.md` 草稿
 - [ ] 基于截图和 DOM 生成 `model-setup.md` 草稿
 - [ ] 基于截图和 DOM 生成 `knowledge-import.md` 草稿
-- [ ] 基于截图和 DOM 生成 `start-creating.md` 草稿
+- [ ] 基于截图和 DOM 生成 `start-creating.md` 草稿（若 workspace 页面被 skipped，相关段落应写为条件说明或跳过，不得假定该页面已存在）
 - [ ] 用户确认后，将草稿同步到 `apps/desktop/src/help/`
 
 ### A3：Tauri Help 菜单
@@ -251,7 +251,7 @@ docs/ui-snapshots/<YYYY-MM-DD>/
 ### A1 验证
 
 1. 运行 smoke 脚本，`smoke-report.md` 产出五个页面的结果（至少 home、settings、knowledge 为 pass）
-2. 截图文件存在且非空（> 50KB 视为有效）
+2. 截图文件存在且可正常打开（不规定最小字节数；空文件或损坏文件为失败）
 3. `latest-manifest.json` 指向当次日期目录
 
 ### A2 验证
