@@ -11,7 +11,7 @@ import type {
   RerankProfile, CreateRerankProfileRequest, UpdateRerankProfileRequest,
   RerankProviderType, RerankTestResult,
 } from "@trpg-workbench/shared-schema";
-import styles from "./ModelProfilesPage.module.css";
+import styles from "./SettingsPage.module.css";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

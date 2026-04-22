@@ -17,6 +17,23 @@ M1–M8 完成后，项目已具备完整的核心功能链路：工作空间管
 
 M9 填补这三个空白，同时建立"每次里程碑完成后运行 smoke + 更新文档"的工作习惯。
 
+### 视觉能力限制说明
+
+> 当前执行环境**不支持视觉理解截图**（vision is not enabled）。
+>
+> 因此 M9 的自动化验证全部基于 DOM、页面文本、控制台日志和网络状态——
+> 不依赖截图像素内容自动推断 UI 状态。
+>
+> 截图仍然产出，用途是**供人工 review**，而不是驱动自动化断言或文档生成。
+
+### 当前已知问题
+
+在进行任何 smoke test 之前，需先解决已知的编译错误：
+
+- `SettingsPage.tsx` 引用了不存在的 `./ModelProfilesPage.module.css`
+- 此错误会导致 Vite 编译失败，所有页面均显示错误 overlay
+- 必须先修复此编译问题，再执行 smoke test
+
 ---
 
 ## 范围声明
@@ -168,6 +185,16 @@ Markdown 文件加载方式（两种可选）：
 
 > `tauri-ui-smoke-and-docs` skill 中提到的脚本**尚不存在**，A1 的第一项工作就是创建它。
 
+#### A1.-1：前端编译修复（最高优先级）
+
+**在做任何 smoke 工作之前，必须先确保前端能正常编译和加载。**
+
+步骤：
+1. 检查已知编译错误（如 `SettingsPage.tsx` 引用缺失的 CSS module）
+2. 修复编译错误
+3. 验证 dev server 启动后首页不出现 Vite error overlay
+4. 只有编译通过后，才进入 A1.0+
+
 #### A1.0：决策前置
 
 在写任何脚本之前，先完成以下确认：
@@ -225,10 +252,20 @@ docs/ui-snapshots/<YYYY-MM-DD>/
 
 ### A2：帮助文档草稿
 
-- [ ] 基于截图和 DOM 生成 `getting-started.md` 草稿
-- [ ] 基于截图和 DOM 生成 `model-setup.md` 草稿
-- [ ] 基于截图和 DOM 生成 `knowledge-import.md` 草稿
-- [ ] 基于截图和 DOM 生成 `start-creating.md` 草稿（若 workspace 页面被 skipped，相关段落应写为条件说明或跳过，不得假定该页面已存在）
+**优先级：A1 全部通过后，才进行 A2。**
+
+文档草稿基于以下来源生成，不依赖截图视觉内容：
+
+- `page.inner_text()` 提取的页面文案
+- DOM 中观察到的 tab 名称、按钮标签、section heading
+- smoke test 期间记录的导航结构
+
+若某页面被 `skipped` 或 `fail`，对应文档段落应明确注明，不得凭记忆或假设填充内容。
+
+- [ ] 基于 DOM 状态生成 `getting-started.md` 草稿
+- [ ] 基于 DOM 状态生成 `model-setup.md` 草稿
+- [ ] 基于 DOM 状态生成 `knowledge-import.md` 草稿
+- [ ] 基于 DOM 状态生成 `start-creating.md` 草稿（若 workspace 页面被 skipped，相关段落应写为条件说明）
 - [ ] 用户确认后，将草稿同步到 `apps/desktop/src/help/`
 
 ### A3：Tauri Help 菜单
@@ -248,6 +285,10 @@ docs/ui-snapshots/<YYYY-MM-DD>/
 
 ## 验证步骤
 
+### 前置：编译验证（最高优先级）
+
+0. 前端 dev server 启动后首页不出现 Vite error overlay，所有编译错误已修复
+
 ### A1 验证
 
 1. 运行 smoke 脚本，`smoke-report.md` 产出五个页面的结果（至少 home、settings、knowledge 为 pass）
@@ -257,8 +298,9 @@ docs/ui-snapshots/<YYYY-MM-DD>/
 ### A2 验证
 
 4. 四篇帮助文档草稿存在于 `docs/ui-snapshots/<date>/help/`
-5. 文档中的 tab 名称、按钮文案与截图一致（人工 review）
-6. 同步操作仅在用户明确指令后执行
+5. 文档中的 tab 名称、按钮文案与 DOM 提取内容一致（人工 review）
+6. 截图仅作为人工排查产物，不作为文档内容生成的依据
+7. 同步操作仅在用户明确指令后执行
 
 ### A3 验证
 

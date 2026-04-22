@@ -1,17 +1,3 @@
----
-name: tauri-ui-smoke-and-docs
-description: >
-  Smoke-tests the trpg-workbench frontend against a local dev server, captures
-  raw full-page screenshots of key pages, and generates Help / Getting Started
-  documentation drafts grounded in the real UI state.
-  Use this skill whenever the user asks to: run a UI smoke test, take page
-  screenshots, verify that key pages render correctly, generate or refresh
-  help docs, update Getting Started content, prepare Tauri Help-menu content,
-  or "document the current UI". Also use it proactively after large UI changes
-  (e.g., after a milestone lands) to verify nothing is visually broken and to
-  keep the help documentation current.
----
-
 # Skill: tauri-ui-smoke-and-docs
 
 ## Purpose
@@ -19,47 +5,127 @@ description: >
 This skill chains three tasks that belong together:
 
 1. **Smoke test** — navigate to each key page, assert that critical elements
-   are present, record pass/fail per page.
-2. **Screenshot capture** — save raw full-page PNGs as a visual record.
+   are present based on DOM state, page text, and console logs; record
+   pass/fail per page.
+2. **Screenshot capture** — save raw full-page PNGs as a visual record for
+   human review (and optionally for visual analysis if vision is available).
 3. **Help doc draft generation** — produce Markdown documents grounded in
-   what the screenshots and DOM actually show, not what the code is supposed
-   to render.
-
-Running the three together keeps the docs honest. Screenshots become
-the evidence base for writing step-by-step onboarding text.
+   the actual DOM state and page text extracted during the smoke run.
 
 ### Scope and boundaries
 
 - Covers the key user-facing pages and the critical paths through them.
 - Does **not** attempt complete E2E regression or interaction testing.
 - Does **not** replace unit tests or backend API tests.
-- Is intended for onboarding verification and help-doc generation, not as a
-  gate that blocks feature development.
+- Is intended for build verification and help-doc generation, not as a gate
+  that blocks feature development.
+
+---
+
+## Running Modes
+
+This skill operates in one of three modes. The mode is selected by the
+invoking command (see `/ui-smoke` and `/ui-review`) or by explicit
+instruction from the user.
+
+### `dom_only`
+
+- Run DOM assertions and page-text extraction only.
+- No screenshots taken.
+- Use when screenshots are not needed (e.g., quick CI check).
+
+### `dom_plus_screenshot` *(default)*
+
+- Run DOM assertions + extract page text.
+- Take full-page screenshots for each page.
+- Screenshots are **for human review only** — the agent does NOT interpret
+  screenshot pixels in this mode.
+- All assertions and doc generation are based on DOM data only.
+
+### `vision_review`
+
+- Run DOM assertions + extract page text + take screenshots.
+- Additionally, pass screenshots to a vision-capable model to produce a
+  richer qualitative UI review and more detailed help-doc content.
+- **Only use this mode when:**
+  1. The user explicitly requests it (e.g., via `/ui-review`), AND
+  2. The execution environment supports vision (multimodal model is active).
+- **Degradation rule:** If `vision_review` is requested but the environment
+  does not support vision, automatically fall back to `dom_plus_screenshot`.
+  Record a `⚠ warning` in the smoke report:
+  ```
+  Warning: vision_review requested but vision is not available in this
+  environment. Falling back to dom_plus_screenshot. Screenshots are saved
+  for manual inspection.
+  ```
+
+### Mode selection summary
+
+| Invocation | Mode used |
+|---|---|
+| `/ui-smoke` command | `dom_plus_screenshot` (fixed) |
+| `/ui-review` command | `vision_review` → degrades to `dom_plus_screenshot` if no vision |
+| User says "run smoke test" | `dom_plus_screenshot` (default) |
+| User says "review screenshots" or "analyze UI visually" | `vision_review` |
+| User says "just check DOM, no screenshots" | `dom_only` |
+
+### DOM data is always the primary source
+
+Regardless of mode, DOM-extracted content is always the authoritative basis
+for assertions and help-doc generation. Vision output (when available) is
+an **enhancement** on top of DOM data, not a replacement.
+
+---
+
+## Smoke Fail Conditions
+
+A page MUST be recorded as `❌ fail` if any of the following are true:
+
+- Navigation times out or returns a non-2xx status
+- `wait_for_load_state("networkidle")` times out
+- A Vite error overlay is detected (selector `vite-error-overlay` or
+  `[data-vite-dev-server-error]` is present in DOM)
+- A compiler error page is detected (page title contains "Error" and the
+  body contains stack trace text)
+- The page is blank: `document.body.innerText.trim()` is empty after load
+- A required DOM assertion fails
+
+A Vite overlay or blank page is **not** the same as a skipped page.
+Record it as `fail` and note the error message extracted from the DOM.
+
+Assertion failures are otherwise **non-fatal**: record the failure with its
+error message, take the screenshot anyway, and continue to the next page.
 
 ---
 
 ## Prerequisites
 
-Before running, confirm:
+**First priority: verify the frontend dev server compiles and loads.**
+
+Before running any smoke assertions, confirm:
+
+1. The frontend dev server starts without compilation errors. If it fails to
+   start, record ALL pages as `❌ fail (build error)` and stop.
+2. The home page loads without a Vite overlay. If an overlay is present,
+   extract its error message, record as fail, and stop.
+3. Only proceed with per-page assertions once the base page is clean.
+
+Other prerequisites:
 
 - Frontend dev server is reachable — default `http://localhost:5173`, but
   verify the actual port from `apps/desktop/package.json` or the running
-  process.
+  process. The Tauri dev server may use a different port (e.g., `1420`).
 - Backend is running — default `http://localhost:7821`. Many pages make live
-  API calls on mount; missing backend = blank/error state in screenshots.
+  API calls on mount; missing backend = blank/error state. Note in report
+  whether backend was available.
 - A Playwright runtime is available. This project uses the `webapp-testing`
   skill as the underlying testing toolkit. Check which runtime (`playwright`
-  Python package or `@playwright/test` Node package) is actually installed in
-  the project before writing any script. Prefer whichever is already present.
+  Python package or `@playwright/test` Node package) is actually installed
+  before writing any script. Prefer whichever is already present.
 
 ### Starting servers if they are not already running
 
-Use the `webapp-testing` skill's `with_server.py` helper. Locate the script
-via the skill's actual installed path in this project — do not assume a fixed
-directory. The skill system will expose the path when the skill is loaded; if
-in doubt, ask the skill system or search the project for `with_server.py`
-using whatever file-search tool is available. Invoke with `--help` first to
-confirm usage, then start both servers before running the smoke script:
+Use the `webapp-testing` skill's `with_server.py` helper:
 
 ```bash
 python <path-to-webapp-testing-skill>/scripts/with_server.py \
@@ -74,49 +140,30 @@ If servers are already running, run the smoke script directly.
 
 ## Key Pages
 
-The table below lists the **recommended** target pages. Before running,
-confirm that these routes exist in the current frontend by checking
-`apps/desktop/src/App.tsx` (or equivalent router config). If any route
-differs from what is listed, use the actual current route.
+Confirm routes against `apps/desktop/src/App.tsx` before running.
 
-| Slug | Recommended route | Minimum elements to assert |
-|------|------------------|---------------------------|
-| `home` | `/` | A "新建工作空间" button or a workspace list entry |
-| `settings-models` | `/settings/models` | Tab bar present; each model-related tab (LLM, Embedding, and any others present) can be clicked and renders content without a crash |
-| `knowledge` | `/knowledge` | Page heading, upload or "新建知识库" button |
-| `workspace` | `/workspace/:id` | Three-column layout visible, Agent panel present |
-| `workspace-settings` | `/workspace/:id/settings` | A "模型路由" or equivalent model section |
+| Slug | Recommended route | Minimum DOM assertions |
+|------|------------------|------------------------|
+| `home` | `/` | Body is not blank; no Vite overlay |
+| `settings-models` | `/settings/models` | Tab bar element present in DOM |
+| `knowledge` | `/knowledge` | Page body is not blank; no Vite overlay |
+| `workspace` | `/workspace/:id` | Requires existing workspace; skip if none |
+| `workspace-settings` | `/workspace/:id/settings` | Requires existing workspace; skip if none |
 
-**Workspace pages require an existing workspace.** If none exists, mark them
-as `skipped` (not `fail`) in the smoke report and note this in the help docs.
-
-Feel free to add pages that are part of the current milestone but not yet
-listed above. The list is a starting point, not a contract.
+Workspace pages require an existing workspace. If none exists, mark them
+as `skipped` (not `fail`).
 
 ---
 
 ## Output Layout
 
-All outputs go into `docs/ui-snapshots/<YYYY-MM-DD>/`. Use the UTC+8 date of
-the run. Do **not** create a `latest/` symlink. Instead, write a
-`docs/ui-snapshots/latest-manifest.json` that records which dated directory
-is the most recent:
-
-```json
-{
-  "date": "2026-04-22",
-  "dir": "docs/ui-snapshots/2026-04-22",
-  "run_at": "2026-04-22T10:39:00+08:00"
-}
-```
-
-Directory structure:
+All outputs go into `docs/ui-snapshots/<YYYY-MM-DD>/`. Use UTC+8 date.
 
 ```
 docs/ui-snapshots/
 ├── latest-manifest.json
 └── 2026-04-22/
-    ├── screenshots/
+    ├── screenshots/          # present in dom_plus_screenshot and vision_review
     │   ├── home.png
     │   ├── settings-models.png
     │   ├── knowledge.png
@@ -130,50 +177,78 @@ docs/ui-snapshots/
         └── start-creating.md
 ```
 
----
+`latest-manifest.json` format:
 
-## Smoke Test Assertions
-
-For each page: navigate → `wait_for_load_state("networkidle")` → assert.
-
-Assertion failures are **non-fatal**: record the failure with its error
-message, take the screenshot anyway, and continue to the next page. Only
-treat a page as `fail` if navigation or `networkidle` times out entirely.
-
-Example pattern (Python Playwright — use the appropriate runtime if Node is
-preferred):
-
-```python
-page.goto("http://localhost:5173/knowledge")
-page.wait_for_load_state("networkidle")
-assert page.locator("text=知识库管理").count() > 0, "knowledge heading missing"
+```json
+{
+  "date": "2026-04-22",
+  "dir": "docs/ui-snapshots/2026-04-22",
+  "run_at": "2026-04-22T10:39:00+08:00"
+}
 ```
 
-Check the `webapp-testing` skill's examples directory for additional
-patterns before writing new boilerplate.
+---
+
+## Smoke Test Implementation
+
+For each page: navigate → `wait_for_load_state("networkidle")` → check for
+Vite overlay → check for blank page → assert DOM elements → screenshot
+(if mode ≠ `dom_only`).
+
+```python
+# Check for Vite compilation error overlay
+vite_error = page.locator("vite-error-overlay")
+if vite_error.count() > 0:
+    error_text = vite_error.inner_text()
+    record_fail(slug, f"Vite error overlay: {error_text[:200]}")
+    if mode != "dom_only":
+        page.screenshot(path=..., full_page=True)
+    continue
+
+# Check for blank page
+body_text = page.locator("body").inner_text().strip()
+if not body_text:
+    record_fail(slug, "Page body is blank after networkidle")
+    if mode != "dom_only":
+        page.screenshot(path=..., full_page=True)
+    continue
+
+# DOM assertions (non-fatal)
+try:
+    assert page.locator("[data-tab-bar]").count() > 0
+except AssertionError as e:
+    record_warning(slug, str(e))
+
+# Screenshot (dom_plus_screenshot and vision_review)
+if mode != "dom_only":
+    page.screenshot(path=..., full_page=True)
+```
+
+The existing project script `scripts/smoke/smoke_and_screenshot.py` accepts
+a `--mode` parameter for this purpose. See script `--help` for usage.
 
 ---
 
 ## Screenshot Conventions
 
 - Capture: `page.screenshot(path=..., full_page=True)`
-- Viewport: 1280 × 800 (matches the Tauri window config in
-  `apps/desktop/src-tauri/tauri.conf.json`; confirm before running)
-- Raw output only — do **not** crop, annotate, or draw overlays
-  programmatically; any notes belong in `smoke-report.md`
+- Viewport: 1280 × 800 (confirm against `apps/desktop/src-tauri/tauri.conf.json`)
+- Raw output only — do not crop, annotate, or draw overlays programmatically
 - One PNG per page slug; overwrite if re-running on the same date
+- Take screenshots even for failed pages — they help human reviewers diagnose
+- In `dom_plus_screenshot` mode: screenshots are for human review only
+- In `vision_review` mode: screenshots may additionally be passed to vision model
 
 ---
 
 ## Smoke Report Format
 
-Use this structure so reports from different runs can be compared:
-
 ```markdown
 # Smoke Test Report — 2026-04-22
 
-**Frontend:** http://localhost:5173
+**Frontend:** http://localhost:1420
 **Backend:** http://localhost:7821
+**Mode:** dom_plus_screenshot
 **Run at:** 2026-04-22T10:39:00+08:00
 
 ## Results
@@ -189,116 +264,100 @@ Use this structure so reports from different runs can be compared:
 ## Failures
 
 _None_
+
+## Warnings
+
+_None_
 ```
 
 Status values: `✅ pass`, `❌ fail`, `⏭ skipped`.
+
+For fail entries, always include the extracted error message or DOM text.
+For mode-degradation, include a `## Warnings` section with the downgrade note.
 
 ---
 
 ## Help Doc Generation
 
-After screenshots are taken, write the four help documents below into
-`docs/ui-snapshots/<date>/help/`. Base the content on what the screenshots
-and DOM inspection actually show — tab names, button labels, and section
-headings must match the real UI, not guesses or prior assumptions.
+After the smoke run, write four help documents into
+`docs/ui-snapshots/<date>/help/`. Base the content on:
+
+- Page titles and headings extracted from the DOM
+- Button labels and tab names via `page.inner_text()` or
+  `page.locator(...).all_inner_texts()`
+- Navigation structure observed from DOM
+- Any text content captured during assertions
+- In `vision_review` mode: additionally incorporate qualitative notes from
+  visual model output, but always reconcile against DOM-extracted text
 
 **Two-stage sync rule:**
 - Stage 1 (always): generate docs into `docs/ui-snapshots/<date>/help/`.
-- Stage 2 (only on explicit request): copy the files into
-  `apps/desktop/src/help/` to update the in-app help source. Never update
-  the application source automatically.
+- Stage 2 (only on explicit user request): copy files into
+  `apps/desktop/src/help/`. Never update application source automatically.
 
-Write in plain Chinese (中文). Each doc should be readable by a first-time
-user. Aim for under 600 words per document.
+Write in plain Chinese (中文). Under 600 words per document.
 
-### `getting-started.md`
+If a page was `skipped` or `fail`, the corresponding doc section must note
+this explicitly rather than fabricating content.
 
-Walk through the first-launch experience:
-- What the user sees when the app opens
-- How to create the first workspace
-- Where to configure models next
+### Four documents
 
-### `model-setup.md`
+- **`getting-started.md`** — first-launch experience, create workspace, navigate to settings
+- **`model-setup.md`** — settings page, tabs (enumerated from DOM), profile types
+- **`knowledge-import.md`** — create library, upload PDF, ingest, chunks, search
+- **`start-creating.md`** — three-panel layout, Agent panel, submit prompt, review result
 
-Walk through the settings page for model configuration:
-- What tabs exist (enumerate from the actual screenshot, not from memory)
-- How to add each type of profile
-- What each profile type is used for in the app
+---
 
-### `knowledge-import.md`
+## Script Parameters (for `scripts/smoke/smoke_and_screenshot.py`)
 
-Walk through importing a PDF and verifying the result:
-- Creating a library
-- Uploading a PDF
-- Watching the ingest progress
-- Reviewing the document summary and any quality warnings
-- Previewing chunks and running a search test
+The project smoke script supports these parameters at the script layer.
+They are not native skill config — they control script behavior when invoked:
 
-### `start-creating.md`
+| Parameter | Default | Description |
+|---|---|---|
+| `--frontend` | `http://localhost:5173` | Frontend base URL |
+| `--backend` | `http://localhost:7821` | Backend base URL |
+| `--out` | `docs/ui-snapshots` | Output base directory |
+| `--date` | today (UTC+8) | Override date slug |
+| `--mode` | `dom_plus_screenshot` | `dom_only` / `dom_plus_screenshot` / `vision_review` |
+| `--generate-help-drafts` | off | Generate help doc drafts after smoke |
+| `--sync-help` | off | Copy drafts to `apps/desktop/src/help/` (requires explicit flag) |
 
-Walk through the main workbench:
-- The three-panel layout
-- How to write a prompt in the Agent panel
-- What happens after submitting a prompt
-- How to review and save the result
+Run `apps/backend/.venv/bin/python scripts/smoke/smoke_and_screenshot.py --help`
+to see the current parameter list; the table above reflects intended design,
+not guaranteed implementation state.
 
 ---
 
 ## Tauri Help Menu and In-App Help Page
 
-This section describes the recommended approach for wiring the generated
-docs into the Tauri application. **Do not implement this during a smoke run;
-implement only when the user explicitly asks for M9 Tauri integration work.**
+**Do not implement during a smoke run. Implement only when the user
+explicitly asks for M9 Tauri integration work.**
 
-### Document source location
+Document source: `apps/desktop/src/help/` — populated from
+`docs/ui-snapshots/<date>/help/` only after user approval.
 
-```
-apps/desktop/src/help/
-├── getting-started.md
-├── model-setup.md
-├── knowledge-import.md
-└── start-creating.md
-```
+Tauri integration: register Help menu in `lib.rs` (MenuBuilder), emit
+`open_help` event on click, frontend listens and navigates to
+`/help/getting-started` via React Router.
 
-These files are the in-app canonical source. They are populated from
-`docs/ui-snapshots/<date>/help/` only when the user approves the sync.
-Tauri bundles them as resources:
-
-```json
-// tauri.conf.json — bundle section
-"resources": ["src/help/**/*"]
-```
-
-At runtime the frontend reads them via `@tauri-apps/api/path`
-`resolveResource()`.
-
-### Tauri menu integration (Option 1 — recommended)
-
-Register a Help menu item in `lib.rs` using `tauri::menu::MenuBuilder`.
-On click, emit a Tauri event to the frontend. The frontend listens and
-navigates to `/help/getting-started` via React Router. This keeps the SPA
-intact and reuses the existing theme and CSS variables.
-
-An alternative (Option 2) is to open a second `WebviewWindow` pointing at a
-standalone `help.html`. This is simpler to isolate but adds a separate
-loading cycle and does not share the app's design system.
-
-### In-app help page
-
-Add a `/help/:doc` route to `App.tsx`. The page component loads the
-corresponding Markdown file, renders it (e.g., using `react-markdown`), and
-provides a sidebar linking to all four docs. The implementation is small
-(~80 lines of React) and requires no new dependencies if `react-markdown` is
-already installed.
+In-app help page: `/help/:doc` route, Markdown renderer, four-doc sidebar.
 
 ---
 
 ## When to Run This Skill
 
-- After any milestone that changes key UI pages.
-- When preparing onboarding material or a demo.
-- When the user asks to verify the current UI state visually.
-- When updating in-app help content after a round of UI changes.
+- After any milestone that changes key UI pages
+- When preparing onboarding material or a demo
+- When the user asks to verify current UI state
+- When updating in-app help content after UI changes
 
-If the smoke report shows a failed page, fix the UI issue first, then re-run
-before committing any docs or screenshots.
+**Standard run order:**
+1. Verify frontend compiles and loads (fix build errors first)
+2. Determine mode (default: `dom_plus_screenshot`)
+3. Run smoke test; extract DOM text; generate screenshots if mode requires
+4. Generate help doc drafts from DOM-observed content
+5. Present smoke report; await explicit approval before syncing docs
+
+Base directory for this skill: file:///Users/tshi/Sandbox/trpg-workbench/.agents/skills/tauri-ui-smoke-and-docs

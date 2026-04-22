@@ -70,3 +70,6 @@ htmlcov/
 # ── Local development plans ──────────────────────────────────────
 # .agents/plans/ is intentionally tracked
 .githooks
+
+# ── UI snapshot screenshots (binary, for human review only) ──────
+docs/ui-snapshots/**/screenshots/

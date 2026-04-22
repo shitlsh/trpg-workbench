@@ -1,0 +1,96 @@
+/* SettingsPage.module.css */
+
+.page { min-height: 100vh; display: flex; flex-direction: column; }
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.back { background: transparent; color: var(--text-muted); font-size: 13px; padding: 4px 8px; border-radius: var(--radius); }
+.back:hover { color: var(--text); }
+.title { font-size: 16px; font-weight: 600; }
+
+.main { flex: 1; padding: 40px 32px; max-width: 720px; margin: 0 auto; width: 100%; }
+
+.muted { color: var(--text-muted); font-size: 13px; }
+
+.empty { text-align: center; padding: 40px 0; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+
+.list { display: flex; flex-direction: column; gap: 8px; }
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.itemInfo { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.itemName { font-size: 14px; font-weight: 500; }
+.itemModel { font-size: 12px; color: var(--text-muted); }
+.itemActions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 480px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modalTitle { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
+
+.form { display: flex; flex-direction: column; gap: 14px; }
+.label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-muted); }
+.input, .select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+.input:focus, .select:focus { border-color: var(--accent); }
+.select option { background: var(--bg-surface); }
+
+.row { display: flex; gap: 16px; }
+.row .label { flex: 1; }
+
+.formActions { display: flex; align-items: center; gap: 12px; justify-content: flex-end; margin-top: 8px; }
+
+.btnPrimary { padding: 8px 20px; background: var(--accent); color: #fff; border-radius: var(--radius); font-size: 13px; }
+.btnPrimary:hover:not(:disabled) { background: var(--accent-hover); }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnSecondary { padding: 6px 14px; background: transparent; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; color: var(--text-muted); }
+.btnSecondary:hover { border-color: var(--text-muted); color: var(--text); }
+
+.btnDanger { padding: 6px 14px; background: transparent; border: 1px solid var(--danger); border-radius: var(--radius); font-size: 13px; color: var(--danger); }
+.btnDanger:hover { background: var(--danger); color: #fff; }
+
+.confirmText { font-size: 14px; color: var(--text); margin-bottom: 20px; }
+
+.error { color: var(--danger); font-size: 13px; }
