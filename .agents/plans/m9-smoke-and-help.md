@@ -199,8 +199,8 @@ Markdown 文件加载方式（两种可选）：
 
 在写任何脚本之前，先完成以下确认：
 
-- [ ] 读取 `apps/desktop/src/App.tsx`，列出当前实际路由（不依赖 plan 中的推荐值）
-- [ ] 检查 `apps/desktop/package.json` 和 `apps/backend/.venv`，确认 Playwright 运行时：
+- [x] 读取 `apps/desktop/src/App.tsx`，列出当前实际路由（不依赖 plan 中的推荐值）
+- [x] 检查 `apps/desktop/package.json` 和 `apps/backend/.venv`，确认 Playwright 运行时：
   - Python：`apps/backend/.venv/lib/python*/site-packages/playwright`
   - Node：`apps/desktop/node_modules/playwright` 或 `@playwright/test`
   - **以实际存在的运行时为准，不假定哪个已安装**
@@ -232,23 +232,23 @@ docs/ui-snapshots/<YYYY-MM-DD>/
 目标：能在本地 `pnpm dev` + 后端运行的环境下跑通，产出三张 PNG。
 
 验收：
-- [ ] 脚本存在于 `scripts/smoke/`，有 `--help` 输出
-- [ ] 在 dev server 已运行的前提下可直接执行（单步命令，无需额外配置）
-- [ ] 产出 `home.png`、`settings-models.png`、`knowledge.png`（文件 > 10KB）
+- [x] 脚本存在于 `scripts/smoke/`，有 `--help` 输出
+- [x] 在 dev server 已运行的前提下可直接执行（单步命令，无需额外配置）
+- [x] 产出 `home.png`、`settings-models.png`、`knowledge.png`（文件 > 10KB）
 
 #### A1.3：加入断言与完整页面集
 
 在 A1.2 跑通后扩展：
 
-- [ ] 为三个 P0 页面添加最小 DOM 断言（以实际 UI 为准，不硬编码文案）
-- [ ] 加入 P1 页面（workspace、workspace-settings）；若无 workspace 则 `skipped`
-- [ ] 所有断言失败非致命：记录错误，继续执行下一页面
+- [x] 为三个 P0 页面添加最小 DOM 断言（以实际 UI 为准，不硬编码文案）
+- [x] 加入 P1 页面（workspace、workspace-settings）；若无 workspace 则 `skipped`
+- [x] 所有断言失败非致命：记录错误，继续执行下一页面
 
 #### A1.4：生成 smoke-report.md 和 latest-manifest.json
 
-- [ ] 脚本结束时写入 `smoke-report.md`（格式见 plan 的 Smoke Report 节）
-- [ ] 写入 `docs/ui-snapshots/latest-manifest.json`
-- [ ] README 或脚本顶部注释中说明如何运行（dev server 已启动时和未启动时两种入口）
+- [x] 脚本结束时写入 `smoke-report.md`（格式见 plan 的 Smoke Report 节）
+- [x] 写入 `docs/ui-snapshots/latest-manifest.json`
+- [x] README 或脚本顶部注释中说明如何运行（dev server 已启动时和未启动时两种入口）
 
 ### A2：帮助文档草稿
 
@@ -262,24 +262,24 @@ docs/ui-snapshots/<YYYY-MM-DD>/
 
 若某页面被 `skipped` 或 `fail`，对应文档段落应明确注明，不得凭记忆或假设填充内容。
 
-- [ ] 基于 DOM 状态生成 `getting-started.md` 草稿
-- [ ] 基于 DOM 状态生成 `model-setup.md` 草稿
-- [ ] 基于 DOM 状态生成 `knowledge-import.md` 草稿
-- [ ] 基于 DOM 状态生成 `start-creating.md` 草稿（若 workspace 页面被 skipped，相关段落应写为条件说明）
-- [ ] 用户确认后，将草稿同步到 `apps/desktop/src/help/`
+- [x] 基于 DOM 状态生成 `getting-started.md` 草稿
+- [x] 基于 DOM 状态生成 `model-setup.md` 草稿
+- [x] 基于 DOM 状态生成 `knowledge-import.md` 草稿
+- [x] 基于 DOM 状态生成 `start-creating.md` 草稿（若 workspace 页面被 skipped，相关段落应写为条件说明）
+- [x] 用户确认后，将草稿同步到 `apps/desktop/src/help/`
 
 ### A3：Tauri Help 菜单
 
-- [ ] 修改 `lib.rs`：注册 Help 菜单（MenuBuilder + on_menu_event）
-- [ ] 修改 `App.tsx`：监听 `open_help` 事件，navigate 到 `/help/:doc`
-- [ ] 在 `tauri.conf.json` `bundle.resources` 中注册 `src/help/**/*`
+- [x] 修改 `lib.rs`：注册 Help 菜单（MenuBuilder + on_menu_event）
+- [x] 修改 `App.tsx`：监听 `open_help` 事件，navigate 到 `/help/:doc`
+- [x] 在 `tauri.conf.json` `bundle.resources` 中注册 `src/help/**/*`
 
 ### A4：应用内帮助页
 
-- [ ] 新建 `apps/desktop/src/pages/HelpPage.tsx`
-- [ ] 实现左侧文档导航 + 右侧 Markdown 渲染
-- [ ] 新增 `/help/:doc` 路由到 `App.tsx`
-- [ ] 确认在 Tauri dev 模式下帮助页可正常渲染
+- [x] 新建 `apps/desktop/src/pages/HelpPage.tsx`
+- [x] 实现左侧文档导航 + 右侧 Markdown 渲染
+- [x] 新增 `/help/:doc` 路由到 `App.tsx`
+- [x] 确认在 Tauri dev 模式下帮助页可正常渲染
 
 ---
 
