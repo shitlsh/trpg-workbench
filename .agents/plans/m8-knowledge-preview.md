@@ -196,18 +196,18 @@ interface SearchTestResult {
 
 ### Todo（A1）
 
-- [ ] 后端：`GET /knowledge/libraries/{id}/documents` 接口
-- [ ] 后端：`GET /knowledge/documents/{id}/manifest` 接口
-- [ ] 后端：`GET /knowledge/documents/{id}/pages/{n}` 接口
-- [ ] 后端：`GET /knowledge/documents/{id}/chunks` 分页接口
-- [ ] 后端：`GET /knowledge/documents/{id}/chunks/{chunk_id}` 接口
-- [ ] 后端：`POST /knowledge/libraries/{id}/search/test` 基础检索测试接口（含 `use_rerank` 参数占位）
-- [ ] 后端：ingest 完成后写入质量告警字段（quality_warnings 写入 manifest）
-- [ ] shared-schema：新增 `KnowledgeDocumentSummary`、`QualityWarning`、`PageTextPreview`、`ChunkListItem`、`SearchTestResult`
-- [ ] 前端：KnowledgePage 文档条目展开显示 manifest 摘要 + 质量告警
-- [ ] 前端：文档预览侧边面板（Chunk 列表 Tab + 页面文本 Tab）
-- [ ] 前端：检索测试对话框（含 rerank 开关，A1 阶段未配置 rerank 时禁用该开关）
-- [ ] 前端：质量告警 badge / 颜色标注（failed 红、partial/scanned 黄、success 绿）
+- [x] 后端：`GET /knowledge/libraries/{id}/documents` 接口
+- [x] 后端：`GET /knowledge/documents/{id}/manifest` 接口（实现为 `/knowledge/documents/{id}/summary`，包含 manifest 摘要 + 质量告警，路径与 plan 略有差异但语义等同）
+- [x] 后端：`GET /knowledge/documents/{id}/pages/{n}` 接口
+- [x] 后端：`GET /knowledge/documents/{id}/chunks` 分页接口
+- [x] 后端：`GET /knowledge/documents/{id}/chunks/{chunk_id}` 接口
+- [x] 后端：`POST /knowledge/libraries/{id}/search/test` 基础检索测试接口（含 `use_rerank` 参数占位）
+- [x] 后端：ingest 完成后写入质量告警字段（quality_warnings 写入 manifest）
+- [x] shared-schema：新增 `KnowledgeDocumentSummary`、`QualityWarning`、`PageTextPreview`、`ChunkListItem`、`SearchTestResult`
+- [x] 前端：KnowledgePage 文档条目展开显示 manifest 摘要 + 质量告警
+- [x] 前端：文档预览侧边面板（Chunk 列表 Tab + 页面文本 Tab）
+- [x] 前端：检索测试对话框（含 rerank 开关，A1 阶段未配置 rerank 时禁用该开关）
+- [x] 前端：质量告警 badge / 颜色标注（failed 红、partial/scanned 黄、success 绿）
 
 ### 验证步骤（A1）
 
@@ -404,24 +404,24 @@ Rerank 配置
 ### Todo（A2）
 
 **数据层**
-- [ ] 后端：新增 `rerank_profiles` ORM 表（provider_type / model / api_key encrypted / base_url / top_n / top_k）
-- [ ] 后端：WorkspaceORM 新增 rerank_profile_id / rerank_enabled / rerank_apply_to_task_types 字段
-- [ ] shared-schema：新增 `RerankProfile`、`RerankProviderType`、`CreateRerankProfileRequest`、`WorkspaceRerankConfig`
+- [x] 后端：新增 `rerank_profiles` ORM 表（provider_type / model / api_key encrypted / base_url / top_n / top_k）
+- [x] 后端：WorkspaceORM 新增 rerank_profile_id / rerank_enabled / rerank_apply_to_task_types 字段
+- [x] shared-schema：新增 `RerankProfile`、`RerankProviderType`、`CreateRerankProfileRequest`、`WorkspaceRerankConfig`
 
 **服务层**
-- [ ] 后端：`rerank_adapter.py`（Jina / Cohere / OpenAI Compatible 三路实现）
-- [ ] 后端：`model_routing.py` 新增 `get_reranker_for_workspace()` 函数
-- [ ] 后端：检索链路（knowledge_search）接入可选 rerank（retrieve top_n → rerank → top_k）
+- [x] 后端：`rerank_adapter.py`（Jina / Cohere / OpenAI Compatible 三路实现）
+- [x] 后端：`model_routing.py` 新增 `get_reranker_for_workspace()` 函数
+- [x] 后端：检索链路（knowledge_search）接入可选 rerank（retrieve top_n → rerank → top_k）
 
 **API 层**
-- [ ] 后端：`rerank_profiles.py` CRUD 路由（含 /test）
-- [ ] 后端：`PATCH /workspaces/{id}/rerank-config` 路由
-- [ ] 后端：`POST /knowledge/libraries/{id}/search/test` 支持 `use_rerank` 参数
+- [x] 后端：`rerank_profiles.py` CRUD 路由（含 /test）
+- [x] 后端：`PATCH /workspaces/{id}/rerank-config` 路由（注：rerank 配置通过 `PATCH /workspaces/{id}` 统一保存，未单独建路由，语义等同）
+- [x] 后端：`POST /knowledge/libraries/{id}/search/test` 支持 `use_rerank` 参数
 
 **前端**
-- [ ] SettingsPage：新增第四 Tab Rerank Profiles（列表 + 新建/编辑/测试/删除）
-- [ ] WorkspaceSettingsPage：新增 Rerank 路由配置区块
-- [ ] 检索测试面板：rerank 对比模式（双栏显示，未配置时开关禁用并提示）
+- [x] SettingsPage：新增第四 Tab Rerank Profiles（列表 + 新建/编辑/测试/删除）
+- [x] WorkspaceSettingsPage：新增 Rerank 路由配置区块（含 apply_to_task_types 复选框）
+- [x] 检索测试面板：rerank 开关 + vector_score/rerank_score 分数对比显示（注：实现为单列带双分数标注，非双栏布局，功能等同）
 
 ### 验证步骤（A2）
 

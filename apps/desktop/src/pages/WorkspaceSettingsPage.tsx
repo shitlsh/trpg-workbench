@@ -79,6 +79,7 @@ export default function WorkspaceSettingsPage() {
   const [rerankEnabled, setRerankEnabled] = useState(false);
   const [rerankTopN, setRerankTopN] = useState(5);
   const [rerankTopK, setRerankTopK] = useState(20);
+  const [rerankTaskTypes, setRerankTaskTypes] = useState<string[]>(["rules_review"]);
 
   // Populate form fields once workspace data is available
   useEffect(() => {
@@ -93,6 +94,14 @@ export default function WorkspaceSettingsPage() {
       setRerankEnabled(workspace.rerank_enabled ?? false);
       setRerankTopN(workspace.rerank_top_n ?? 5);
       setRerankTopK(workspace.rerank_top_k ?? 20);
+      setRerankTaskTypes(() => {
+        try {
+          const raw = workspace.rerank_apply_to_task_types;
+          if (!raw) return ["rules_review"];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : ["rules_review"];
+        } catch { return ["rules_review"]; }
+      });
     }
   }, [workspace?.id]); // only re-init when workspace ID changes, not on every field update
 
@@ -118,6 +127,7 @@ export default function WorkspaceSettingsPage() {
       rerank_enabled: rerankEnabled,
       rerank_top_n: rerankTopN,
       rerank_top_k: rerankTopK,
+      rerank_apply_to_task_types: JSON.stringify(rerankTaskTypes),
     });
   }
 
@@ -223,6 +233,24 @@ export default function WorkspaceSettingsPage() {
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -8 }}>
                 先检索 top_k 个候选，Rerank 后保留 top_n 个。top_n 须小于等于 top_k。
               </p>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 13, marginBottom: 6 }}>应用任务类型：</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                  {(["rules_review", "plot_creation", "npc_creation", "monster_creation", "lore_creation", "consistency_check"] as const).map((t) => (
+                    <label key={t} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={rerankTaskTypes.includes(t)}
+                        onChange={(e) => {
+                          if (e.target.checked) setRerankTaskTypes((prev) => [...prev, t]);
+                          else setRerankTaskTypes((prev) => prev.filter((x) => x !== t));
+                        }}
+                      />
+                      {t}
+                    </label>
+                  ))}
+                </div>
+              </div>
             </>
           )}
           <div className={styles.actions}>
