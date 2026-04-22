@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import type { Workspace, RuleSet, CreateWorkspaceRequest } from "@trpg-workbench/shared-schema";
+import { ThemeToggle } from "../components/ThemeToggle";
 import styles from "./HomePage.module.css";
 
 export default function HomePage() {
@@ -71,6 +72,7 @@ export default function HomePage() {
           <button className={styles.btnPrimary} onClick={() => setShowNewForm(true)}>
             新建工作空间
           </button>
+          <ThemeToggle />
         </div>
       </header>
 

@@ -1,111 +1,51 @@
-.page {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-}
+/* MarkdownPreview.module.css */
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
-  flex-shrink: 0;
-}
-
-.back {
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
-  padding: 4px 8px;
-  border-radius: var(--radius);
-}
-.back:hover { color: var(--text); }
-
-.title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
+.wrapper {
   flex: 1;
-}
-
-/* ── Body layout ── */
-.body {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-/* ── Sidebar ── */
-.sidebar {
-  width: 200px;
-  flex-shrink: 0;
-  padding: 20px 0;
-  border-right: 1px solid var(--border);
-  background: var(--bg-surface);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sidebarItem {
-  display: block;
-  padding: 8px 20px;
-  font-size: 13px;
-  color: var(--text-muted);
-  background: transparent;
-  text-align: left;
-  border: none;
-  border-radius: 0;
-  cursor: pointer;
-  transition: color 0.12s, background 0.12s;
-}
-.sidebarItem:hover {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-.sidebarItemActive {
-  color: var(--accent) !important;
-  background: rgba(124, 106, 247, 0.1) !important;
-  font-weight: 500;
-}
-
-/* ── Content scroll area ── */
-.content {
-  flex: 1;
+  height: 100%;
   overflow-y: auto;
-  padding: 44px 56px;
-  max-width: 800px;
+  background: var(--bg);
+  padding: 40px 56px;
+  display: flex;
+  flex-direction: column;
 }
 
-/* ── Prose — uses :global so react-markdown rendered elements are targeted ── */
+.assetName {
+  font-size: 11px;
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 32px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Prose typography (matches HelpPage but scoped here) ── */
 
 .prose {
   font-family: var(--font-prose);
   color: var(--text-prose);
-  line-height: 1.8;
+  line-height: 1.85;
   font-size: 15px;
+  max-width: 680px;
 }
 
-/* Headings */
 .prose :global(h1) {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1.3;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   color: var(--text);
   font-family: var(--font-prose);
 }
 .prose :global(h2) {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 1.4;
   margin-top: 36px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   color: var(--text);
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
   font-family: var(--font-prose);
 }
@@ -115,10 +55,15 @@
   margin-top: 24px;
   margin-bottom: 8px;
   color: var(--text);
-  font-family: var(--font-prose);
+}
+.prose :global(h4) {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 16px;
+  margin-bottom: 6px;
+  color: var(--text-muted);
 }
 
-/* Paragraphs */
 .prose :global(p) {
   margin-bottom: 14px;
   color: var(--text-prose);
@@ -131,7 +76,6 @@
   font-style: italic;
 }
 
-/* Lists */
 .prose :global(ul),
 .prose :global(ol) {
   margin-bottom: 14px;
@@ -141,11 +85,7 @@
   margin-bottom: 5px;
   color: var(--text-prose);
 }
-.prose :global(li > p) {
-  margin-bottom: 4px;
-}
 
-/* Blockquote */
 .prose :global(blockquote) {
   border-left: 3px solid var(--accent);
   padding: 10px 18px;
@@ -159,18 +99,16 @@
   color: var(--text-muted);
 }
 
-/* Inline code */
 .prose :global(code) {
   background: var(--code-bg);
   border: 1px solid var(--code-border);
   border-radius: 4px;
   padding: 1px 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--accent);
 }
 
-/* Code block */
 .prose :global(pre) {
   background: var(--code-bg);
   border: 1px solid var(--code-border);
@@ -187,14 +125,14 @@
   font-size: 13px;
 }
 
-/* ── Table — full reset + re-style ── */
+/* ── Table ── */
 .prose :global(table) {
   width: 100%;
   border-collapse: collapse;
   border-spacing: 0;
   margin: 20px 0;
-  font-size: 14px;
-  font-family: var(--font-ui);  /* tables stay in UI font for alignment */
+  font-size: 13px;
+  font-family: var(--font-ui);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -207,9 +145,9 @@
 }
 .prose :global(th) {
   text-align: left;
-  padding: 10px 14px;
+  padding: 9px 13px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text);
   white-space: nowrap;
 }
@@ -223,7 +161,7 @@
   background: var(--table-stripe);
 }
 .prose :global(td) {
-  padding: 9px 14px;
+  padding: 8px 13px;
   color: var(--text-prose);
   vertical-align: top;
 }
@@ -231,14 +169,12 @@
   background: var(--bg-hover);
 }
 
-/* Horizontal rule */
 .prose :global(hr) {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 32px 0;
+  margin: 28px 0;
 }
 
-/* Links */
 .prose :global(a) {
   color: var(--accent);
   text-decoration: underline;
@@ -246,5 +182,15 @@
 }
 .prose :global(a:hover) {
   color: var(--accent-hover);
-  text-decoration-color: var(--accent-hover);
+}
+
+/* Empty state */
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: var(--font-ui);
 }

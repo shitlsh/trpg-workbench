@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { AssetWithContent } from "@trpg-workbench/shared-schema";
 
-export type EditorView = "markdown" | "json" | "diff";
+export type EditorView = "markdown" | "json" | "diff" | "preview";
 
 export interface EditorTab {
   assetId: string;

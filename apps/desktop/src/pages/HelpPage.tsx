@@ -1,5 +1,7 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { ThemeToggle } from "../components/ThemeToggle";
 import styles from "./HelpPage.module.css";
 
 // Vite ?raw imports for dev mode
@@ -38,6 +40,7 @@ export default function HelpPage() {
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate(-1)}>← 返回</button>
         <span className={styles.title}>帮助文档 — {title}</span>
+        <ThemeToggle />
       </header>
 
       <div className={styles.body}>
@@ -60,7 +63,7 @@ export default function HelpPage() {
         {/* Content */}
         <main className={styles.content}>
           <div className={styles.prose}>
-            <ReactMarkdown>{content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </div>
         </main>
       </div>

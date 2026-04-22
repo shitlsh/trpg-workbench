@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, History, Save, RotateCcw } from "lucide-react";
 import type { AssetWithContent, AssetRevision } from "@trpg-workbench/shared-schema";
 import { useEditorStore, EditorTab, EditorView } from "@/stores/editorStore";
+import { useThemeStore } from "@/stores/themeStore";
+import { MarkdownPreview } from "./MarkdownPreview";
 import { apiFetch } from "@/lib/api";
 
 // ─── Tab Bar ─────────────────────────────────────────────────────────────────
@@ -163,6 +165,8 @@ function RevisionSidebar({ tab }: { tab: EditorTab }) {
 function AssetEditor({ tab }: { tab: EditorTab }) {
   const qc = useQueryClient();
   const { updateDraft, markSaved, setView, toggleHistory } = useEditorStore();
+  const { theme } = useThemeStore();
+  const monacoTheme = theme === "dark" ? "vs-dark" : "vs";
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -199,8 +203,9 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
 
   const viewTabs: { key: EditorView; label: string }[] = [
     { key: "markdown", label: "Markdown" },
-    { key: "json", label: "JSON" },
-    { key: "diff", label: "Diff" },
+    { key: "json",     label: "JSON" },
+    { key: "diff",     label: "Diff" },
+    { key: "preview",  label: "预览" },
   ];
 
   return (
@@ -272,7 +277,7 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
             <Editor
               height="100%"
               language="markdown"
-              theme="vs-dark"
+              theme={monacoTheme}
               value={tab.draftMd}
               onChange={(v) => updateDraft(tab.assetId, v ?? "", undefined)}
               options={{ wordWrap: "on", minimap: { enabled: false }, fontSize: 14, lineNumbers: "off" }}
@@ -282,7 +287,7 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
             <Editor
               height="100%"
               language="json"
-              theme="vs-dark"
+              theme={monacoTheme}
               value={tab.draftJson}
               onChange={(v) => updateDraft(tab.assetId, undefined, v ?? "")}
               options={{ wordWrap: "on", minimap: { enabled: false }, fontSize: 13, formatOnPaste: true }}
@@ -292,10 +297,16 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
             <DiffEditor
               height="100%"
               language="markdown"
-              theme="vs-dark"
+              theme={monacoTheme}
               original={tab.asset.content_md}
               modified={tab.draftMd}
               options={{ readOnly: true, wordWrap: "on", renderSideBySide: true }}
+            />
+          )}
+          {tab.view === "preview" && (
+            <MarkdownPreview
+              content={tab.draftMd}
+              assetName={tab.asset.name}
             />
           )}
         </div>

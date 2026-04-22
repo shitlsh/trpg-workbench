@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { checkHealth } from "./lib/api";
 import { useBackendStore } from "./stores/backendStore";
+import { useThemeStore, applyTheme } from "./stores/themeStore";
 import StartingScreen from "./pages/StartingScreen";
 import FailedScreen from "./pages/FailedScreen";
 import HomePage from "./pages/HomePage";
@@ -23,7 +24,6 @@ function TauriHelpListener() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Only run inside Tauri environment
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
 
     let unlisten: (() => void) | undefined;
@@ -40,10 +40,18 @@ function TauriHelpListener() {
   return null;
 }
 
+// ── App ───────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const { status, setStatus } = useBackendStore();
+  const { theme } = useThemeStore();
   const startTimeRef = useRef(Date.now());
   const reconnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Apply persisted theme on mount
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   // Startup polling
   useEffect(() => {
@@ -94,24 +102,26 @@ export default function App() {
   }, [status, setStatus]);
 
   if (status === "starting") return <StartingScreen />;
-  if (status === "failed") return <FailedScreen onRetry={() => { startTimeRef.current = Date.now(); setStatus("starting"); }} />;
+  if (status === "failed") return (
+    <FailedScreen onRetry={() => { startTimeRef.current = Date.now(); setStatus("starting"); }} />
+  );
 
   return (
     <BrowserRouter>
       {status === "disconnected" && <DisconnectedBanner />}
       <TauriHelpListener />
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/settings/models" element={<SettingsPage />} />
-          <Route path="/settings/prompts" element={<PromptProfilesPage />} />
-          <Route path="/usage" element={<UsagePage />} />
-          <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
-          <Route path="/workspace/:id" element={<WorkspacePage />} />
-          <Route path="/knowledge" element={<KnowledgePage />} />
-          <Route path="/help/:doc" element={<HelpPage />} />
-          <Route path="/help" element={<Navigate to="/help/getting-started" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/settings/models" element={<SettingsPage />} />
+        <Route path="/settings/prompts" element={<PromptProfilesPage />} />
+        <Route path="/usage" element={<UsagePage />} />
+        <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
+        <Route path="/workspace/:id" element={<WorkspacePage />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
+        <Route path="/help/:doc" element={<HelpPage />} />
+        <Route path="/help" element={<Navigate to="/help/getting-started" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </BrowserRouter>
   );
 }
