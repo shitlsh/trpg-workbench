@@ -1,6 +1,8 @@
 ---
-status: proposed
+status: accepted
 date: 2026-04-23
+accepted_date: 2026-04-23
+milestone: M12
 source: OpenPawz
 theme: 创作控制感 / workbench 协同
 priority: medium

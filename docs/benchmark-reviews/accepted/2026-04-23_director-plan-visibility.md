@@ -1,6 +1,8 @@
 ---
-status: proposed
+status: accepted
 date: 2026-04-23
+accepted_date: 2026-04-23
+milestone: M12
 source: OpenPawz
 theme: agent 编排与人机协作体验
 priority: medium
