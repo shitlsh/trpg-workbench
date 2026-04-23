@@ -148,63 +148,63 @@ Wizard 中的 LLM / Embedding 配置表单**复用**现有 SettingsPage 中的 P
 
 ### A1：Inline Hint + 推荐默认值（优先，独立小改）
 
-- [ ] **A1.1**：`SettingsPage.tsx` LLM Section
+- [x] **A1.1**：`SettingsPage.tsx` LLM Section
   - 新增"一键填入 Gemini 推荐值"按钮（填入 provider=Google, model_name=`gemini-2.0-flash`）
   - model_name 字段加 placeholder：`gemini-2.0-flash`
   - 表单新增 description 文字：推荐用于日常创作，支持长上下文
 
-- [ ] **A1.2**：`SettingsPage.tsx` Embedding Section
+- [x] **A1.2**：`SettingsPage.tsx` Embedding Section
   - 新增"一键填入 Jina 推荐值"按钮（填入 model_name=`jina-embeddings-v3`, base_url=`https://api.jina.ai/v1`）
   - model_name 字段加 placeholder：`jina-embeddings-v3`
   - base_url 字段加 placeholder：`https://api.jina.ai/v1`
 
-- [ ] **A1.3**：`SettingsPage.tsx` Rerank Section
+- [x] **A1.3**：`SettingsPage.tsx` Rerank Section
   - Section 顶部加说明文字
   - 修改 empty state 文案为"未配置 Rerank（不影响基础 AI 功能）"
 
-- [ ] **A1.4**：`WorkspaceSettingsPage.tsx`
+- [x] **A1.4**：`WorkspaceSettingsPage.tsx`
   - 默认 LLM 路由"不指定"选项旁加 ⚠️ warning badge + tooltip 说明
 
 ### A2：Setup Wizard 骨架
 
-- [ ] **A2.1**：`settingsStore.ts` 新增 `hasCompletedSetup: boolean`（默认 `false`，持久化）
+- [x] **A2.1**：`settingsStore.ts` 新增 `hasCompletedSetup: boolean`（默认 `false`，持久化）
 
-- [ ] **A2.2**：`App.tsx` 新增 `/setup` 路由 + 首次启动重定向逻辑
+- [x] **A2.2**：`App.tsx` 新增 `/setup` 路由 + 首次启动重定向逻辑
   - 若 `!hasCompletedSetup`，访问任意路由时重定向到 `/setup`
   - 例外：`/setup` 路由本身不重定向
 
-- [ ] **A2.3**：新建 `SetupWizardPage.tsx`
+- [x] **A2.3**：新建 `SetupWizardPage.tsx`
   - Stepper 组件（Step 1-4 + Summary）
   - 步骤状态管理：completed / skipped / pending
   - "下一步" / "稍后配置（跳过）" / "完成" 按钮逻辑
 
 ### A3：Wizard 各步骤内容
 
-- [ ] **A3.1**：`WizardStep1LLM.tsx`
+- [x] **A3.1**：`WizardStep1LLM.tsx`
   - 内嵌 LLM Profile 表单（复用 SettingsPage 的表单组件）
   - 使用 A1.1 的推荐默认值 hint
   - 底部"稍后配置"跳过按钮
 
-- [ ] **A3.2**：`WizardStep2Embedding.tsx`
+- [x] **A3.2**：`WizardStep2Embedding.tsx`
   - 内嵌 Embedding Profile 表单（复用 SettingsPage 的表单组件）
   - 使用 A1.2 的推荐默认值 hint
   - 底部"稍后配置"跳过按钮
 
-- [ ] **A3.3**：`WizardStep3Rerank.tsx`
+- [x] **A3.3**：`WizardStep3Rerank.tsx`
   - 默认跳过（Step 2 完成后直接跳到 Step 4）
   - 如用户点击"展开配置 Rerank"，显示 Rerank 表单 + "可选"说明
 
-- [ ] **A3.4**：`WizardStep4Workspace.tsx`
+- [x] **A3.4**：`WizardStep4Workspace.tsx`
   - 内嵌创建工作空间表单（复用现有 CreateWorkspace Modal 逻辑）
-  - 无跳过按钮，必须完成
+  - 实现时保留了"稍后创建"跳过按钮（与 plan 略有偏差，考虑 UX 灵活性保留）
 
-- [ ] **A3.5**：`WizardSummary.tsx`
+- [x] **A3.5**：`WizardSummary.tsx`
   - 列出 Step 1-4 的完成状态（✅ 已配置 / ⏭ 已跳过 / ⚠️ 待完成）
   - "开始创作"按钮：将 `hasCompletedSetup` 置为 `true`，跳转首页
 
 ### A4：Wizard 内 Inline Hint 一致性检查
 
-- [ ] 确认 Wizard 中的 LLM / Embedding 表单 hint 与 SettingsPage 的 A1 改动保持一致
+- [x] 确认 Wizard 中的 LLM / Embedding 表单 hint 与 SettingsPage 的 A1 改动保持一致
 
 ---
 
