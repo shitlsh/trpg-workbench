@@ -176,11 +176,13 @@ async def resume_create_module(
             except Exception:
                 knowledge_context = []
         rules_result = run_rules_agent(full_prefix + premise, knowledge_context, model=model)
-        citations_detail = json.dumps(
-            [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
-              "page_to": c.get("page_to"), "content": c.get("content", "")}
-             for c in knowledge_context if isinstance(c, dict)],
-            ensure_ascii=False,
+        citations_detail = (
+            json.dumps(
+                [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+                  "page_to": c.get("page_to"), "content": c.get("content", "")}
+                 for c in knowledge_context if isinstance(c, dict)],
+                ensure_ascii=False,
+            ) if knowledge_context else None
         )
         update_step(db, wf, 3, STEP_NAMES[3], "completed",
                     summary=rules_result.get("summary", "规则检索完成"),

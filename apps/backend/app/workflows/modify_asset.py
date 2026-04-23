@@ -66,13 +66,18 @@ async def run_modify_asset(
                 questions = clarify_result.get("clarification_questions", [])
                 pause_for_clarification(db, wf, questions)
                 return wf
-
-        # ── Step 1: Director intent analysis ───────────────────────────────
-        update_step(db, wf, 1, STEP_NAMES[1], "running")
-        change_plan = run_director(style_prefix + user_intent, ws_ctx, model=model)
-        wf.director_intent = change_plan.get("intent") or change_plan.get("change_plan", "")
-        update_step(db, wf, 1, STEP_NAMES[1], "completed",
-                    summary=change_plan.get("change_plan", ""))
+            # No clarification needed – reuse this result as the change plan
+            change_plan = clarify_result
+            wf.director_intent = change_plan.get("intent") or change_plan.get("change_plan", "")
+            update_step(db, wf, 1, STEP_NAMES[1], "completed",
+                        summary=change_plan.get("change_plan", ""))
+        else:
+            # ── Step 1: Director intent analysis ───────────────────────────────
+            update_step(db, wf, 1, STEP_NAMES[1], "running")
+            change_plan = run_director(style_prefix + user_intent, ws_ctx, model=model)
+            wf.director_intent = change_plan.get("intent") or change_plan.get("change_plan", "")
+            update_step(db, wf, 1, STEP_NAMES[1], "completed",
+                        summary=change_plan.get("change_plan", ""))
 
         # ── Step 2: Knowledge retrieval ────────────────────────────────────
         update_step(db, wf, 2, STEP_NAMES[2], "running")
@@ -84,11 +89,13 @@ async def run_modify_asset(
                 )
             except Exception:
                 knowledge_context = []
-        citations_detail = json.dumps(
-            [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
-              "page_to": c.get("page_to"), "content": c.get("content", "")}
-             for c in knowledge_context if isinstance(c, dict)],
-            ensure_ascii=False,
+        citations_detail = (
+            json.dumps(
+                [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+                  "page_to": c.get("page_to"), "content": c.get("content", "")}
+                 for c in knowledge_context if isinstance(c, dict)],
+                ensure_ascii=False,
+            ) if knowledge_context else None
         )
         update_step(db, wf, 2, STEP_NAMES[2], "completed",
                     summary=f"检索到 {len(knowledge_context)} 条相关内容",
@@ -247,11 +254,13 @@ async def resume_modify_asset(
                 )
             except Exception:
                 knowledge_context = []
-        citations_detail = json.dumps(
-            [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
-              "page_to": c.get("page_to"), "content": c.get("content", "")}
-             for c in knowledge_context if isinstance(c, dict)],
-            ensure_ascii=False,
+        citations_detail = (
+            json.dumps(
+                [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+                  "page_to": c.get("page_to"), "content": c.get("content", "")}
+                 for c in knowledge_context if isinstance(c, dict)],
+                ensure_ascii=False,
+            ) if knowledge_context else None
         )
         update_step(db, wf, 2, STEP_NAMES[2], "completed",
                     summary=f"检索到 {len(knowledge_context)} 条相关内容",
