@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: completed
 date: 2026-04-23
 source: Inscriptor
 theme: 彩色图标体系与视觉语言
