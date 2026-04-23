@@ -14,7 +14,9 @@ import UsagePage from "./pages/UsagePage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import HelpPage from "./pages/HelpPage";
 import RuleSetPage from "./pages/RuleSetPage";
+import SetupWizardPage from "./pages/SetupWizardPage";
 import DisconnectedBanner from "./components/DisconnectedBanner";
+import { useSettingsStore } from "./stores/settingsStore";
 
 const POLL_INTERVAL = 500;
 const STARTUP_TIMEOUT = 30_000;
@@ -24,6 +26,7 @@ const STARTUP_TIMEOUT = 30_000;
 export default function App() {
   const { status, setStatus } = useBackendStore();
   const { theme } = useThemeStore();
+  const { hasCompletedSetup } = useSettingsStore();
   const startTimeRef = useRef(Date.now());
   const reconnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -89,7 +92,8 @@ export default function App() {
     <BrowserRouter>
       {status === "disconnected" && <DisconnectedBanner />}
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/setup" element={<SetupWizardPage />} />
+        <Route path="/" element={hasCompletedSetup ? <HomePage /> : <Navigate to="/setup" replace />} />
         <Route path="/settings/rule-sets" element={<RuleSetPage />} />
         <Route path="/settings/models" element={<SettingsPage />} />
         <Route path="/settings/prompts" element={<PromptProfilesPage />} />

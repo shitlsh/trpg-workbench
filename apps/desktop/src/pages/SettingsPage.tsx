@@ -48,6 +48,21 @@ const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
   base_url: "", api_key: "", dimensions: undefined,
 };
 
+const GEMINI_PRESET: Partial<CreateLLMProfileRequest> = {
+  provider_type: "google",
+  model_name: "gemini-2.0-flash",
+  base_url: "",
+  supports_json_mode: true,
+  supports_tools: true,
+};
+
+const JINA_EMBEDDING_PRESET: Partial<CreateEmbeddingProfileRequest> = {
+  provider_type: "openai_compatible",
+  model_name: "jina-embeddings-v3",
+  base_url: "https://api.jina.ai/v1",
+};
+
+
 // ─── LLM Section ──────────────────────────────────────────────────────────────
 
 function LLMSection() {
@@ -164,6 +179,20 @@ function LLMSection() {
         <div className={styles.overlay} onClick={closeForm}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>{editTarget ? "编辑 LLM 配置" : "新增 LLM 配置"}</h2>
+            {!editTarget && (
+              <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐：Google Gemini，支持长上下文，适合 TRPG 创作场景</span>
+                <button
+                  type="button"
+                  style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
+                  onClick={() => {
+                    setForm((f) => ({ ...f, ...GEMINI_PRESET, name: f.name || "Gemini 2.0 Flash" }));
+                  }}
+                >
+                  一键填入 Gemini 推荐值
+                </button>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className={styles.form}>
               <label className={styles.label}>
                 配置名称 *
@@ -177,7 +206,7 @@ function LLMSection() {
               </label>
               <label className={styles.label}>
                 模型名称 *
-                <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：gpt-4o" />
+                <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：gemini-2.0-flash" />
               </label>
               {showBaseUrl && (
                 <label className={styles.label}>
@@ -360,6 +389,20 @@ function EmbeddingSection() {
         <div className={styles.overlay} onClick={closeForm}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>{editTarget ? "编辑 Embedding 配置" : "新增 Embedding 配置"}</h2>
+            {!editTarget && (
+              <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐：Jina Embeddings v3，多语言支持，适合中文规则书检索</span>
+                <button
+                  type="button"
+                  style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
+                  onClick={() => {
+                    setForm((f) => ({ ...f, ...JINA_EMBEDDING_PRESET, name: f.name || "Jina Embeddings v3" }));
+                  }}
+                >
+                  一键填入 Jina 推荐值
+                </button>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className={styles.form}>
               <label className={styles.label}>
                 配置名称 *
@@ -373,12 +416,12 @@ function EmbeddingSection() {
               </label>
               <label className={styles.label}>
                 模型名称 *
-                <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：text-embedding-3-small" />
+                <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：jina-embeddings-v3" />
               </label>
               {showBaseUrl && (
                 <label className={styles.label}>
                   Base URL *
-                  <input className={styles.input} value={form.base_url ?? ""} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://..." />
+                  <input className={styles.input} value={form.base_url ?? ""} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://api.jina.ai/v1" />
                 </label>
               )}
               <label className={styles.label}>
@@ -738,6 +781,9 @@ function RerankSection() {
 
   return (
     <div>
+      <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(255,200,50,0.06)", border: "1px solid rgba(255,200,50,0.2)", borderRadius: 6, fontSize: 12, color: "var(--text-muted)" }}>
+        Rerank 为<strong style={{ color: "var(--text)" }}>可选功能，默认不启用</strong>。仅在需要更精准的知识库检索时配置，不影响基础 AI 功能。
+      </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
           配置 Rerank 重排序供应商（默认推荐：Jina jina-reranker-v2-base-multilingual）
@@ -747,8 +793,8 @@ function RerankSection() {
       {isLoading && <p className={styles.muted}>加载中...</p>}
       {!isLoading && profiles.length === 0 && (
         <div className={styles.empty}>
-          <p>还没有 Rerank 配置</p>
-          <button className={styles.btnPrimary} onClick={openNew}>新增第一个</button>
+          <p>未配置 Rerank（不影响基础 AI 功能）</p>
+          <button className={styles.btnSecondary} onClick={openNew}>可选：新增配置</button>
         </div>
       )}
       <div className={styles.list}>

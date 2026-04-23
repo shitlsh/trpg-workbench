@@ -318,8 +318,13 @@ export default function WorkspaceSettingsPage() {
           </label>
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>模型路由</div>
           <label className={styles.label}>
-            <span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
               默认 LLM（用于创建模组、修改资产等所有 AI 任务）
+              {!defaultLlmId && (
+                <span title="未指定 LLM 时，所有 AI 功能将无法运行" style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(230,160,30,0.15)", color: "#d4a020", border: "1px solid rgba(230,160,30,0.3)", cursor: "default" }}>
+                  ⚠ 未指定
+                </span>
+              )}
               <CatalogHint profile={selectedDefaultLlm} catalog={llmCatalog} />
             </span>
             <select className={styles.select} value={defaultLlmId} onChange={(e) => setDefaultLlmId(e.target.value)}>
