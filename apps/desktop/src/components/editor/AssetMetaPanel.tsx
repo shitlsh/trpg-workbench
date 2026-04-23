@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image, Loader2 } from "lucide-react";
 import type { AssetWithContent, AssetStatus } from "@trpg-workbench/shared-schema";
 import { useEditorStore } from "@/stores/editorStore";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { apiFetch } from "@/lib/api";
 
 const STATUS_OPTIONS: { value: AssetStatus; label: string; color: string }[] = [
@@ -165,6 +166,7 @@ function ImageSection({ assetId, contentJson }: { assetId: string; contentJson: 
 export function AssetMetaPanel() {
   const qc = useQueryClient();
   const { tabs, activeTabId, markSaved } = useEditorStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
   const tab = tabs.find((t) => t.assetId === activeTabId);
 
   const statusMutation = useMutation({
@@ -176,7 +178,7 @@ export function AssetMetaPanel() {
     },
     onSuccess: (updated) => {
       markSaved(tab!.assetId, updated);
-      qc.invalidateQueries({ queryKey: ["assets"] });
+      qc.invalidateQueries({ queryKey: ["assets", activeWorkspaceId] });
     },
   });
 

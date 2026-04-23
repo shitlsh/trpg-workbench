@@ -346,6 +346,7 @@ export default function KnowledgePage() {
   const [newLibType, setNewLibType] = useState<LibraryType>("core_rules");
   const [newLibDesc, setNewLibDesc] = useState("");
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedDocIds, setExpandedDocIds] = useState<Set<string>>(new Set());
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [showSearchTest, setShowSearchTest] = useState(false);
@@ -395,15 +396,24 @@ export default function KnowledgePage() {
 
   async function handleUpload(file: File) {
     if (!selectedLibId) return;
+    setUploadError(null);
     const form = new FormData();
     form.append("file", file);
     const url = new URL(`${BACKEND_URL}/knowledge/libraries/${selectedLibId}/documents`);
     if (activeWorkspaceId) url.searchParams.set("workspace_id", activeWorkspaceId);
-    const res = await fetch(url.toString(), { method: "POST", body: form });
-    if (!res.ok) throw new Error("Upload failed");
-    const data = await res.json();
-    setUploadingTaskId(data.task_id);
-    queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", selectedLibId] });
+    try {
+      const res = await fetch(url.toString(), { method: "POST", body: form });
+      if (!res.ok) {
+        let detail = "Upload failed";
+        try { const body = await res.json(); detail = body?.detail ?? detail; } catch {}
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      setUploadingTaskId(data.task_id);
+      queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", selectedLibId] });
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   function toggleDocExpand(docId: string) {
@@ -506,6 +516,13 @@ export default function KnowledgePage() {
                   }}
                 />
               </div>
+
+              {/* Upload error */}
+              {uploadError && (
+                <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>
+                  {uploadError}
+                </div>
+              )}
 
               {/* Active task progress */}
               {activeTask && (activeTask.status === "running" || activeTask.status === "pending") && (

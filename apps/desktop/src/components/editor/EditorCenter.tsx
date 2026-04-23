@@ -5,6 +5,7 @@ import { X, History, Save, RotateCcw } from "lucide-react";
 import type { AssetWithContent, AssetRevision } from "@trpg-workbench/shared-schema";
 import { useEditorStore, EditorTab, EditorView } from "@/stores/editorStore";
 import { useThemeStore } from "@/stores/themeStore";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { apiFetch } from "@/lib/api";
 
@@ -102,6 +103,7 @@ function TabBar() {
 function RevisionSidebar({ tab }: { tab: EditorTab }) {
   const qc = useQueryClient();
   const { markSaved } = useEditorStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
 
   const { data: revisions = [] } = useQuery<AssetRevision[]>({
     queryKey: ["asset", tab.assetId, "revisions"],
@@ -117,7 +119,7 @@ function RevisionSidebar({ tab }: { tab: EditorTab }) {
     onSuccess: (asset) => {
       markSaved(tab.assetId, asset);
       qc.invalidateQueries({ queryKey: ["asset", tab.assetId, "revisions"] });
-      qc.invalidateQueries({ queryKey: ["assets"] });
+      qc.invalidateQueries({ queryKey: ["assets", activeWorkspaceId] });
     },
   });
 
@@ -166,6 +168,7 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
   const qc = useQueryClient();
   const { updateDraft, markSaved, setView, toggleHistory } = useEditorStore();
   const { theme } = useThemeStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
   const monacoTheme = theme === "dark" ? "vs-dark" : "vs";
 
   const saveMutation = useMutation({
@@ -184,7 +187,7 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
     },
     onSuccess: (updated) => {
       markSaved(tab.assetId, updated);
-      qc.invalidateQueries({ queryKey: ["assets"] });
+      qc.invalidateQueries({ queryKey: ["assets", activeWorkspaceId] });
       qc.invalidateQueries({ queryKey: ["asset", tab.assetId, "revisions"] });
     },
   });

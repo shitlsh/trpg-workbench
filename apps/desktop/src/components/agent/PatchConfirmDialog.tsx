@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { PatchProposal } from "@trpg-workbench/shared-schema";
 import { apiFetch } from "@/lib/api";
 import { useAgentStore } from "@/stores/agentStore";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface PatchConfirmDialogProps {
@@ -14,6 +15,7 @@ interface PatchConfirmDialogProps {
 export function PatchConfirmDialog({ patches, workflowId, onDone }: PatchConfirmDialogProps) {
   const qc = useQueryClient();
   const { closePatchDialog } = useAgentStore();
+  const { activeWorkspaceId } = useWorkspaceStore();
   const [selected, setSelected] = useState(0);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,7 @@ export function PatchConfirmDialog({ patches, workflowId, onDone }: PatchConfirm
           });
         }
       }
-      qc.invalidateQueries({ queryKey: ["assets"] });
+      qc.invalidateQueries({ queryKey: ["assets", activeWorkspaceId] });
       closePatchDialog();
       onDone();
     } catch (e) {

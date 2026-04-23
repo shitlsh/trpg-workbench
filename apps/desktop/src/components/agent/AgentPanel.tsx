@@ -261,6 +261,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [rulesReview, setRulesReview] = useState<{ suggestions: RulesSuggestion[]; summary: string } | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const [modelWarning, setModelWarning] = useState<string | null>(null);
@@ -300,13 +301,16 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   // Ensure a session exists
   useEffect(() => {
     if (!session) {
+      setSessionError(null);
       apiFetch<ChatSession>("/chat/sessions", {
         method: "POST",
         body: JSON.stringify({ workspace_id: workspaceId }),
       }).then((s) => {
         setSession(s);
         setMessages([]);
-      }).catch(() => {});
+      }).catch((e) => {
+        setSessionError(e?.message ?? "无法连接到后端，请检查服务状态");
+      });
     }
   }, [workspaceId]);
 
@@ -627,6 +631,13 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
+      {/* Session error */}
+      {sessionError && (
+        <div style={{ padding: "6px 12px", background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>
+          {sessionError}
+        </div>
+      )}
+
       {/* Input area */}
       <div style={{
         padding: "8px 12px", borderTop: "1px solid var(--border)",
@@ -646,7 +657,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         />
         <button
           onClick={handleSend}
-          disabled={!input.trim() || sendMutation.isPending}
+          disabled={!input.trim() || sendMutation.isPending || !session}
           style={{
             padding: "8px", borderRadius: 6,
             background: input.trim() ? "var(--accent)" : "var(--bg-hover)",

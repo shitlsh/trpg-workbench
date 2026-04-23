@@ -13,12 +13,14 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
   completed: <CheckCircle size={14} color="#52c97e" />,
   failed: <XCircle size={14} color="#e05252" />,
   running: <Loader size={14} color="#7c6af7" className="animate-spin" />,
+  planning: <Loader size={14} color="#7c6af7" className="animate-spin" />,
+  waiting_for_clarification: <Clock size={14} color="#f0a500" />,
   waiting_confirm: <Clock size={14} color="#f0a500" />,
   pending: <div style={{ width: 14, height: 14, borderRadius: "50%", background: "var(--border)" }} />,
 };
 
 interface Citation {
-  document_name: string;
+  document_filename: string;
   page_from?: number | null;
   page_to?: number | null;
   content: string;
@@ -51,7 +53,7 @@ function CitationsPanel({ detail }: { detail: string }) {
           {citations.map((c, i) => (
             <div key={i} style={{ fontSize: 11 }}>
               <div style={{ fontWeight: 500, color: "var(--text)" }}>
-                {c.document_name}
+                {c.document_filename}
                 {c.page_from != null && (
                   <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
                     {" "}p.{c.page_from}{c.page_to && c.page_to !== c.page_from ? `–${c.page_to}` : ""}
@@ -267,14 +269,17 @@ const WORKFLOW_TYPE_LABELS: Record<string, string> = {
   generate_image: "图像生成",
 };
 const STATUS_LABELS: Record<string, string> = {
-  pending: "等待中", running: "执行中", paused: "等待确认",
+  pending: "等待中", running: "执行中", planning: "规划中",
+  waiting_for_clarification: "等待澄清", paused: "等待确认",
   completed: "完成", failed: "失败",
 };
 const STATUS_BG: Record<string, string> = {
-  running: "#1a1a3a", paused: "#3a2c0a", completed: "#0a2a1a", failed: "#2a0a0a",
+  running: "#1a1a3a", planning: "#1a1a3a", waiting_for_clarification: "#3a2c0a",
+  paused: "#3a2c0a", completed: "#0a2a1a", failed: "#2a0a0a",
 };
 const STATUS_FG: Record<string, string> = {
-  running: "#7c6af7", paused: "#f0a500", completed: "#52c97e", failed: "#e05252",
+  running: "#7c6af7", planning: "#7c6af7", waiting_for_clarification: "#f0a500",
+  paused: "#f0a500", completed: "#52c97e", failed: "#e05252",
 };
 
 const btnPrimary: React.CSSProperties = {
