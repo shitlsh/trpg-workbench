@@ -1,27 +1,34 @@
 #!/usr/bin/env python3
 """
-smoke_and_screenshot.py — M9 A1 smoke test & screenshot script for trpg-workbench.
+smoke_and_screenshot.py — smoke test, screenshot & help-image generation for trpg-workbench.
 
 Usage (servers already running):
     apps/backend/.venv/bin/python scripts/smoke/smoke_and_screenshot.py
 
+Help-images mode (generate screenshots for in-app Help docs):
+    apps/backend/.venv/bin/python scripts/smoke/smoke_and_screenshot.py --help-images
+
 Usage (start servers via webapp-testing skill's with_server.py):
-    python <webapp-testing-skill-path>/scripts/with_server.py \
-      --server "cd apps/backend && .venv/bin/python server.py" --port 7821 \
-      --server "cd apps/desktop && pnpm dev" --port 5173 \
+    python <webapp-testing-skill-path>/scripts/with_server.py \\
+      --server "cd apps/backend && .venv/bin/python server.py" --port 7821 \\
+      --server "cd apps/desktop && pnpm dev" --port 5173 \\
       -- apps/backend/.venv/bin/python scripts/smoke/smoke_and_screenshot.py
 
 Options:
-    --frontend  Frontend base URL  (default: http://localhost:5173)
-    --backend   Backend base URL   (default: http://localhost:7821)
-    --out       Output base dir    (default: docs/ui-snapshots)
-    --date      Override date slug (default: today in Asia/Shanghai, YYYY-MM-DD)
+    --frontend     Frontend base URL  (default: http://localhost:5173)
+    --backend      Backend base URL   (default: http://localhost:7821)
+    --out          Output base dir    (default: docs/ui-snapshots)
+    --date         Override date slug (default: today in Asia/Shanghai, YYYY-MM-DD)
+    --help-images  Generate help doc screenshots into apps/desktop/public/help-images/
 
-Outputs (all relative to --out/<date>/):
+Outputs (smoke mode, all relative to --out/<date>/):
     screenshots/<slug>.png
     smoke-report.md
 And updates:
     docs/ui-snapshots/latest-manifest.json
+
+Outputs (--help-images mode):
+    apps/desktop/public/help-images/<name>.png
 """
 
 import argparse
@@ -40,6 +47,8 @@ def parse_args():
     p.add_argument("--out",      default="docs/ui-snapshots")
     p.add_argument("--date",     default=None,
                    help="Date slug YYYY-MM-DD (default: today UTC+8)")
+    p.add_argument("--help-images", action="store_true",
+                   help="Generate screenshots for in-app Help docs")
     return p.parse_args()
 
 
@@ -285,10 +294,116 @@ def write_latest_manifest(snapshots_root: Path, date_slug: str, run_at: str):
     )
 
 
+# ── Help-images mode ──────────────────────────────────────────────────────────
+
+# Pages to capture for help docs.
+# Each entry: (output_filename, route, description)
+# Special handling: "setup-wizard" is captured before skipping the wizard.
+HELP_IMAGE_PAGES = [
+    ("setup-wizard.png", "/setup",           "Setup Wizard (first launch)"),
+    ("home.png",         "/",                "Home page"),
+    ("model-config.png", "/settings/models", "Model config (tabs)"),
+    ("settings-llm.png", "/settings/models", "LLM config form"),
+    ("knowledge.png",    "/knowledge",       "Knowledge library"),
+    ("ruleset.png",      "/settings/rule-sets", "Rule set management"),
+    ("help-page.png",    "/help/getting-started", "Help page"),
+]
+
+
+def generate_help_images(frontend_url: str, backend_url: str):
+    """Capture screenshots for in-app Help docs.
+
+    Handles the Setup Wizard: if the app redirects to /setup on first visit,
+    captures the wizard page first, then skips it by toggling the
+    hasCompletedSetup flag in localStorage before capturing remaining pages.
+    """
+    from playwright.sync_api import sync_playwright
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    out_dir = project_root / "apps" / "desktop" / "public" / "help-images"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    workspace_id = discover_workspace(backend_url)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            ctx = browser.new_context(viewport=VIEWPORT)
+            page = ctx.new_page()
+
+            # ── Step 1: check if we land on setup wizard ──
+            page.goto(frontend_url, timeout=NAV_TIMEOUT)
+            page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
+            page.wait_for_timeout(1000)
+
+            if "/setup" in page.url:
+                # Capture the wizard
+                print("  ✓ setup-wizard.png  (first-launch wizard)")
+                page.screenshot(
+                    path=str(out_dir / "setup-wizard.png"), full_page=True
+                )
+
+                # Skip wizard by setting hasCompletedSetup in localStorage
+                page.evaluate("""() => {
+                    const raw = localStorage.getItem('settings-storage');
+                    if (raw) {
+                        const obj = JSON.parse(raw);
+                        if (obj.state) obj.state.hasCompletedSetup = true;
+                        localStorage.setItem('settings-storage', JSON.stringify(obj));
+                    }
+                }""")
+                page.goto(frontend_url, timeout=NAV_TIMEOUT)
+                page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
+                page.wait_for_timeout(1000)
+            else:
+                print("  — setup wizard already completed, skipping wizard screenshot")
+
+            # ── Step 2: capture all non-wizard pages ──
+            for filename, route, description in HELP_IMAGE_PAGES:
+                if filename == "setup-wizard.png":
+                    continue  # already handled above
+                page.goto(frontend_url + route, timeout=NAV_TIMEOUT)
+                page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
+                page.wait_for_timeout(1500)
+                page.screenshot(
+                    path=str(out_dir / filename), full_page=True
+                )
+                print(f"  ✓ {filename}  ({description})")
+
+            # ── Step 3: workspace page (if a workspace exists) ──
+            if workspace_id:
+                page.goto(
+                    frontend_url + f"/workspace/{workspace_id}",
+                    timeout=NAV_TIMEOUT,
+                )
+                page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
+                page.wait_for_timeout(2000)
+                page.screenshot(
+                    path=str(out_dir / "workspace.png"), full_page=True
+                )
+                print("  ✓ workspace.png  (workbench three-panel)")
+            else:
+                print("  — no workspace found, skipping workspace screenshot")
+
+        finally:
+            browser.close()
+
+    print(f"\n[help-images] done → {out_dir}")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     args = parse_args()
+
+    # ── Help-images mode ──
+    if args.help_images:
+        print("[help-images] Generating screenshots for in-app Help docs")
+        print(f"[help-images] frontend={args.frontend}  backend={args.backend}")
+        generate_help_images(args.frontend, args.backend)
+        return
+
+    # ── Smoke mode (default) ──
     date_slug = args.date or today_cst()
     run_at = run_at_iso()
 

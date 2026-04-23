@@ -335,13 +335,47 @@ They are not native skill config — they control script behavior when invoked:
 | `--backend` | `http://localhost:7821` | Backend base URL |
 | `--out` | `docs/ui-snapshots` | Output base directory |
 | `--date` | today (UTC+8) | Override date slug |
-| `--mode` | `dom_plus_screenshot` | `dom_only` / `dom_plus_screenshot` / `vision_review` |
-| `--generate-help-drafts` | off | Generate help doc drafts after smoke |
-| `--sync-help` | off | Copy drafts to `apps/desktop/src/help/` (requires explicit flag) |
+| `--help-images` | off | Generate Help doc screenshots into `apps/desktop/public/help-images/` |
 
 Run `apps/backend/.venv/bin/python scripts/smoke/smoke_and_screenshot.py --help`
-to see the current parameter list; the table above reflects intended design,
-not guaranteed implementation state.
+to see the current parameter list.
+
+### `--help-images` mode
+
+This mode is separate from smoke testing. It generates screenshots
+specifically for the in-app Help documentation:
+
+```bash
+apps/backend/.venv/bin/python scripts/smoke/smoke_and_screenshot.py \
+  --help-images --frontend http://localhost:1420
+```
+
+**Behavior:**
+1. Opens the app; if redirected to `/setup` (first launch), captures
+   `setup-wizard.png`, then skips the wizard by toggling
+   `hasCompletedSetup` in localStorage
+2. Captures all key pages: home, model config, LLM form, knowledge,
+   rule sets, help page
+3. If a workspace exists, captures the three-panel workbench
+4. All screenshots go to `apps/desktop/public/help-images/`
+
+**Output files:**
+
+| File | Page |
+|---|---|
+| `setup-wizard.png` | Setup Wizard (first launch) |
+| `home.png` | Home page (after wizard) |
+| `model-config.png` | Model config tabs |
+| `settings-llm.png` | LLM config form |
+| `knowledge.png` | Knowledge library |
+| `ruleset.png` | Rule set management |
+| `help-page.png` | Help page |
+| `workspace.png` | Workbench (only if workspace exists) |
+
+**When to run:** After any milestone that changes UI layout or page
+structure, to update the Help doc screenshots. The screenshots are
+referenced from `apps/desktop/src/help/*.md` via
+`![description](/help-images/filename.png)`.
 
 ---
 
