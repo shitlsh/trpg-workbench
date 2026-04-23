@@ -1,6 +1,7 @@
 ---
-status: accepted
+status: completed
 date: 2026-04-23
+completed_date: 2026-04-23
 source: OpenCode Desktop / OpenPawz
 theme: 首次配置引导 — Setup Wizard（分步配置向导）
 priority: high

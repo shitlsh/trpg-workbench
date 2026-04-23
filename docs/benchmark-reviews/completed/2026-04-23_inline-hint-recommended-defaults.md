@@ -1,6 +1,7 @@
 ---
-status: accepted
+status: completed
 date: 2026-04-23
+completed_date: 2026-04-23
 source: OpenCode Desktop
 theme: 首次配置引导 — 推荐默认值与 Inline Hint
 priority: high
