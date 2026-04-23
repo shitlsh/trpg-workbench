@@ -139,6 +139,11 @@ cargo tauri dev
 | M8 知识库预览与 Rerank | 知识库文档预览、分块浏览、Rerank 模型接入 | ✅ 完成 |
 | M9 Smoke Test 与帮助文档 | 前端 smoke 脚本、截图、应用内帮助页、Tauri Help 菜单 | ✅ 完成 |
 | M9a 规则集统一管理 | RuleSet 管理 UI、知识库绑定、PromptProfile 接入 Agent 运行时、工作空间额外知识库 | ✅ 完成 |
+| M10 Agent 编排升级 | 澄清式对话、Workflow 持久化修复、Prompt 模板体系、Agent 升级 | ✅ 完成 |
+| M11 首次配置引导 | Setup Wizard 分步配置、Inline Hint、Gemini/Jina 推荐默认值 | ✅ 完成 |
+| M12 Agent 透明度 | RAG 引用展开查看、Director 意图摘要在确认卡展示 | ✅ 完成 |
+| M13 UI 视觉语言升级 | 彩色资产图标、文字颜色梯度、Active 状态焦点指示 | ✅ 完成 |
+| M14 Help 文档重建 | 重写 Help 文档、嵌入截图、HelpPage 交互增强、维护机制调整 | 🚧 进行中 |
 
 详细计划见 `.agents/plans/`，架构与约束见 `.agents/skills/`。
 

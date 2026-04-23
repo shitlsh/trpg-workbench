@@ -42,7 +42,7 @@ from pathlib import Path
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--frontend", default="http://localhost:5173")
+    p.add_argument("--frontend", default="http://localhost:1420")
     p.add_argument("--backend",  default="http://localhost:7821")
     p.add_argument("--out",      default="docs/ui-snapshots")
     p.add_argument("--date",     default=None,
@@ -310,12 +310,22 @@ HELP_IMAGE_PAGES = [
 ]
 
 
+def _click_wizard_skip(page, button_text: str, step_name: str):
+    """Click a wizard skip/next button and wait for transition."""
+    btn = page.get_by_text(button_text, exact=True)
+    btn.wait_for(state="visible", timeout=5000)
+    btn.click()
+    page.wait_for_timeout(800)
+    print(f"    → clicked '{button_text}' ({step_name})")
+
+
 def generate_help_images(frontend_url: str, backend_url: str):
     """Capture screenshots for in-app Help docs.
 
     Handles the Setup Wizard: if the app redirects to /setup on first visit,
-    captures the wizard page first, then skips it by toggling the
-    hasCompletedSetup flag in localStorage before capturing remaining pages.
+    captures the wizard step-1 page, then clicks through all skip buttons
+    (稍后配置 → 稍后配置 → 跳过此步骤 → 稍后创建 → 开始使用 →)
+    to reach the real home page.
     """
     from playwright.sync_api import sync_playwright
 
@@ -337,24 +347,31 @@ def generate_help_images(frontend_url: str, backend_url: str):
             page.wait_for_timeout(1000)
 
             if "/setup" in page.url:
-                # Capture the wizard
+                # Capture the wizard (step 1)
                 print("  ✓ setup-wizard.png  (first-launch wizard)")
                 page.screenshot(
                     path=str(out_dir / "setup-wizard.png"), full_page=True
                 )
 
-                # Skip wizard by setting hasCompletedSetup in localStorage
-                page.evaluate("""() => {
-                    const raw = localStorage.getItem('settings-storage');
-                    if (raw) {
-                        const obj = JSON.parse(raw);
-                        if (obj.state) obj.state.hasCompletedSetup = true;
-                        localStorage.setItem('settings-storage', JSON.stringify(obj));
-                    }
-                }""")
-                page.goto(frontend_url, timeout=NAV_TIMEOUT)
+                # Click through all wizard steps to reach real home page
+                # Step 1: LLM config  → "稍后配置"
+                # Step 2: Embedding   → "稍后配置"
+                # Step 3: Rerank      → "跳过此步骤"
+                # Step 4: Workspace   → "稍后创建"
+                # Summary             → "开始使用 →"
+                wizard_steps = [
+                    ("稍后配置",   "Step 1 LLM"),
+                    ("稍后配置",   "Step 2 Embedding"),
+                    ("跳过此步骤", "Step 3 Rerank"),
+                    ("稍后创建",   "Step 4 Workspace"),
+                    ("开始使用 →", "Summary → Home"),
+                ]
+                for btn_text, step_name in wizard_steps:
+                    _click_wizard_skip(page, btn_text, step_name)
+
                 page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
                 page.wait_for_timeout(1000)
+                print(f"    → landed on: {page.url}")
             else:
                 print("  — setup wizard already completed, skipping wizard screenshot")
 
