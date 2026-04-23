@@ -388,12 +388,10 @@ export interface ChatMessage {
 
 export type WorkflowType = "create_module" | "modify_asset" | "rules_review" | "generate_image";
 export type WorkflowStatus =
-  | "pending"
+  | "running"
   | "planning"
   | "waiting_for_clarification"
-  | "executing"
   | "paused"
-  | "awaiting_confirmation"
   | "completed"
   | "failed";
 

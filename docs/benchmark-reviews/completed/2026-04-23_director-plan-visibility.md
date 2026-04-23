@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: completed
 date: 2026-04-23
 accepted_date: 2026-04-23
 milestone: M12

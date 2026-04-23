@@ -92,6 +92,7 @@ apps/backend/
 ├── app/workflows/modify_asset.py       ← A1：同上
 ├── app/api/workflows.py                ← A2：GET /{id} 响应中暴露 Director intent 字段
 └── app/models/orm.py / schemas.py      ← A2：WorkflowStateORM 增加 director_intent 字段（或写入 extra_data）
+                                         ← 实装：使用了专用列 director_intent (Text nullable)，非 extra_data
 
 apps/desktop/src/components/agent/
 ├── WorkflowProgress.tsx                ← A1：retrieval step 展开显示 citations
@@ -131,6 +132,8 @@ Director Agent 返回 ChangePlan（含 intent 字段）
 ```
 
 使用已有的 `extra_data` 字段（JSON 扩展列），不需要新增数据库列。
+
+> **实装备注**：最终实现使用了专用列 `director_intent (Text nullable)`（`app/models/orm.py:302`），未使用 `extra_data`。功能效果等同，字段更明确。
 
 ### 不修改澄清流程
 

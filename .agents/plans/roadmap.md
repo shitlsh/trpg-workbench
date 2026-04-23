@@ -41,7 +41,6 @@
 | M9 ✅ | 前端 Smoke Test、截图与帮助文档系统 | 关键页面 smoke test，截图产物，Help 文档，Tauri Help 菜单接入 | [archive/m9-smoke-and-help.md](archive/m9-smoke-and-help.md) |
 | M9a ✅ | 规则集统一管理 | 规则集 CRUD UI，知识库↔规则集绑定，PromptProfile 接入 Agent 运行时，工作空间知识库继承链路打通 | [archive/m9a-ruleset-unification.md](archive/m9a-ruleset-unification.md) |
 | M10 ✅ | Agent 编排升级、澄清式交互与 Prompt 体系化 | 澄清式对话，Workflow 持久化修复，Prompt 模板体系，Director/Plot/NPC Agent 升级 | [archive/m10-agent-orchestration.md](archive/m10-agent-orchestration.md) |
-
 | M11 ✅ | 首次配置引导与 Onboarding 体验 | Setup Wizard（分步配置，LLM/Embedding/Rerank/工作空间），Inline Hint + Gemini/Jina 推荐默认值，冷启动引导链路打通 | [archive/m11-onboarding.md](archive/m11-onboarding.md) |
 | M12 ✅ | Agent 透明度 | RAG 引用在 WorkflowProgress 中可展开查看，Director 意图摘要在确认卡展示 | [archive/m12-agent-transparency.md](archive/m12-agent-transparency.md) |
 
@@ -81,8 +80,8 @@ trpg-workbench-data/   运行时数据（不提交 git）
 
 ### API 约定
 
-- 后端默认端口：`8765`
-- 前端通过 `VITE_BACKEND_URL`（默认 `http://127.0.0.1:8765`）访问
+- 后端默认端口：`7821`
+- 前端通过 `VITE_BACKEND_URL`（默认 `http://127.0.0.1:7821`）访问
 - 所有接口数据类型在 `packages/shared-schema/` 中定义，前后端不得各自单独定义
 
 ### 资产文件命名约定
