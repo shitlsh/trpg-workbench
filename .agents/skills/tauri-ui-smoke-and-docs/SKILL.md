@@ -1,3 +1,8 @@
+---
+name: tauri-ui-smoke-and-docs
+description: 对 trpg-workbench 桌面应用进行 UI smoke test、截图记录和帮助文档草稿生成。当需要验证前端页面关键元素是否正常渲染、生成应用截图、或基于 DOM 状态生成 Help 文档时必须加载本 skill。包括：运行 /ui-smoke 命令、执行构建验证、核查关键页面 DOM 状态、为新功能补充帮助文档内容。注意：本 skill 针对 trpg-workbench 项目特定页面结构，通用 Playwright 测试请使用 webapp-testing skill。
+---
+
 # Skill: tauri-ui-smoke-and-docs
 
 ## Purpose

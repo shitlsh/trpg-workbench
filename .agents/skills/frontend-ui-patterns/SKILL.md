@@ -310,3 +310,79 @@ interface TaskProgress {
 - 切换 Tab 时更新 URL，支持浏览器前进/后退
 - 直接访问 URL 时自动打开对应资产的 Tab
 - Tab 列表状态存入 `useEditorStore`，不持久化到本地（刷新后清空）
+
+---
+
+## Onboarding Wizard 规范（M11）
+
+首次启动或无可用 LLM Profile 时，应进入 Onboarding Wizard，引导用户完成最低配置，**不得跳过直接进入主界面**。
+
+### 触发条件
+
+- 应用首次启动（无任何 LLM Profile）
+- 用户从设置页手动触发重置
+
+### 步骤结构（线性，不可跳步）
+
+```
+Step 1: 欢迎 + 产品简介
+Step 2: 配置 LLM Provider（必填）
+Step 3: 配置 Embedding Provider（可跳过，但需明确提示影响）
+Step 4: 创建第一个 RuleSet（必填）
+Step 5: 完成 → 跳转到新建 Workspace
+```
+
+### UI 约束
+
+- 使用全屏 Dialog 或独立 `/onboarding` 路由，不使用主界面三栏布局
+- 每步顶部显示步骤指示器（Step 1 / 5）
+- 「下一步」按钮在当前步必填项未完成时禁用
+- 不允许在 Wizard 期间跳转到主业务路由
+
+---
+
+## WorkflowProgress 展开 UI 规范（M12）
+
+Agent 面板的执行日志区域，在 Workflow 运行时必须展示步骤列表和透明度信息。
+
+### director_intent 展示
+
+```
+┌─────────────────────────────────┐
+│  AI 意图                         │
+│  "根据用户请求，将修改 NPC 张三的  │
+│   背景故事并关联已有的地点资产"    │
+└─────────────────────────────────┘
+```
+
+- `director_intent` 非空时，在步骤列表上方渲染一个浅色信息卡片
+- `director_intent` 为 null 时，不渲染该区域（不占位）
+
+### CitationsPanel 展示
+
+当步骤的 `detail` 字段为非 null JSON 字符串时，解析为 citations 列表并展示：
+
+```
+┌─ 步骤：检索知识库 ✓ ─────────────┐
+│  [展开引用 ▾]                    │
+│                                  │
+│  • coc7e_core_rules.pdf          │
+│    第 45-46 页 · 第四章：怪物与NPC │
+│    相关度 0.87                    │
+│                                  │
+│  • module_ref.pdf                │
+│    第 12 页 · 场景设定             │
+│    相关度 0.82                    │
+└──────────────────────────────────┘
+```
+
+- citations 默认折叠，点击「展开引用」展开
+- `detail` 为 null 时不显示引用区域
+- `detail` 解析失败（非法 JSON）时，显示原始文本，不报错崩溃
+- 每条 citation 必须展示：文档名、页码范围、section_title（若有）、vector_score
+
+### WorkflowProgress 组件位置
+
+- 组件路径：`src/components/agent/WorkflowProgress.tsx`
+- 在 Agent 面板的「执行日志（可折叠）」区域内渲染
+- Workflow 运行时自动展开日志区域；完成后保持展开，允许用户手动折叠

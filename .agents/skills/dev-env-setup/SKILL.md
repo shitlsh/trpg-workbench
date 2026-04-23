@@ -201,7 +201,9 @@ cargo tauri dev
 | `python3 -m venv` 创建的 venv 装包异常 | 系统 Python 3.9 版本太低 | 改用 `/opt/homebrew/bin/python3.13` |
 | `cargo tauri dev` 首次极慢 | Rust 编译所有依赖 | 正常，等待 5-10 分钟 |
 | 前端报 `Cannot find module '@trpg-workbench/shared-schema'` | pnpm workspace 未链接 | 在仓库根目录运行 `pnpm install` |
-| 后端端口 7821 被占用 | 上次进程未退出 | `lsof -ti:7821 | xargs kill` |
+| 后端端口 7821 被占用 | 上次进程未退出 | `lsof -ti:7821 \| xargs kill` |
+| `lancedb` 安装失败（Rust 编译错误）| lancedb 有 Rust native extension，需要 Rust 工具链 | 确保已完成第 3 步（rustup + source），再重新 pip install |
+| `lancedb` 在 Apple Silicon 报 `ImportError` | 架构不匹配的预编译轮子 | 用 `pip install lancedb --no-binary lancedb` 从源码编译 |
 
 ---
 

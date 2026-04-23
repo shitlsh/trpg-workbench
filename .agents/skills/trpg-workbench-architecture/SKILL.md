@@ -90,6 +90,32 @@ ImageGenerationJob（图像生成任务，绑定 Asset）
 - **KnowledgeLibrary 归属某个 RuleSet**（一对多，通过 `KnowledgeLibrary.rule_set_id` 外键）；在规则集管理页内创建和管理，不是全局独立资产
 - **WorkspaceLibraryBinding 是工作空间级扩充**，用于为单个工作空间追加规则集之外的知识库；工作空间实际可用的知识库 = 规则集归属的库 + 工作空间额外绑定的库
 
+### `WorkflowState` 关键字段（M12 新增，shared-schema 定义）
+
+```typescript
+interface WorkflowStepResult {
+  step_id: string
+  label: string
+  status: "pending" | "running" | "completed" | "failed" | "skipped"
+  detail?: string | null   // M12：citations JSON 字符串或自由文本，供前端展示 CitationsPanel
+  error?: string | null
+}
+
+interface WorkflowState {
+  workflow_id: string
+  status: "idle" | "running" | "completed" | "failed"
+  steps: WorkflowStepResult[]
+  director_intent?: string | null  // M12：Director 的规划意图，供前端展示"AI 正在做什么"
+}
+```
+
+**约束**：
+- `detail` 写入时机：知识库检索步骤完成后，由 Workflow 的 `update_step(detail=...)` 写入，空检索时写 `None`，不写 `"[]"`
+- `director_intent` 写入时机：Director 规划完成后，在 Workflow 启动阶段写入，不在每步更新
+- 前后端通过 `packages/shared-schema/` 共享此类型定义，不允许前后端各自单独定义
+
+---
+
 ### `workspace_context` 结构（Agent 运行时传入）
 
 ```python
