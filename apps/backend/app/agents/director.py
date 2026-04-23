@@ -9,7 +9,6 @@ def run_director(
     user_message: str,
     workspace_context: dict,
     model=None,
-    allow_clarification: bool = False,
     clarification_answers: dict | None = None,
 ) -> dict:
     """
@@ -19,7 +18,6 @@ def run_director(
       "rule_set": str,
       "existing_assets": [{"type": str, "name": str, "slug": str}]
     }
-    allow_clarification: if True, Director may return a clarification result instead of execution plan
     clarification_answers: if provided, inject answers into context and run in planning mode
     Returns: ChangePlan dict (execution mode) or ClarificationResult dict (clarification mode)
     """
@@ -32,13 +30,9 @@ def run_director(
         system_prompt = load_prompt("director", "planning")
         context_with_answers = {**workspace_context, "clarification_answers": clarification_answers}
         context_str = json.dumps(context_with_answers, ensure_ascii=False, indent=2)
-    elif allow_clarification:
+    else:
         # First call – check if we need clarification
         system_prompt = load_prompt("director", "clarification")
-        context_str = json.dumps(workspace_context, ensure_ascii=False, indent=2)
-    else:
-        # Direct execution (legacy behavior)
-        system_prompt = load_prompt("director", "system")
         context_str = json.dumps(workspace_context, ensure_ascii=False, indent=2)
     
     agent = Agent(

@@ -60,7 +60,7 @@ async def run_modify_asset(
         # ── Clarification check (only when no explicit asset IDs provided) ──
         if not affected_asset_ids:
             update_step(db, wf, 1, STEP_NAMES[1], "running")
-            clarify_result = run_director(user_intent, ws_ctx, model=model, allow_clarification=True)
+            clarify_result = run_director(user_intent, ws_ctx, model=model)
             if clarify_result.get("needs_clarification"):
                 questions = clarify_result.get("clarification_questions", [])
                 pause_for_clarification(db, wf, questions)

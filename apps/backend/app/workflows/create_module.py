@@ -67,7 +67,7 @@ async def run_create_module(
         # ── Step 0: Director – clarification check ─────────────────────────
         # (Step 0 is optional, only triggered if Director needs clarification)
         update_step(db, wf, 2, STEP_NAMES[2], "running")
-        director_result = run_director(user_intent, ws_ctx, model=model, allow_clarification=True)
+        director_result = run_director(user_intent, ws_ctx, model=model)
 
         if director_result.get("needs_clarification"):
             # Director wants clarification – pause and wait for user answers
@@ -133,7 +133,6 @@ async def resume_create_module(
 
         director_result = run_director(
             user_intent, ws_ctx, model=model,
-            allow_clarification=False,
             clarification_answers=clarification_answers,
         )
         change_plan = director_result
