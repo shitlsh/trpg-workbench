@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
-from app.models.orm import WorkflowStateORM, WorkspaceLibraryBindingORM, KnowledgeDocumentORM
+from app.models.orm import WorkflowStateORM, WorkspaceLibraryBindingORM, KnowledgeDocumentORM, AssetORM, AssetRevisionORM
 from app.models.schemas import WorkflowStateSchema, StartWorkflowRequest, ClarifyRequest
 from app.workflows.create_module import run_create_module, resume_create_module
 from app.workflows.modify_asset import run_modify_asset, apply_modify_asset_patches, resume_modify_asset
@@ -237,11 +237,30 @@ def get_workflow_patches(wf_id: str, db: Session = Depends(get_db)):
     wf = _get_wf(wf_id, db)
     step_results = json.loads(wf.step_results)
     # Find the step with patches (step 5 or 6 for modify_asset, step 11 for create_module)
+    patches = None
     for step_num in [6, 5, 11, 10]:
         step = next((s for s in step_results if s["step"] == step_num and s.get("summary")), None)
         if step:
             try:
-                return json.loads(step["summary"])
+                patches = json.loads(step["summary"])
+                break
             except Exception:
                 pass
-    return []
+    if not patches:
+        return []
+
+    # Enrich each patch with original_content from the asset's latest revision
+    for patch in patches:
+        asset_id = patch.get("asset_id")
+        original_content = ""
+        if asset_id:
+            asset = db.query(AssetORM).filter(AssetORM.id == asset_id).first()
+            if asset and asset.latest_revision_id:
+                rev = db.query(AssetRevisionORM).filter(
+                    AssetRevisionORM.id == asset.latest_revision_id
+                ).first()
+                if rev:
+                    original_content = rev.content_md
+        patch["original_content"] = original_content
+
+    return patches

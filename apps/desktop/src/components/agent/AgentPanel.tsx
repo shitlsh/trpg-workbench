@@ -5,8 +5,10 @@ import type {
   ChatSession, ChatMessage, WorkflowState,
   ChangePlan, ConsistencyReport, PatchProposal,
   LLMProfile, ModelCatalogEntry, ClarificationQuestion, RulesSuggestion,
+  AssetWithContent,
 } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
+import { useEditorStore } from "@/stores/editorStore";
 import { WorkflowProgress } from "./WorkflowProgress";
 import { PatchConfirmDialog } from "./PatchConfirmDialog";
 import { ClarificationCard } from "./ClarificationCard";
@@ -255,6 +257,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     consistencyReport, setConsistencyReport,
     pendingPatches, showPatchDialog, setPendingPatches,
   } = useAgentStore();
+  const { openTab } = useEditorStore();
 
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -484,8 +487,26 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             onPatchesReady={(patches) => {
               setPendingPatches(patches as PatchProposal[], true);
             }}
-            onComplete={() => {
+            onComplete={async () => {
               qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
+              // Auto-open the first written asset in the editor
+              try {
+                const logsResp = await apiFetch<{ entries: Array<Record<string, unknown>>; count: number }>(
+                  `/workspaces/${workspaceId}/logs`
+                );
+                const writtenIds: string[] = [];
+                for (const entry of logsResp.entries) {
+                  if (entry.type === "asset_write" && entry.asset_id && !writtenIds.includes(entry.asset_id as string)) {
+                    writtenIds.push(entry.asset_id as string);
+                  }
+                }
+                if (writtenIds.length > 0) {
+                  const asset = await apiFetch<AssetWithContent>(`/assets/${writtenIds[0]}`);
+                  openTab(asset);
+                }
+              } catch {
+                // Non-critical: silently ignore if auto-open fails
+              }
             }}
           />
         )}

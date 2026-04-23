@@ -457,6 +457,7 @@ export interface PatchProposal {
   content_md: string;
   content_json: string;
   change_summary: string;
+  original_content?: string;
 }
 
 export interface ConsistencyIssue {

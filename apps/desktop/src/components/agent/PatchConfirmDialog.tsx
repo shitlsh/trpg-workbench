@@ -95,7 +95,7 @@ export function PatchConfirmDialog({ patches, workflowId, onDone }: PatchConfirm
               height="100%"
               language="markdown"
               theme="vs-dark"
-              original={""}
+              original={patch.original_content ?? ""}
               modified={patch.content_md}
               options={{ readOnly: true, wordWrap: "on", renderSideBySide: true }}
             />
