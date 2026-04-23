@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-04-23
 source: Inscriptor
 theme: 排版密度与信息层次

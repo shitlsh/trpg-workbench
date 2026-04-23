@@ -1,6 +1,6 @@
-# M13：UI 视觉语言升级
+ # M13：UI 视觉语言升级
 
-**前置条件**：M12 完成（Agent 透明度，RAG 引用可展开查看）。
+**前置条件**：无强依赖（纯前端视觉改动，可独立于其他 milestone 启动）。参考背景来自 M1–M12 完成后对产品现状的 benchmark review。
 
 **目标**：参照 Inscriptor 的彩色 per-type 图标体系与排版密度机制，为 trpg-workbench 建立一套清晰的视觉语言——每种资产类型有独立彩色图标、文字颜色有三档梯度、选中状态有持久焦点指示，让工作台在资产数量增多后仍保持可扫视性与创作控制感。
 
@@ -10,8 +10,8 @@
 
 当前产品的视觉体验存在三个明显短板，在 benchmark review 中被评级为 high priority：
 
-- `docs/benchmark-reviews/proposed/2026-04-23_inscriptor-visual-language.md`
-- `docs/benchmark-reviews/proposed/2026-04-23_inscriptor-layout-density.md`
+- `docs/benchmark-reviews/accepted/2026-04-23_inscriptor-visual-language.md`
+- `docs/benchmark-reviews/accepted/2026-04-23_inscriptor-layout-density.md`
 
 **问题一**：所有资产类型在资产树中使用同一个灰色 `<File>` 图标（`AssetTree.tsx:250`），用户只能靠读文字标签来区分类型，资产数量 > 10 后扫视成本高。
 
