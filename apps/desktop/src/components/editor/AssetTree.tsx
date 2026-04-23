@@ -1,29 +1,20 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, ChevronDown, Plus, Search, Trash2, File } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, Search, Trash2 } from "lucide-react";
 import type { Asset, AssetType, AssetWithContent, CreateAssetRequest } from "@trpg-workbench/shared-schema";
 import { useEditorStore } from "@/stores/editorStore";
 import { apiFetch } from "@/lib/api";
-
-const ASSET_TYPE_LABELS: Record<AssetType, string> = {
-  outline: "大纲",
-  stage: "场景",
-  npc: "NPC",
-  monster: "怪物",
-  location: "地点",
-  clue: "线索",
-  branch: "分支",
-  timeline: "时间线",
-  map_brief: "地图简报",
-  lore_note: "世界设定",
-};
-
-const ALL_TYPES: AssetType[] = Object.keys(ASSET_TYPE_LABELS) as AssetType[];
+import {
+  getAssetTypeIcon,
+  getAssetTypeColor,
+  getAssetTypeLabel,
+  ALL_ASSET_TYPES,
+} from "@/lib/assetTypeVisual";
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "#888",
+  draft:  "#888",
   review: "#f0a500",
-  final: "#52c97e",
+  final:  "#52c97e",
 };
 
 function slugify(name: string): string {
@@ -67,6 +58,8 @@ function NewAssetForm({ workspaceId, onClose }: NewAssetFormProps) {
     if (!slugEdited) setSlug(slugify(v));
   };
 
+  const TypeIcon = getAssetTypeIcon(type);
+
   return (
     <div style={{
       padding: "12px",
@@ -82,16 +75,27 @@ function NewAssetForm({ workspaceId, onClose }: NewAssetFormProps) {
         onChange={(e) => setType(e.target.value as AssetType)}
         style={inputStyle}
       >
-        {ALL_TYPES.map((t) => (
-          <option key={t} value={t}>{ASSET_TYPE_LABELS[t]}</option>
+        {ALL_ASSET_TYPES.map((t) => (
+          <option key={t} value={t}>{getAssetTypeLabel(t)}</option>
         ))}
       </select>
+
+      {/* Type preview */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        margin: "6px 0", padding: "4px 6px",
+        background: "var(--bg-surface)", borderRadius: 4, fontSize: 12,
+        color: getAssetTypeColor(type),
+      }}>
+        <TypeIcon size={13} />
+        <span>{getAssetTypeLabel(type)}</span>
+      </div>
 
       <input
         placeholder="名称"
         value={name}
         onChange={(e) => handleNameChange(e.target.value)}
-        style={{ ...inputStyle, marginTop: 6 }}
+        style={{ ...inputStyle, marginTop: 2 }}
       />
 
       <input
@@ -127,7 +131,10 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showNewForm, setShowNewForm] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; asset: Asset } | null>(null);
+  const [hoverAssetId, setHoverAssetId] = useState<string | null>(null);
+
   const openTab = useEditorStore((s) => s.openTab);
+  const activeTabId = useEditorStore((s) => s.activeTabId);
 
   const { data: assets = [] } = useQuery<Asset[]>({
     queryKey: ["assets", workspaceId],
@@ -145,7 +152,7 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
     (a) => a.status !== "deleted" && a.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const byType = ALL_TYPES.reduce<Record<string, Asset[]>>((acc, t) => {
+  const byType = ALL_ASSET_TYPES.reduce<Record<string, Asset[]>>((acc, t) => {
     const items = filtered.filter((a) => a.type === t);
     if (items.length > 0) acc[t] = items;
     return acc;
@@ -186,7 +193,10 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
 
       {/* Search */}
       <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", borderRadius: 4, padding: "4px 8px" }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "var(--bg)", borderRadius: 4, padding: "4px 8px",
+        }}>
           <Search size={12} color="var(--text-muted)" />
           <input
             value={search}
@@ -204,65 +214,104 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
 
       {/* Tree */}
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
-        {Object.entries(byType).map(([type, items]) => (
-          <div key={type}>
-            <button
-              onClick={() => toggleCollapse(type)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                width: "100%",
-                padding: "4px 12px",
-                background: "none",
-                color: "var(--text-muted)",
-                fontSize: 11,
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: 0.5,
-              }}
-            >
-              {collapsed.has(type) ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-              {ASSET_TYPE_LABELS[type as AssetType]}
-              <span style={{ marginLeft: "auto" }}>{items.length}</span>
-            </button>
+        {Object.entries(byType).map(([type, items]) => {
+          const assetType = type as AssetType;
+          const TypeIcon = getAssetTypeIcon(assetType);
+          const typeColor = getAssetTypeColor(assetType);
 
-            {!collapsed.has(type) && items.map((asset) => (
-              <div
-                key={asset.id}
-                onClick={() => openAsset(asset)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setContextMenu({ x: e.clientX, y: e.clientY, asset });
-                }}
+          return (
+            <div key={type}>
+              {/* Section header */}
+              <button
+                onClick={() => toggleCollapse(type)}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "5px 12px 5px 24px",
-                  cursor: "pointer",
-                  borderRadius: 4,
-                  margin: "1px 4px",
+                  gap: 5,
+                  width: "100%",
+                  padding: "4px 12px",
+                  background: "none",
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
               >
-                <File size={12} color="var(--text-muted)" />
-                <span style={{ flex: 1, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {asset.name}
-                </span>
-                <span
-                  style={{
-                    width: 7, height: 7, borderRadius: "50%",
-                    background: STATUS_COLORS[asset.status] ?? "#888",
-                    flexShrink: 0,
-                  }}
-                  title={asset.status}
-                />
-              </div>
-            ))}
-          </div>
-        ))}
+                {collapsed.has(type)
+                  ? <ChevronRight size={11} />
+                  : <ChevronDown size={11} />
+                }
+                <TypeIcon size={11} color={typeColor} />
+                <span style={{ color: typeColor }}>{getAssetTypeLabel(assetType)}</span>
+                <span style={{ marginLeft: "auto", color: "var(--text-subtle)" }}>{items.length}</span>
+              </button>
+
+              {/* Asset rows */}
+              {!collapsed.has(type) && items.map((asset) => {
+                const isActive = activeTabId === asset.id;
+                const isHovered = hoverAssetId === asset.id;
+                const RowIcon = getAssetTypeIcon(asset.type as AssetType);
+                const rowColor = getAssetTypeColor(asset.type as AssetType);
+
+                return (
+                  <div
+                    key={asset.id}
+                    onClick={() => openAsset(asset)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.clientX, y: e.clientY, asset });
+                    }}
+                    onMouseEnter={() => setHoverAssetId(asset.id)}
+                    onMouseLeave={() => setHoverAssetId(null)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "5px 12px 5px 0",
+                      paddingLeft: 0,
+                      cursor: "pointer",
+                      borderRadius: 4,
+                      margin: "1px 4px",
+                      // Active: left border + tinted background
+                      // Hover (non-active): plain bg-hover
+                      background: isActive
+                        ? `color-mix(in srgb, ${rowColor} 10%, transparent)`
+                        : isHovered
+                          ? "var(--bg-hover)"
+                          : "none",
+                      borderLeft: isActive
+                        ? `var(--active-bar-width) solid ${rowColor}`
+                        : "var(--active-bar-width) solid transparent",
+                    }}
+                  >
+                    {/* indent after the border */}
+                    <span style={{ width: 20, flexShrink: 0 }} />
+                    <RowIcon size={13} color={isActive ? rowColor : "var(--text-muted)"} />
+                    <span style={{
+                      flex: 1,
+                      fontSize: 13,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      color: isActive ? "var(--text)" : undefined,
+                    }}>
+                      {asset.name}
+                    </span>
+                    <span
+                      style={{
+                        width: 7, height: 7, borderRadius: "50%",
+                        background: STATUS_COLORS[asset.status] ?? "#888",
+                        flexShrink: 0,
+                      }}
+                      title={asset.status}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
 
         {filtered.length === 0 && (
           <div style={{ padding: "12px", color: "var(--text-muted)", fontSize: 12, textAlign: "center" }}>

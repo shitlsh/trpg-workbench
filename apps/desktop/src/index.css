@@ -34,6 +34,32 @@
   --radius:       6px;
   --font:         var(--font-ui);
 
+  /* ── Asset type colors ───────────────────────────────────────────────────── */
+  --color-type-outline:   #7c6af7;
+  --color-type-stage:     #e05252;
+  --color-type-npc:       #52b4c9;
+  --color-type-monster:   #f07030;
+  --color-type-location:  #52c97e;
+  --color-type-clue:      #f0c050;
+  --color-type-branch:    #c97052;
+  --color-type-timeline:  #a07af0;
+  --color-type-map-brief: #52c9a8;
+  --color-type-lore-note: #9090b0;
+
+  /* ── Text color hierarchy (3 tiers) ──────────────────────────────────────── */
+  --text-subtle:  #666;
+
+  /* ── Spacing scale ────────────────────────────────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* ── Active indicator ─────────────────────────────────────────────────────── */
+  --active-bar-width: 3px;
+
   /* Code block background */
   --code-bg:      #1e1e2e;
   --code-border:  #313145;
@@ -59,6 +85,32 @@
   --success:      #2a8a4a;
   --radius:       6px;
   --font:         var(--font-ui);
+
+  /* ── Asset type colors (light — slightly deeper for contrast) ─────────────── */
+  --color-type-outline:   #5a48e8;
+  --color-type-stage:     #c43030;
+  --color-type-npc:       #2a8faa;
+  --color-type-monster:   #c05010;
+  --color-type-location:  #2a8a4a;
+  --color-type-clue:      #b08000;
+  --color-type-branch:    #a05030;
+  --color-type-timeline:  #7050d0;
+  --color-type-map-brief: #208070;
+  --color-type-lore-note: #606080;
+
+  /* ── Text color hierarchy (3 tiers) ──────────────────────────────────────── */
+  --text-subtle:  #a0998f;
+
+  /* ── Spacing scale ────────────────────────────────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* ── Active indicator ─────────────────────────────────────────────────────── */
+  --active-bar-width: 3px;
 
   --code-bg:      #f0ede8;
   --code-border:  #ddd8d0;

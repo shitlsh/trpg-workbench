@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image, Loader2 } from "lucide-react";
 import type { AssetWithContent, AssetStatus } from "@trpg-workbench/shared-schema";
 import { useEditorStore } from "@/stores/editorStore";

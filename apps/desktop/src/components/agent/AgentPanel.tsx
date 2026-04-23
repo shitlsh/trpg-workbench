@@ -5,7 +5,7 @@ import type {
   ChatSession, ChatMessage, WorkflowState,
   ChangePlan, ConsistencyReport, PatchProposal,
   LLMProfile, ModelCatalogEntry, ClarificationQuestion, RulesSuggestion,
-  AssetWithContent,
+  AssetWithContent, AssetType,
 } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
 import { useEditorStore } from "@/stores/editorStore";
@@ -14,6 +14,7 @@ import { PatchConfirmDialog } from "./PatchConfirmDialog";
 import { ClarificationCard } from "./ClarificationCard";
 import ContextUsageBadge from "./ContextUsageBadge";
 import { apiFetch } from "@/lib/api";
+import { getAssetTypeIcon, getAssetTypeColor, getAssetTypeLabel } from "@/lib/assetTypeVisual";
 
 // ─── Layered AI response display ──────────────────────────────────────────────
 
@@ -24,12 +25,22 @@ function ChangePlanView({ plan }: { plan: ChangePlan }) {
       {plan.affected_asset_types.length > 0 && (
         <div style={{ marginBottom: 4 }}>
           <span style={{ color: "var(--text-muted)" }}>涉及资产：</span>
-          {plan.affected_asset_types.map((t) => (
-            <span key={t} style={{
-              display: "inline-block", marginRight: 4, padding: "1px 6px",
-              background: "var(--bg-hover)", borderRadius: 3, fontSize: 11,
-            }}>{t}</span>
-          ))}
+          {plan.affected_asset_types.map((t) => {
+            const assetType = t as AssetType;
+            const TypeIcon = getAssetTypeIcon(assetType);
+            const typeColor = getAssetTypeColor(assetType);
+            return (
+              <span key={t} style={{
+                display: "inline-flex", alignItems: "center", gap: 3,
+                marginRight: 4, padding: "1px 6px",
+                background: "var(--bg-hover)", borderRadius: 3, fontSize: 11,
+                color: typeColor,
+              }}>
+                <TypeIcon size={10} />
+                {getAssetTypeLabel(assetType)}
+              </span>
+            );
+          })}
         </div>
       )}
       {plan.workflow && (

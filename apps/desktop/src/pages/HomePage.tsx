@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { BookMarked, Library, Cpu, BarChart2 } from "lucide-react";
 import { apiFetch } from "../lib/api";
 import type {
   Workspace, RuleSet, CreateWorkspaceRequest,
@@ -79,15 +80,19 @@ export default function HomePage() {
         <h1 className={styles.logo}>TRPG Workbench</h1>
         <div className={styles.headerActions}>
           <button className={styles.btnSecondary} onClick={() => navigate("/settings/rule-sets")}>
+            <BookMarked size={14} style={{ flexShrink: 0 }} />
             规则集
           </button>
           <button className={styles.btnSecondary} onClick={() => navigate("/knowledge")}>
+            <Library size={14} style={{ flexShrink: 0 }} />
             知识库
           </button>
           <button className={styles.btnSecondary} onClick={() => navigate("/settings/models")}>
+            <Cpu size={14} style={{ flexShrink: 0 }} />
             模型配置
           </button>
           <button className={styles.btnSecondary} onClick={() => navigate("/usage")}>
+            <BarChart2 size={14} style={{ flexShrink: 0 }} />
             用量观测
           </button>
           <button className={styles.btnPrimary} onClick={() => setShowNewForm(true)}>

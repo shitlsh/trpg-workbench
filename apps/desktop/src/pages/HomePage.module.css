@@ -131,6 +131,9 @@
   border-radius: var(--radius);
   font-size: 13px;
   transition: background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .btnSecondary:hover { background: var(--bg-hover); }
 
