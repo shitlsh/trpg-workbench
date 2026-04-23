@@ -18,7 +18,8 @@
                                                                                └── ✅ M10 Agent 编排
                                                                                       └── ✅ M11 Onboarding
                                                                                                       └── ✅ M12 Agent 透明度
-                                                                                                            └── ✅ M13 UI 视觉语言升级
+                                                                                                             └── ✅ M13 UI 视觉语言升级
+                                                                                                                   └── M14 Help 文档重建
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -45,17 +46,13 @@
 | M11 ✅ | 首次配置引导与 Onboarding 体验 | Setup Wizard（分步配置，LLM/Embedding/Rerank/工作空间），Inline Hint + Gemini/Jina 推荐默认值，冷启动引导链路打通 | [archive/m11-onboarding.md](archive/m11-onboarding.md) |
 | M12 ✅ | Agent 透明度 | RAG 引用在 WorkflowProgress 中可展开查看，Director 意图摘要在确认卡展示 | [archive/m12-agent-transparency.md](archive/m12-agent-transparency.md) |
 
-### 进行中 / 待启动
-
-| # | 名称 | 目标 | 计划文件 |
-|---|------|------|---------|
 | M13 ✅ | UI 视觉语言升级 | 彩色 per-type 资产图标、三档文字颜色梯度、Active 状态焦点指示 | [archive/m13-visual-language.md](archive/m13-visual-language.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| — | — | — | — |
+| M14 | Help 文档重建与维护机制 | 重写 Help 文档（人工编写、任务导向、嵌入截图），调整维护机制，增强 HelpPage 交互 | [m14-help-rebuild.md](m14-help-rebuild.md) |
 
 ---
 
