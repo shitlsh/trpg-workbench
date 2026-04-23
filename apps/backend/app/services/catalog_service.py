@@ -83,8 +83,8 @@ def refresh_catalog_from_provider(
     api_key: str | None = None
     if profile.api_key_encrypted:
         try:
-            from app.services.model_routing import _decrypt_key
-            api_key = _decrypt_key(profile.api_key_encrypted)
+            from app.utils.secrets import decrypt_secret
+            api_key = decrypt_secret(profile.api_key_encrypted)
         except Exception:
             api_key = profile.api_key_encrypted  # fallback: treat as plaintext
 

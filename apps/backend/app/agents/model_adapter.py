@@ -11,10 +11,10 @@ def strip_code_fence(text: str) -> str:
 
 def _decrypt_key(profile) -> str | None:
     try:
-        from app.utils.secrets import decrypt
+        from app.utils.secrets import decrypt_secret
         raw = profile.api_key_encrypted if hasattr(profile, "api_key_encrypted") else None
         if raw:
-            return decrypt(raw)
+            return decrypt_secret(raw)
     except Exception:
         pass
     return None
