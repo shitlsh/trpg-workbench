@@ -243,23 +243,42 @@ mv docs/benchmark-reviews/accepted/{filename}.md docs/benchmark-reviews/complete
 - 在新建前，必须先查阅 `roadmap.md` 和 `archive/` 确认当前最大编号
 - 禁止自行猜测编号，必须以实际文件为准
 
+### 前置条件的定义与判断规则
+
+**前置条件**是指"技术或逻辑上必须先存在某个能力，本 milestone 才能实现"，不是"串行执行顺序"。
+
+判断是否需要写前置条件：
+
+| 情况 | 前置条件写法 |
+|------|------------|
+| 本 milestone 依赖另一个 milestone 产出的 API / 数据结构 / 组件 | `M{N} 完成（{具体说明依赖什么}）` |
+| 本 milestone 是纯独立功能（如纯前端视觉、独立页面、独立配置项） | `无强依赖（{一句话说明为什么独立}）` |
+| 多个 milestone 之间互相独立，可并行规划 | 各自写 `无强依赖`，在 roadmap 中并列 |
+
+**常见错误**：把"编号最大的已完成 milestone"当作前置条件填入，仅因为它是"最新"的——这是错误的。前置条件必须有实际技术依赖，不可凭编号顺序填写。
+
+**允许并行 plan**：可以在 `.agents/plans/` 中同时存在多个没有相互依赖的 milestone 文件，按实际需要选择启动顺序，不必强制串行。
+
 ### 新建 checklist
 
 新建 plan 文件时必须：
 
 - [ ] 文件名符合 `m{N}-{slug}.md` 规范
 - [ ] 文件头部包含标题、前置条件、目标三行
+- [ ] **前置条件已按上述规则判断**：是真实技术依赖才写 `M{N} 完成`，否则写 `无强依赖`
 - [ ] 正文使用下方模板结构，各章节按实际情况填写（不可省略 A/B/C 类范围、验收标准、非目标）
 - [ ] 在 roadmap.md"进行中 / 待启动"表格中追加新行
 - [ ] 在 roadmap.md 总览图中追加新节点
 - [ ] README.md 当前状态**不需要**在新建时更新（仅在完成时更新）
+- [ ] 若 plan 来源于 benchmark review proposal，确认对应文件已移入 `docs/benchmark-reviews/accepted/`，并在 plan 的"背景与动机"中引用 `accepted/` 路径
 
 ### Plan 文件正文模板
 
 ```markdown
 # M{N}：{中文标题}
 
-**前置条件**：M{N-1} 完成（{简要说明}）。
+**前置条件**：M{N-1} 完成（{具体说明依赖什么能力，例如：Workspace CRUD 可用}）。
+<!-- 若无技术依赖，改为：无强依赖（{一句话说明为什么独立，例如：纯前端视觉改动}）。 -->
 
 **目标**：{一句话描述本 milestone 要解决的核心问题}。
 
@@ -374,6 +393,8 @@ M{N-1}（前置）
 | plan 文件无前置条件行 | 不强制修正历史文件，新建时必须遵守 |
 | 完成标识缺失（无 commit hash）| 使用日期或 `（完成，具体提交待补充）` 占位 |
 | benchmark-reviews accepted/ 中仍有本 milestone 的 proposal | 执行 Step 4b，将对应文件移至 completed/ |
+| 将"编号最大的已完成 milestone"填为前置条件，实际上无技术依赖 | 改为 `无强依赖（{原因}）`；前置条件必须有真实技术依赖，不可凭编号顺序填写 |
+| 来源于 benchmark review 的 plan，背景中引用了 `proposed/` 路径 | 确认 proposal 已移入 `accepted/`，并更新 plan 中的引用路径 |
 
 ---
 
