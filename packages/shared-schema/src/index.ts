@@ -403,6 +403,7 @@ export interface WorkflowStepResult {
   status: "pending" | "running" | "completed" | "failed" | "waiting_confirm";
   summary: string | null;
   error?: string | null;
+  detail?: string | null; // JSON string, e.g. citations for retrieval steps
 }
 
 export interface ClarificationOption {
@@ -436,6 +437,7 @@ export interface WorkflowState {
   step_results: string;   // JSON array string
   result_summary: string | null;
   error_message: string | null;
+  director_intent: string | null; // Natural language intent from Director Agent
   created_at: string;
   updated_at: string;
 }

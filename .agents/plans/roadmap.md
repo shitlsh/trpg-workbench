@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M11 全部完成。M12 进行中。
+核心功能链路已通过 M1–M12 全部完成。
 
 ```
 ✅ M1 基础骨架
@@ -17,7 +17,7 @@
                                                                          └── ✅ M9a 规则集统一
                                                                                └── ✅ M10 Agent 编排
                                                                                       └── ✅ M11 Onboarding
-                                                                                            └── 🔧 M12 Agent 透明度
+                                                                                            └── ✅ M12 Agent 透明度
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -43,12 +43,13 @@
 | M10 ✅ | Agent 编排升级、澄清式交互与 Prompt 体系化 | 澄清式对话，Workflow 持久化修复，Prompt 模板体系，Director/Plot/NPC Agent 升级 | [archive/m10-agent-orchestration.md](archive/m10-agent-orchestration.md) |
 
 | M11 ✅ | 首次配置引导与 Onboarding 体验 | Setup Wizard（分步配置，LLM/Embedding/Rerank/工作空间），Inline Hint + Gemini/Jina 推荐默认值，冷启动引导链路打通 | [archive/m11-onboarding.md](archive/m11-onboarding.md) |
+| M12 ✅ | Agent 透明度 | RAG 引用在 WorkflowProgress 中可展开查看，Director 意图摘要在确认卡展示 | [archive/m12-agent-transparency.md](archive/m12-agent-transparency.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M12 🔧 | Agent 透明度 | RAG 引用在创作流程中可展开查看，Director 意图摘要在确认卡展示 | [m12-agent-transparency.md](m12-agent-transparency.md) |
+| — | — | — | — |
 
 ---
 

@@ -31,7 +31,8 @@ def create_workflow(db: Session, workspace_id: str, wf_type: str,
 
 
 def update_step(db: Session, wf: WorkflowStateORM, step: int, step_name: str,
-                step_status: str, summary: str | None = None, error: str | None = None):
+                step_status: str, summary: str | None = None, error: str | None = None,
+                detail: str | None = None):
     try:
         results = json.loads(wf.step_results or "[]")
     except (json.JSONDecodeError, TypeError):
@@ -39,7 +40,7 @@ def update_step(db: Session, wf: WorkflowStateORM, step: int, step_name: str,
     # Update or append
     existing = next((r for r in results if r["step"] == step), None)
     entry = {"step": step, "name": step_name, "status": step_status,
-             "summary": summary, "error": error}
+             "summary": summary, "error": error, "detail": detail}
     if existing:
         results[results.index(existing)] = entry
     else:

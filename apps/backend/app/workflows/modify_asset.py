@@ -70,6 +70,7 @@ async def run_modify_asset(
         # ── Step 1: Director intent analysis ───────────────────────────────
         update_step(db, wf, 1, STEP_NAMES[1], "running")
         change_plan = run_director(style_prefix + user_intent, ws_ctx, model=model)
+        wf.director_intent = change_plan.get("intent") or change_plan.get("change_plan", "")
         update_step(db, wf, 1, STEP_NAMES[1], "completed",
                     summary=change_plan.get("change_plan", ""))
 
@@ -83,8 +84,15 @@ async def run_modify_asset(
                 )
             except Exception:
                 knowledge_context = []
+        citations_detail = json.dumps(
+            [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+              "page_to": c.get("page_to"), "content": c.get("content", "")}
+             for c in knowledge_context if isinstance(c, dict)],
+            ensure_ascii=False,
+        )
         update_step(db, wf, 2, STEP_NAMES[2], "completed",
-                    summary=f"检索到 {len(knowledge_context)} 条相关内容")
+                    summary=f"检索到 {len(knowledge_context)} 条相关内容",
+                    detail=citations_detail)
 
         # ── Step 3: Generate modifications ────────────────────────────────
         update_step(db, wf, 3, STEP_NAMES[3], "running")
@@ -225,6 +233,7 @@ async def resume_modify_asset(
         # ── Step 1: Director intent analysis ───────────────────────────────
         update_step(db, wf, 1, STEP_NAMES[1], "running")
         change_plan = run_director(full_prefix + user_intent, ws_ctx, model=model)
+        wf.director_intent = change_plan.get("intent") or change_plan.get("change_plan", "")
         update_step(db, wf, 1, STEP_NAMES[1], "completed",
                     summary=change_plan.get("change_plan", ""))
 
@@ -238,8 +247,15 @@ async def resume_modify_asset(
                 )
             except Exception:
                 knowledge_context = []
+        citations_detail = json.dumps(
+            [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+              "page_to": c.get("page_to"), "content": c.get("content", "")}
+             for c in knowledge_context if isinstance(c, dict)],
+            ensure_ascii=False,
+        )
         update_step(db, wf, 2, STEP_NAMES[2], "completed",
-                    summary=f"检索到 {len(knowledge_context)} 条相关内容")
+                    summary=f"检索到 {len(knowledge_context)} 条相关内容",
+                    detail=citations_detail)
 
         # ── Step 3: Generate modifications ────────────────────────────────
         update_step(db, wf, 3, STEP_NAMES[3], "running")

@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { CheckCircle, XCircle, Loader, Clock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle, XCircle, Loader, Clock, ChevronDown, ChevronRight, BookOpen } from "lucide-react";
 import type { WorkflowState, WorkflowStepResult } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
 import { apiFetch } from "@/lib/api";
@@ -16,6 +16,60 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
   waiting_confirm: <Clock size={14} color="#f0a500" />,
   pending: <div style={{ width: 14, height: 14, borderRadius: "50%", background: "var(--border)" }} />,
 };
+
+interface Citation {
+  document_name: string;
+  page_from?: number | null;
+  page_to?: number | null;
+  content: string;
+}
+
+function CitationsPanel({ detail }: { detail: string }) {
+  const [open, setOpen] = useState(false);
+  let citations: Citation[] = [];
+  try { citations = JSON.parse(detail) as Citation[]; } catch {}
+  if (!citations.length) return null;
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex", alignItems: "center", gap: 4,
+          fontSize: 11, color: "var(--accent)", background: "none",
+          border: "none", padding: 0, cursor: "pointer",
+        }}
+      >
+        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        <BookOpen size={11} />
+        查看 {citations.length} 条引用来源
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 4, borderLeft: "2px solid var(--accent)",
+          paddingLeft: 8, display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          {citations.map((c, i) => (
+            <div key={i} style={{ fontSize: 11 }}>
+              <div style={{ fontWeight: 500, color: "var(--text)" }}>
+                {c.document_name}
+                {c.page_from != null && (
+                  <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+                    {" "}p.{c.page_from}{c.page_to && c.page_to !== c.page_from ? `–${c.page_to}` : ""}
+                  </span>
+                )}
+              </div>
+              {c.content && (
+                <div style={{ color: "var(--text-muted)", marginTop: 1, whiteSpace: "pre-wrap", maxHeight: 60, overflowY: "auto" }}>
+                  {c.content.length > 200 ? c.content.slice(0, 200) + "…" : c.content}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StepRow({ step }: { step: WorkflowStepResult }) {
   return (
@@ -35,6 +89,9 @@ function StepRow({ step }: { step: WorkflowStepResult }) {
         )}
         {step.error && (
           <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 2 }}>{step.error}</div>
+        )}
+        {step.detail && step.status === "completed" && (
+          <CitationsPanel detail={step.detail} />
         )}
       </div>
     </div>
@@ -134,22 +191,37 @@ export function WorkflowProgress({ onPatchesReady, onComplete }: WorkflowProgres
 
       {/* Actions for paused/waiting */}
       {activeWorkflow.status === "paused" && activeWorkflow.type === "create_module" && (
-        <div style={{ padding: "8px 12px", borderTop: "1px solid var(--border)", display: "flex", gap: 8 }}>
-          <button
-            onClick={async () => {
-              const updated = await apiFetch<WorkflowState>(`/workflows/${activeWorkflow.id}/confirm`, { method: "POST" });
-              setActiveWorkflow(updated);
-              setWorkflowPolling(true);
-            }}
-            style={{ ...btnPrimary, flex: 1 }}
-          >确认执行</button>
-          <button
-            onClick={async () => {
-              const updated = await apiFetch<WorkflowState>(`/workflows/${activeWorkflow.id}/cancel`, { method: "POST" });
-              setActiveWorkflow(updated);
-            }}
-            style={{ ...btnSecondary, flex: 1 }}
-          >取消</button>
+        <div style={{ padding: "8px 12px", borderTop: "1px solid var(--border)" }}>
+          {activeWorkflow.director_intent && (
+            <div style={{
+              marginBottom: 8, padding: "6px 8px",
+              background: "var(--bg-surface)", borderRadius: 4,
+              border: "1px solid var(--border)",
+              fontSize: 12, color: "var(--text)",
+            }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3, fontWeight: 500 }}>
+                Director 意图
+              </div>
+              {activeWorkflow.director_intent}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={async () => {
+                const updated = await apiFetch<WorkflowState>(`/workflows/${activeWorkflow.id}/confirm`, { method: "POST" });
+                setActiveWorkflow(updated);
+                setWorkflowPolling(true);
+              }}
+              style={{ ...btnPrimary, flex: 1 }}
+            >确认执行</button>
+            <button
+              onClick={async () => {
+                const updated = await apiFetch<WorkflowState>(`/workflows/${activeWorkflow.id}/cancel`, { method: "POST" });
+                setActiveWorkflow(updated);
+              }}
+              style={{ ...btnSecondary, flex: 1 }}
+            >取消</button>
+          </div>
         </div>
       )}
 

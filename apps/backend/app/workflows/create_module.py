@@ -77,6 +77,7 @@ async def run_create_module(
             return wf  # Frontend will show ClarificationCard
 
         # No clarification needed – store change plan and wait for user confirm
+        wf.director_intent = director_result.get("intent") or director_result.get("change_plan", "")
         update_step(db, wf, 2, STEP_NAMES[2], "waiting_confirm",
                     summary=json.dumps(director_result, ensure_ascii=False))
         pause_workflow(db, wf)
@@ -137,6 +138,7 @@ async def resume_create_module(
             clarification_answers=clarification_answers,
         )
         change_plan = director_result
+        wf.director_intent = director_result.get("intent") or director_result.get("change_plan", "")
         update_step(db, wf, 2, STEP_NAMES[2], "waiting_confirm",
                     summary=json.dumps(change_plan, ensure_ascii=False))
         pause_workflow(db, wf)
@@ -174,8 +176,15 @@ async def resume_create_module(
             except Exception:
                 knowledge_context = []
         rules_result = run_rules_agent(full_prefix + premise, knowledge_context, model=model)
+        citations_detail = json.dumps(
+            [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+              "page_to": c.get("page_to"), "content": c.get("content", "")}
+             for c in knowledge_context if isinstance(c, dict)],
+            ensure_ascii=False,
+        )
         update_step(db, wf, 3, STEP_NAMES[3], "completed",
-                    summary=rules_result.get("summary", "规则检索完成"))
+                    summary=rules_result.get("summary", "规则检索完成"),
+                    detail=citations_detail)
 
         # ── Step 4: Plot Agent – outline ────────────────────────────────────
         update_step(db, wf, 4, STEP_NAMES[4], "running")

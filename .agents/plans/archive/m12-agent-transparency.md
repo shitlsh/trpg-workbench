@@ -2,6 +2,8 @@
 
 **前置条件**：M11 完成（Setup Wizard、首次配置引导链路已落地）。
 
+**状态：✅ 已完成（2026-04-23）**
+
 **目标**：消除创作流程中的两处关键黑箱——让用户在 Workflow 执行过程中看到知识库检索到了什么、Director 理解了什么意图，从而对 AI 的创作决策建立真实的信任感。
 
 ---
@@ -140,17 +142,17 @@ ClarificationCard 和澄清相关逻辑不受本 milestone 影响。
 
 ### A1：RAG 引用在 WorkflowProgress 中可展开
 
-- [ ] **A1.1**：`create_module.py` — retrieval step 完成后，将 citations 序列化写入 step result 的 `detail` 字段
-- [ ] **A1.2**：`modify_asset.py` — 同上
-- [ ] **A1.3**：`shared-schema` — `WorkflowStepResult` 增加可选 `detail` 字段（`string | null`，JSON）
-- [ ] **A1.4**：`WorkflowProgress.tsx` — retrieval 类型步骤展开后，解析 `step.detail` 并渲染 citation 列表（文档名 + 页码 + 摘要）
+- [x] **A1.1**：`create_module.py` — retrieval step 完成后，将 citations 序列化写入 step result 的 `detail` 字段
+- [x] **A1.2**：`modify_asset.py` — 同上
+- [x] **A1.3**：`shared-schema` — `WorkflowStepResult` 增加可选 `detail` 字段（`string | null`，JSON）
+- [x] **A1.4**：`WorkflowProgress.tsx` — retrieval 类型步骤展开后，解析 `step.detail` 并渲染 citation 列表（文档名 + 页码 + 摘要）
 
 ### A2：Director 意图摘要在确认卡展示
 
-- [ ] **A2.1**：`create_module.py` — Step 1 完成后将 `Director.intent` 写入 `WorkflowStateORM.extra_data`（`{"director_intent": "..."}` 格式）
-- [ ] **A2.2**：`shared-schema` — `WorkflowState` 增加可选 `director_intent` 字段（`string | null`）
-- [ ] **A2.3**：后端 `GET /workflows/{id}` 响应中从 `extra_data` 读取并暴露 `director_intent`
-- [ ] **A2.4**：`WorkflowProgress.tsx` — 步骤 2 暂停卡中，若 `activeWorkflow.director_intent` 存在，展示意图摘要区域
+- [x] **A2.1**：`create_module.py` — Step 1 完成后将 `Director.intent` 写入 `WorkflowStateORM.extra_data`（`{"director_intent": "..."}` 格式）
+- [x] **A2.2**：`shared-schema` — `WorkflowState` 增加可选 `director_intent` 字段（`string | null`）
+- [x] **A2.3**：后端 `GET /workflows/{id}` 响应中从 `extra_data` 读取并暴露 `director_intent`
+- [x] **A2.4**：`WorkflowProgress.tsx` — 步骤 2 暂停卡中，若 `activeWorkflow.director_intent` 存在，展示意图摘要区域
 
 ---
 

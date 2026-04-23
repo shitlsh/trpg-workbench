@@ -358,6 +358,7 @@ class WorkflowStateSchema(BaseModel):
     step_results: str | None = None
     result_summary: str | None = None
     error_message: str | None = None
+    director_intent: str | None = None  # M12
     created_at: datetime
     updated_at: datetime
 
