@@ -280,6 +280,26 @@ recommended_action: plan / skill / code / defer
 
 ---
 
+## Proposal 生命周期
+
+`docs/benchmark-reviews/` 中的 proposal 文件有四个状态，每个状态转移都有明确的触发时机和执行方：
+
+| 状态转移 | 触发时机 | 执行方 |
+|---------|---------|-------|
+| `proposed → accepted` | 用户决策"要做"，确认进入某个 milestone 时 | 用户指令 / milestone 规划阶段 |
+| `proposed → rejected` | 用户明确决策"不做" | 用户指令 |
+| `proposed → deferred` | 用户决策"暂缓，条件满足后再评估" | 用户指令 |
+| `accepted → completed` | 对应 milestone 归档时，由 `milestone-management` Step 4b 执行 | milestone 归档流程 |
+
+**本 skill 的职责边界**：
+- 本 skill 只负责将结论写入 `proposed/`，并告知用户文件路径
+- `proposed → accepted/rejected/deferred` 的转移由**用户决策后下达指令**来执行
+- `accepted → completed` 的转移由 **`milestone-management` skill 的 Step 4b** 负责，本 skill 不介入
+
+**注意**：`accepted/` 目录中的文件应在 milestone plan 的"背景与动机"或"来源"章节中被引用。如果某个 proposal 已被采纳进入 milestone 但未引用路径，归档时 Step 4b 将无法自动发现它，需要手动移动。
+
+---
+
 ## 推荐调用模板
 
 以下模板可直接复制使用：
