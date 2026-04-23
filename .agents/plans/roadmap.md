@@ -17,7 +17,8 @@
                                                                          └── ✅ M9a 规则集统一
                                                                                └── ✅ M10 Agent 编排
                                                                                       └── ✅ M11 Onboarding
-                                                                                            └── ✅ M12 Agent 透明度
+                                                                                                      └── ✅ M12 Agent 透明度
+                                                                                                            └── M13 UI 视觉语言升级
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -48,7 +49,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| — | — | — | — |
+| M13 | UI 视觉语言升级 | 彩色 per-type 资产图标、三档文字颜色梯度、Active 状态焦点指示 | [m13-visual-language.md](m13-visual-language.md) |
 
 ---
 
