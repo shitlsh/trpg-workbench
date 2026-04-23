@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M10 全部完成。当前唯一进行中里程碑为 M11。
+核心功能链路已通过 M1–M11 全部完成。暂无进行中里程碑。
 
 ```
 ✅ M1 基础骨架
@@ -16,7 +16,7 @@
                                                                    └── ✅ M9 Smoke/Help
                                                                          └── ✅ M9a 规则集统一
                                                                                └── ✅ M10 Agent 编排
-                                                                                     └── 🔧 M11 Onboarding
+                                                                                      └── ✅ M11 Onboarding
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -41,11 +41,13 @@
 | M9a ✅ | 规则集统一管理 | 规则集 CRUD UI，知识库↔规则集绑定，PromptProfile 接入 Agent 运行时，工作空间知识库继承链路打通 | [archive/m9a-ruleset-unification.md](archive/m9a-ruleset-unification.md) |
 | M10 ✅ | Agent 编排升级、澄清式交互与 Prompt 体系化 | 澄清式对话，Workflow 持久化修复，Prompt 模板体系，Director/Plot/NPC Agent 升级 | [archive/m10-agent-orchestration.md](archive/m10-agent-orchestration.md) |
 
+| M11 ✅ | 首次配置引导与 Onboarding 体验 | Setup Wizard（分步配置，LLM/Embedding/Rerank/工作空间），Inline Hint + Gemini/Jina 推荐默认值，冷启动引导链路打通 | [archive/m11-onboarding.md](archive/m11-onboarding.md) |
+
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M11 🔧 | 首次配置引导与 Onboarding 体验 | Setup Wizard（分步配置，LLM/Embedding/Rerank/工作空间），Inline Hint + Gemini/Jina 推荐默认值，冷启动引导链路打通 | [m11-onboarding.md](m11-onboarding.md) |
+|（暂无）||||
 
 ---
 
