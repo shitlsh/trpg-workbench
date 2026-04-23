@@ -2,6 +2,8 @@
 
 **前置条件**：M13 完成（UI 视觉语言升级已归档）。
 
+**状态：✅ 已完成（commit 2a38fc7）**
+
 **目标**：重建 Help 文档内容（人工编写、任务导向、嵌入截图），调整文档维护机制（src/help 为 source of truth，smoke skill 解耦），增强 HelpPage 交互（应用内链接跳转、上下文 Help 入口）。
 
 ---
@@ -147,34 +149,34 @@ const components = {
 
 ### A1：重写 Help 文档内容
 
-- [ ] **A1.1**：`getting-started.md` — 重写，加入 Setup Wizard 流程，修正步骤顺序
-- [ ] **A1.2**：`model-setup.md` — 核对供应商列表、模型列表，更新不一致内容
-- [ ] **A1.3**：`knowledge-import.md` — 移除"基于 DOM 状态生成"注释，核实流程
-- [ ] **A1.4**：`start-creating.md` — 移除"待人工核对"注释，补充 Agent 面板交互
-- [ ] **A1.5**：`rule-set-management.md` — 核对规则集页面，确认操作步骤准确
+- [x] **A1.1**：`getting-started.md` — 重写，加入 Setup Wizard 流程，修正步骤顺序
+- [x] **A1.2**：`model-setup.md` — 核对供应商列表、模型列表，更新不一致内容
+- [x] **A1.3**：`knowledge-import.md` — 移除"基于 DOM 状态生成"注释，核实流程
+- [x] **A1.4**：`start-creating.md` — 移除"待人工核对"注释，补充 Agent 面板交互
+- [x] **A1.5**：`rule-set-management.md` — 核对规则集页面，确认操作步骤准确
 
 ### A2：文档嵌入截图
 
-- [ ] **A2.1**：创建 `apps/desktop/public/help-images/` 目录
-- [ ] **A2.2**：截取关键页面截图（首页、Setup Wizard、模型配置、知识库、工作台、规则集）
-- [ ] **A2.3**：在各文档中嵌入对应截图
+- [x] **A2.1**：创建 `apps/desktop/public/help-images/` 目录
+- [x] **A2.2**：截取关键页面截图（首页、Setup Wizard、模型配置、知识库、工作台、规则集）
+- [x] **A2.3**：在各文档中嵌入对应截图
 
 ### A3：HelpPage 交互增强
 
-- [ ] **A3.1**：`HelpPage.tsx` — 添加 custom link renderer（`/` 开头用 React Router 导航）
-- [ ] **A3.2**：5 篇文档中页面引用改为 Markdown 链接格式
+- [x] **A3.1**：`HelpPage.tsx` — 添加 custom link renderer（`/` 开头用 React Router 导航）
+- [x] **A3.2**：5 篇文档中页面引用改为 Markdown 链接格式
 
 ### A4：各功能页面 Help 入口
 
-- [ ] **A4.1**：`SettingsPage.tsx` — 头部加 HelpButton，跳转 `/help/model-setup`
-- [ ] **A4.2**：`KnowledgePage.tsx` — 头部加 HelpButton，跳转 `/help/knowledge-import`
-- [ ] **A4.3**：`RuleSetPage.tsx` — 头部加 HelpButton，跳转 `/help/rule-set-management`
-- [ ] **A4.4**：`WorkspaceSettingsPage.tsx` — 头部加 HelpButton（如页面存在）
+- [x] **A4.1**：`SettingsPage.tsx` — 头部加 HelpButton，跳转 `/help/model-setup`
+- [x] **A4.2**：`KnowledgePage.tsx` — 头部加 HelpButton，跳转 `/help/knowledge-import`
+- [x] **A4.3**：`RuleSetPage.tsx` — 头部加 HelpButton，跳转 `/help/rule-set-management`
+- [x] **A4.4**：`WorkspaceSettingsPage.tsx` — 头部加 HelpButton（如页面存在）
 
 ### A5：调整文档维护机制
 
-- [ ] **A5.1**：`tauri-ui-smoke-and-docs/SKILL.md` — help 文档生成降级为可选，明确 src/help 为 truth
-- [ ] **A5.2**：`milestone-management/SKILL.md` — 归档 checklist 增加 help 文档检查项
+- [x] **A5.1**：`tauri-ui-smoke-and-docs/SKILL.md` — help 文档生成降级为可选，明确 src/help 为 truth
+- [x] **A5.2**：`milestone-management/SKILL.md` — 归档 checklist 增加 help 文档检查项
 
 ---
 

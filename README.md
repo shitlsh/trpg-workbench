@@ -143,7 +143,8 @@ cargo tauri dev
 | M11 首次配置引导 | Setup Wizard 分步配置、Inline Hint、Gemini/Jina 推荐默认值 | ✅ 完成 |
 | M12 Agent 透明度 | RAG 引用展开查看、Director 意图摘要在确认卡展示 | ✅ 完成 |
 | M13 UI 视觉语言升级 | 彩色资产图标、文字颜色梯度、Active 状态焦点指示 | ✅ 完成 |
-| M14 Help 文档重建 | 重写 Help 文档、嵌入截图、HelpPage 交互增强、维护机制调整 | 🚧 进行中 |
+| M14 Help 文档重建 | 重写 Help 文档、嵌入截图、HelpPage 交互增强、维护机制调整 | ✅ 完成 |
+| M15 知识库归属规则集 | 知识库合并进规则集管理页、消除独立路由、统一 1:N 数据模型 | 🚧 进行中 |
 
 详细计划见 `.agents/plans/`，架构与约束见 `.agents/skills/`。
 
