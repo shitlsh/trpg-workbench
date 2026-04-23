@@ -180,6 +180,25 @@ mv .agents/plans/m{N}-{slug}.md .agents/plans/archive/
 > **当前状态：M{N} 已完成**
 ```
 
+### Step 4b：移动 benchmark-review proposals（如有）
+
+若本 milestone 的 plan 文件中引用了 `docs/benchmark-reviews/` 来源（通常在"背景与动机"或"来源"章节），
+需要将对应 proposals 从 `accepted/` 移动到 `completed/`：
+
+```bash
+# 查看 plan 文件中引用的 proposal 路径
+grep "benchmark-reviews" .agents/plans/archive/m{N}-{slug}.md
+
+# 移动对应文件
+mv docs/benchmark-reviews/accepted/{filename}.md docs/benchmark-reviews/completed/
+```
+
+**判断方法**：
+- 在 plan 文件中搜索 `docs/benchmark-reviews/` 路径
+- 若路径指向 `accepted/`，则对应文件需移动到 `completed/`
+- 若路径指向 `proposed/`，说明 proposal 已在 milestone 规划时被接受但未手动移到 accepted，跳过此步（不追溯）
+- 若 plan 文件中无 benchmark-reviews 引用，跳过此步
+
 ### Step 5（原 Step 5）：验证一致性
 
 归档完成后，检查以下一致性：
@@ -191,6 +210,7 @@ mv .agents/plans/m{N}-{slug}.md .agents/plans/archive/
 - [ ] roadmap.md 表格中该 milestone 已移入"已完成"节
 - [ ] roadmap.md 文件链接指向 `archive/` 路径
 - [ ] README.md 当前状态描述已更新
+- [ ] 若 plan 引用了 benchmark-reviews proposals，已从 `accepted/` 移至 `completed/`
 
 ---
 
@@ -225,6 +245,7 @@ mv .agents/plans/m{N}-{slug}.md .agents/plans/archive/
 | 新建时编号与已有文件冲突 | 检查 archive/ 后重新分配编号 |
 | plan 文件无前置条件行 | 不强制修正历史文件，新建时必须遵守 |
 | 完成标识缺失（无 commit hash）| 使用日期或 `（完成，具体提交待补充）` 占位 |
+| benchmark-reviews accepted/ 中仍有本 milestone 的 proposal | 执行 Step 4b，将对应文件移至 completed/ |
 
 ---
 
