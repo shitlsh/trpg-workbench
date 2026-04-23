@@ -37,12 +37,16 @@ def update_step(db: Session, wf: WorkflowStateORM, step: int, step_name: str,
         results = json.loads(wf.step_results or "[]")
     except (json.JSONDecodeError, TypeError):
         results = []
-    # Update or append
+    # Update or append; never regress a completed step back to a non-terminal status
     existing = next((r for r in results if r["step"] == step), None)
     entry = {"step": step, "name": step_name, "status": step_status,
              "summary": summary, "error": error, "detail": detail}
     if existing:
-        results[results.index(existing)] = entry
+        # Protect completed steps: only allow overwriting with another terminal status
+        if existing.get("status") == "completed" and step_status not in ("completed", "failed"):
+            pass  # Skip regression
+        else:
+            results[results.index(existing)] = entry
     else:
         results.append(entry)
 

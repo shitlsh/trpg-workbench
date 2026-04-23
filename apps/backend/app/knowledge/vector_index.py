@@ -14,7 +14,7 @@ SCHEMA = pa.schema([
     pa.field("page_from", pa.int32()),
     pa.field("page_to", pa.int32()),
     pa.field("section_title", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), 1536)),
+    pa.field("vector", pa.list_(pa.float32())),  # dimension determined at index creation time
 ])
 
 
@@ -72,7 +72,7 @@ def search_library(
     dimensions: int = 1536,
 ) -> list[dict]:
     """Search a single library index, return top-k results."""
-    if not (index_dir / "chunks.lance").exists() and not index_dir.exists():
+    if not index_dir.exists() or not (index_dir / "chunks.lance").exists():
         return []
     try:
         db = lancedb.connect(str(index_dir))

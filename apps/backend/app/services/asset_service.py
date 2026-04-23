@@ -152,7 +152,8 @@ def update_asset(db: Session, asset: AssetORM, workspace_path: str,
                  content_md: str | None = None, content_json: str | None = None,
                  change_summary: str | None = None,
                  name: str | None = None, status: str | None = None,
-                 summary: str | None = None) -> AssetORM:
+                 summary: str | None = None,
+                 source_type: str = "user") -> AssetORM:
     """Update asset content + write files + append revision."""
     # Get current content from latest revision
     latest = None
@@ -187,7 +188,7 @@ def update_asset(db: Session, asset: AssetORM, workspace_path: str,
         content_md=new_md,
         content_json=new_json,
         change_summary=change_summary or "用户手动编辑",
-        source_type="user",
+        source_type=source_type,
     )
     db.add(revision)
     db.flush()

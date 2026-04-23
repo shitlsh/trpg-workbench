@@ -1,6 +1,5 @@
 """modify_asset Workflow – targeted modification of one or more existing assets."""
 import json
-import asyncio
 from sqlalchemy.orm import Session
 
 from app.workflows.utils import (
@@ -84,14 +83,12 @@ async def run_modify_asset(
         knowledge_context = []
         if knowledge_retriever:
             try:
-                knowledge_context = await asyncio.to_thread(
-                    knowledge_retriever, user_intent, workspace_id
-                )
+                knowledge_context = await knowledge_retriever(user_intent, workspace_id)
             except Exception:
                 knowledge_context = []
         citations_detail = (
             json.dumps(
-                [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+                [{"document_name": c.get("document_filename", ""), "page_from": c.get("page_from"),
                   "page_to": c.get("page_to"), "content": c.get("content", "")}
                  for c in knowledge_context if isinstance(c, dict)],
                 ensure_ascii=False,
@@ -249,14 +246,12 @@ async def resume_modify_asset(
         knowledge_context = []
         if knowledge_retriever:
             try:
-                knowledge_context = await asyncio.to_thread(
-                    knowledge_retriever, user_intent, workspace_id
-                )
+                knowledge_context = await knowledge_retriever(user_intent, workspace_id)
             except Exception:
                 knowledge_context = []
         citations_detail = (
             json.dumps(
-                [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+                [{"document_name": c.get("document_filename", ""), "page_from": c.get("page_from"),
                   "page_to": c.get("page_to"), "content": c.get("content", "")}
                  for c in knowledge_context if isinstance(c, dict)],
                 ensure_ascii=False,
@@ -378,6 +373,7 @@ async def apply_modify_asset_patches(
                 content_md=patch.get("content_md"),
                 content_json=patch.get("content_json"),
                 change_summary=patch.get("change_summary", "AI 修改"),
+                source_type="agent",
             )
             saved += 1
 

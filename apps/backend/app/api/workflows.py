@@ -42,10 +42,21 @@ async def _build_knowledge_retriever(workspace_id: str, task_type: str, db: Sess
     Integrates optional rerank if workspace has rerank enabled for this task_type.
     Returns None if no libraries are bound to the workspace.
     """
-    from app.models.orm import WorkspaceORM
+    from app.models.orm import WorkspaceORM, RuleSetLibraryBindingORM
     from app.services.model_routing import get_embedding_for_query, LibraryNotIndexedError
 
-    bindings = (
+    workspace = db.get(WorkspaceORM, workspace_id)
+
+    # Rule set library bindings + workspace extra bindings (same logic as get_workspace_context)
+    rs_libs = []
+    if workspace and workspace.rule_set_id:
+        rs_libs = [
+            b.library_id
+            for b in db.query(RuleSetLibraryBindingORM)
+            .filter_by(rule_set_id=workspace.rule_set_id)
+            .all()
+        ]
+    ws_bindings = (
         db.query(WorkspaceLibraryBindingORM)
         .filter(
             WorkspaceLibraryBindingORM.workspace_id == workspace_id,
@@ -54,13 +65,11 @@ async def _build_knowledge_retriever(workspace_id: str, task_type: str, db: Sess
         .order_by(WorkspaceLibraryBindingORM.priority.desc())
         .all()
     )
-    if not bindings:
+    ws_libs = [b.library_id for b in ws_bindings]
+    library_ids = list(dict.fromkeys(rs_libs + ws_libs))  # deduplicate, preserve order
+
+    if not library_ids:
         return None
-
-    library_ids = [b.library_id for b in bindings]
-
-    # Resolve rerank profile (may be None — rerank is optional)
-    workspace = db.get(WorkspaceORM, workspace_id)
     rerank_profile = get_reranker_for_workspace(workspace_id, task_type, db)
     rerank_top_n = workspace.rerank_top_n if workspace else 20
     rerank_top_k = workspace.rerank_top_k if workspace else 5
@@ -130,10 +139,14 @@ async def start_workflow(body: StartWorkflowRequest, background_tasks: Backgroun
 
     if body.type == "create_module":
         model = _resolve_model(body.workspace_id, "create_module", db)
-        wf = await run_create_module(db, body.workspace_id, user_intent, model=model)
+        knowledge_retriever = await _build_knowledge_retriever(body.workspace_id, "create_module", db)
+        wf = await run_create_module(db, body.workspace_id, user_intent, model=model,
+                                     knowledge_retriever=knowledge_retriever)
     elif body.type == "modify_asset":
         model = _resolve_model(body.workspace_id, "modify_asset", db)
-        wf = await run_modify_asset(db, body.workspace_id, user_intent, affected_ids, model=model)
+        knowledge_retriever = await _build_knowledge_retriever(body.workspace_id, "modify_asset", db)
+        wf = await run_modify_asset(db, body.workspace_id, user_intent, affected_ids, model=model,
+                                    knowledge_retriever=knowledge_retriever)
     elif body.type == "rules_review":
         asset_ids = body.input.get("asset_ids", [])
         model = _resolve_model(body.workspace_id, "rules_review", db)
@@ -171,7 +184,8 @@ async def confirm_workflow(wf_id: str, db: Session = Depends(get_db)):
 
     if wf.type == "create_module":
         model = _resolve_model(wf.workspace_id, "create_module", db)
-        wf = await resume_create_module(db, wf, model=model)
+        knowledge_retriever = await _build_knowledge_retriever(wf.workspace_id, "create_module", db)
+        wf = await resume_create_module(db, wf, model=model, knowledge_retriever=knowledge_retriever)
     elif wf.type == "modify_asset":
         wf = await apply_modify_asset_patches(db, wf)
     else:
@@ -189,17 +203,19 @@ async def clarify_workflow(wf_id: str, body: ClarifyRequest, db: Session = Depen
         raise HTTPException(status_code=400, detail="Workflow is not waiting for clarification")
 
     import json
+    from datetime import datetime, timezone
     wf.clarification_answers = json.dumps(body.answers, ensure_ascii=False)
-    wf.status = "executing"
-    wf.updated_at = __import__('datetime').datetime.now(__import__('datetime').timezone.utc)
+    wf.updated_at = datetime.now(timezone.utc)
     db.commit()
 
     if wf.type == "create_module":
         model = _resolve_model(wf.workspace_id, "create_module", db)
-        wf = await resume_create_module(db, wf, model=model)
+        knowledge_retriever = await _build_knowledge_retriever(wf.workspace_id, "create_module", db)
+        wf = await resume_create_module(db, wf, model=model, knowledge_retriever=knowledge_retriever)
     elif wf.type == "modify_asset":
         model = _resolve_model(wf.workspace_id, "modify_asset", db)
-        wf = await resume_modify_asset(db, wf, model=model)
+        knowledge_retriever = await _build_knowledge_retriever(wf.workspace_id, "modify_asset", db)
+        wf = await resume_modify_asset(db, wf, model=model, knowledge_retriever=knowledge_retriever)
     else:
         raise HTTPException(status_code=400, detail=f"Cannot clarify workflow type: {wf.type}")
 

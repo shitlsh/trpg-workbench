@@ -1,6 +1,5 @@
 """create_module Workflow – orchestrates full module creation (9+ steps)."""
 import json
-import asyncio
 from sqlalchemy.orm import Session
 
 from app.workflows.utils import (
@@ -170,15 +169,13 @@ async def resume_create_module(
         knowledge_context = []
         if knowledge_retriever:
             try:
-                knowledge_context = await asyncio.to_thread(
-                    knowledge_retriever, premise, workspace_id
-                )
+                knowledge_context = await knowledge_retriever(premise, workspace_id)
             except Exception:
                 knowledge_context = []
         rules_result = run_rules_agent(full_prefix + premise, knowledge_context, model=model)
         citations_detail = (
             json.dumps(
-                [{"document_name": c.get("document_name", ""), "page_from": c.get("page_from"),
+                [{"document_name": c.get("document_filename", ""), "page_from": c.get("page_from"),
                   "page_to": c.get("page_to"), "content": c.get("content", "")}
                  for c in knowledge_context if isinstance(c, dict)],
                 ensure_ascii=False,
@@ -303,13 +300,13 @@ async def resume_create_module(
                 if existing:
                     update_asset(db, existing, ws.workspace_path,
                                  content_md=content_md, content_json=content_json,
-                                 change_summary=summary_text)
+                                 change_summary=summary_text, source_type="agent")
                 else:
                     new_asset = create_asset(db, workspace_id, ws.workspace_path,
                                              asset_type, name, slug)
                     update_asset(db, new_asset, ws.workspace_path,
                                  content_md=content_md, content_json=content_json,
-                                 change_summary=summary_text)
+                                 change_summary=summary_text, source_type="agent")
                 created_count += 1
             except Exception:
                 continue
