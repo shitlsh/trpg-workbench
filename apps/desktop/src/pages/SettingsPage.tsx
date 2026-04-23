@@ -12,6 +12,7 @@ import type {
   RerankProviderType, RerankTestResult,
 } from "@trpg-workbench/shared-schema";
 import styles from "./SettingsPage.module.css";
+import { HelpButton } from "../components/HelpButton";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -910,6 +911,7 @@ export default function SettingsPage() {
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate("/")}>← 返回</button>
         <h1 className={styles.title}>模型配置</h1>
+        <HelpButton doc="model-setup" />
       </header>
       <div style={{ borderBottom: "1px solid var(--border)", display: "flex", gap: 0, paddingLeft: 32 }}>
         <button style={tabStyle(tab === "llm")} onClick={() => setTab("llm")}>LLM 语言模型</button>

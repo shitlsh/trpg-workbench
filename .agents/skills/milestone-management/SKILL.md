@@ -232,6 +232,7 @@ mv docs/benchmark-reviews/accepted/{filename}.md docs/benchmark-reviews/complete
 - [ ] roadmap.md 文件链接指向 `archive/` 路径
 - [ ] README.md 当前状态描述已更新
 - [ ] 若 plan 引用了 benchmark-reviews proposals，已从 `accepted/` 移至 `completed/`
+- [ ] 若本 milestone 改动了 UI 页面，检查 `apps/desktop/src/help/` 中的帮助文档是否需要同步更新（如新增按钮/页面/流程变更）
 
 ---
 

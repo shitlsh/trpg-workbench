@@ -1,4 +1,5 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
+import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -28,6 +29,32 @@ const NAV_ITEMS = [
   { id: "rule-set-management", label: "规则集管理" },
   { id: "start-creating",      label: "开始创作" },
 ];
+
+// ── Custom renderers for in-app navigation ──────────────────────────────────
+
+const mdComponents: Components = {
+  a: ({ href, children }) => {
+    if (href?.startsWith("/")) {
+      return <Link to={href}>{children}</Link>;
+    }
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    );
+  },
+  img: ({ src, alt }) => {
+    // Images in public/help-images/ are served at /help-images/
+    return (
+      <img
+        src={src}
+        alt={alt ?? ""}
+        style={{ maxWidth: "100%", borderRadius: "var(--radius)", margin: "12px 0" }}
+        loading="lazy"
+      />
+    );
+  },
+};
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -66,7 +93,7 @@ export default function HelpPage() {
         {/* Content */}
         <main className={styles.content}>
           <div className={styles.prose}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            <ReactMarkdown components={mdComponents} remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </div>
         </main>
       </div>

@@ -8,6 +8,7 @@ import {
 import { apiFetch, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { HelpButton } from "../components/HelpButton";
 import type {
   KnowledgeLibrary,
   KnowledgeDocument,
@@ -435,6 +436,7 @@ export default function KnowledgePage() {
           <Library size={16} />
           知识库管理
         </h1>
+        <HelpButton doc="knowledge-import" />
         <button className={styles.btnPrimary} onClick={() => setShowNewLib(true)}>
           <Plus size={14} /> 新建知识库
         </button>

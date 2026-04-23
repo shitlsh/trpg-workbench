@@ -9,6 +9,7 @@ import type {
   CreateBindingRequest, KnowledgeLibrary, RuleSetLibraryBinding,
 } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
+import { HelpButton } from "../components/HelpButton";
 
 // ─── Extra Libraries Section ───────────────────────────────────────────────────
 
@@ -299,6 +300,7 @@ export default function WorkspaceSettingsPage() {
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate("/")}>← 返回</button>
         <h1 className={styles.title}>工作空间设置</h1>
+        <HelpButton doc="getting-started" />
       </header>
       <main className={styles.main}>
         <form onSubmit={handleSave} className={styles.form}>

@@ -13,6 +13,7 @@ import type {
   PromptProfile,
 } from "@trpg-workbench/shared-schema";
 import styles from "./RuleSetPage.module.css";
+import { HelpButton } from "../components/HelpButton";
 
 const GENRE_OPTIONS = [
   { value: "", label: "通用" },
@@ -279,6 +280,7 @@ export default function RuleSetPage() {
           <BookOpen size={16} />
           规则集管理
         </h1>
+        <HelpButton doc="rule-set-management" />
         <button className={styles.btnPrimary} onClick={() => setShowCreate(true)}>
           <Plus size={14} /> 新建规则集
         </button>

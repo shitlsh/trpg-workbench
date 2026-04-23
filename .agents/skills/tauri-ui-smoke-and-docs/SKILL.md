@@ -282,9 +282,18 @@ For mode-degradation, include a `## Warnings` section with the downgrade note.
 
 ---
 
-## Help Doc Generation
+## Help Doc Generation (Optional Reference Only)
 
-After the smoke run, write four help documents into
+> **Important:** The source of truth for Help documentation is
+> `apps/desktop/src/help/`. These files are **human-authored and
+> human-maintained**. The DOM-extracted drafts below are **optional
+> reference material only** — they can help identify UI element names
+> and page structure, but should never be copied directly into
+> `apps/desktop/src/help/` without significant human editing.
+>
+> See M14 (Help 文档重建) for the rationale behind this policy.
+
+After the smoke run, you **may optionally** write help doc drafts into
 `docs/ui-snapshots/<date>/help/`. Base the content on:
 
 - Page titles and headings extracted from the DOM
@@ -295,17 +304,18 @@ After the smoke run, write four help documents into
 - In `vision_review` mode: additionally incorporate qualitative notes from
   visual model output, but always reconcile against DOM-extracted text
 
-**Two-stage sync rule:**
-- Stage 1 (always): generate docs into `docs/ui-snapshots/<date>/help/`.
-- Stage 2 (only on explicit user request): copy files into
-  `apps/desktop/src/help/`. Never update application source automatically.
+**These drafts are NOT synced to `apps/desktop/src/help/`.**
+The previous two-stage sync rule is retired. If a smoke run reveals
+that `apps/desktop/src/help/` content is outdated (e.g., new buttons
+or pages not mentioned in the docs), flag this in the smoke report
+rather than auto-generating replacement docs.
 
 Write in plain Chinese (中文). Under 600 words per document.
 
 If a page was `skipped` or `fail`, the corresponding doc section must note
 this explicitly rather than fabricating content.
 
-### Four documents
+### Four documents (optional drafts)
 
 - **`getting-started.md`** — first-launch experience, create workspace, navigate to settings
 - **`model-setup.md`** — settings page, tabs (enumerated from DOM), profile types
@@ -335,19 +345,16 @@ not guaranteed implementation state.
 
 ---
 
-## Tauri Help Menu and In-App Help Page
+## In-App Help Page
 
-**Do not implement during a smoke run. Implement only when the user
-explicitly asks for M9 Tauri integration work.**
+The in-app help page (`/help/:doc`) is already implemented and
+human-maintained at `apps/desktop/src/help/`. This skill does NOT
+manage help page content — it only produces optional reference drafts
+in `docs/ui-snapshots/<date>/help/`.
 
-Document source: `apps/desktop/src/help/` — populated from
-`docs/ui-snapshots/<date>/help/` only after user approval.
-
-Tauri integration: register Help menu in `lib.rs` (MenuBuilder), emit
-`open_help` event on click, frontend listens and navigates to
-`/help/getting-started` via React Router.
-
-In-app help page: `/help/:doc` route, Markdown renderer, four-doc sidebar.
+**Tauri native Help menu is intentionally not implemented** — it was
+found to be unhelpful and would not be portable to a future web version.
+Help is accessed via the in-app HelpButton on each page header.
 
 ---
 

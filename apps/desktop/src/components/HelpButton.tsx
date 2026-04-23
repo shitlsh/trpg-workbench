@@ -2,16 +2,18 @@ import { HelpCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface HelpButtonProps {
+  /** Help doc slug to navigate to (default: "getting-started") */
+  doc?: string;
   size?: number;
   style?: React.CSSProperties;
 }
 
-export function HelpButton({ size = 15, style }: HelpButtonProps) {
+export function HelpButton({ doc = "getting-started", size = 15, style }: HelpButtonProps) {
   const navigate = useNavigate();
 
   return (
     <button
-      onClick={() => navigate("/help/getting-started")}
+      onClick={() => navigate(`/help/${doc}`)}
       title="帮助文档"
       style={{
         display: "flex",
