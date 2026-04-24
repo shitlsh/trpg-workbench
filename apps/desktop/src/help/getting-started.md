@@ -12,11 +12,13 @@
 
 ### 第一步：配置 LLM 模型
 
-LLM（大语言模型）是 AI 创作的核心引擎。应用推荐使用 **Google Gemini**，支持长上下文，适合 TRPG 创作场景。
+LLM（大语言模型）是 AI 创作的核心引擎。你有两种选择：
 
-你可以点击「填入 Gemini 推荐值」一键填入推荐配置，只需补充你的 API Key 即可。也可以手动选择其他供应商（OpenAI、Anthropic、OpenRouter 等）。
+**云端模型（推荐新手）**：应用推荐使用 **Google Gemini**，支持长上下文，适合 TRPG 创作场景。点击「填入 Gemini 推荐值」一键填入配置，只需补充你的 API Key 即可。
 
-> 如果暂时没有 API Key，可以点击「稍后配置」跳过，后续在 [模型配置](/settings/models) 页面补充。
+**本地模型（适合有一定硬件的用户）**：如果你的电脑内存 ≥ 16GB，可以通过 LM Studio 或 Ollama 在本地运行大语言模型，无需 API Key，数据不离本机。点击「本地模型选项」展开快速填入。推荐模型：Qwen2.5-14B-Instruct（需 10GB 内存）或 Qwen3-30B-A3B MoE（需 16GB 内存）。
+
+> 如果暂时没有 API Key 也没有本地环境，可以点击「稍后配置」跳过，后续在 [模型配置](/settings/models) 页面补充。详见 [模型配置指南](/help/model-setup)。
 
 ### 第二步：配置 Embedding 模型
 

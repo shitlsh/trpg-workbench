@@ -335,6 +335,7 @@ Step 5: 完成 → 跳转到新建 Workspace
 - 使用全屏 Dialog 或独立 `/onboarding` 路由，不使用主界面三栏布局
 - 每步顶部显示步骤指示器（Step 1 / 5）
 - 「下一步」按钮在当前步必填项未完成时禁用
+  - LLM Step：`name` 和 `model_name` 必填；`api_key` 仅对非 `openai_compatible` 供应商必填（本地模型无需 key）
 - 不允许在 Wizard 期间跳转到主业务路由
 
 ---
