@@ -916,14 +916,14 @@ export default function SettingsPage() {
       <div style={{ borderBottom: "1px solid var(--border)", display: "flex", gap: 0, paddingLeft: 32 }}>
         <button style={tabStyle(tab === "llm")} onClick={() => setTab("llm")}>LLM 语言模型</button>
         <button style={tabStyle(tab === "embedding")} onClick={() => setTab("embedding")}>Embedding 向量模型</button>
-        <button style={tabStyle(tab === "catalog")} onClick={() => setTab("catalog")}>模型发现</button>
         <button style={tabStyle(tab === "rerank")} onClick={() => setTab("rerank")}>Rerank 重排序</button>
+        <button style={tabStyle(tab === "catalog")} onClick={() => setTab("catalog")}>模型发现</button>
       </div>
       <main className={styles.main}>
         {tab === "llm" && <LLMSection />}
         {tab === "embedding" && <EmbeddingSection />}
-        {tab === "catalog" && <CatalogSection />}
         {tab === "rerank" && <RerankSection />}
+        {tab === "catalog" && <CatalogSection />}
       </main>
     </div>
   );

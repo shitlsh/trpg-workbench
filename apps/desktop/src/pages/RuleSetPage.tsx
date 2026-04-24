@@ -23,6 +23,7 @@ import type {
   SearchTestRequest,
   SearchTestResponse,
   PromptProfile,
+  EmbeddingProfile,
   CustomAssetTypeConfig,
   CreateCustomAssetTypeRequest,
 } from "@trpg-workbench/shared-schema";
@@ -773,6 +774,12 @@ export default function RuleSetPage() {
     enabled: !!selectedId,
   });
 
+  const { data: embeddingProfiles = [] } = useQuery({
+    queryKey: ["embedding-profiles"],
+    queryFn: () => apiFetch<EmbeddingProfile[]>("/settings/embedding-profiles"),
+  });
+  const hasEmbedding = embeddingProfiles.length > 0;
+
   const currentPrompt = selectedId
     ? allProfiles.find((p) => p.rule_set_id === selectedId) ?? null
     : null;
@@ -976,12 +983,19 @@ export default function RuleSetPage() {
                   <span className={styles.sectionLabel}><Library size={12} /> 知识库（{libraries.length}）</span>
                   <button
                     className={styles.btnSecondary}
-                    style={{ fontSize: 12, padding: "4px 10px" }}
-                    onClick={() => setShowCreateLib(true)}
+                    style={{ fontSize: 12, padding: "4px 10px", opacity: hasEmbedding ? 1 : 0.5 }}
+                    onClick={() => hasEmbedding && setShowCreateLib(true)}
+                    disabled={!hasEmbedding}
+                    title={hasEmbedding ? undefined : "请先在模型配置中添加 Embedding 模型"}
                   >
                     <Plus size={12} /> 新建知识库
                   </button>
                 </div>
+                {!hasEmbedding && (
+                  <p style={{ fontSize: 12, color: "var(--warning, #e8a838)", margin: "4px 0 8px", display: "flex", alignItems: "center", gap: 4 }}>
+                    <AlertTriangle size={12} /> 需要先配置 Embedding 模型才能创建知识库
+                  </p>
+                )}
                 {libraries.length === 0 ? (
                   <p className={styles.empty}>暂无知识库——点击「新建知识库」导入规则书 PDF</p>
                 ) : (

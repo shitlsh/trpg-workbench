@@ -5,7 +5,7 @@ import { ThreePanelLayout } from "@/components/editor/ThreePanelLayout";
 import { AssetTree } from "@/components/editor/AssetTree";
 import { EditorCenter } from "@/components/editor/EditorCenter";
 import { AgentPanel } from "@/components/agent/AgentPanel";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Settings, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 export function WorkspacePage() {
@@ -31,6 +31,13 @@ export function WorkspacePage() {
 
   const config = configResp?.config;
   const ruleSet = ruleSets.find((rs) => rs.name === config?.rule_set || rs.slug === config?.rule_set);
+
+  const configWarnings: string[] = [];
+  if (config) {
+    if (!config.rule_set) configWarnings.push("未绑定规则集");
+    if (!config.models?.default_llm) configWarnings.push("未配置 LLM 模型");
+    if (!config.models?.embedding) configWarnings.push("未配置 Embedding 模型");
+  }
 
   if (isLoading) {
     return (
@@ -70,7 +77,36 @@ export function WorkspacePage() {
         {config?.description && (
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{config.description}</span>
         )}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => navigate(`/workspace/${id}/settings`)}
+          style={{ background: "none", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer" }}
+          title="工作空间设置"
+        >
+          <Settings size={15} />
+        </button>
       </div>
+
+      {/* Config warning banner */}
+      {configWarnings.length > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "8px 16px",
+          background: "rgba(232,168,56,0.1)",
+          borderBottom: "1px solid rgba(232,168,56,0.25)",
+          fontSize: 13, color: "var(--warning, #e8a838)",
+          flexShrink: 0,
+        }}>
+          <AlertTriangle size={14} />
+          <span>工作空间配置不完整：{configWarnings.join("、")}。</span>
+          <button
+            onClick={() => navigate(`/workspace/${id}/settings`)}
+            style={{ background: "none", color: "var(--accent)", cursor: "pointer", fontSize: 13, textDecoration: "underline" }}
+          >
+            前往设置
+          </button>
+        </div>
+      )}
 
       {/* Three panel layout */}
       <div style={{ flex: 1, overflow: "hidden" }}>

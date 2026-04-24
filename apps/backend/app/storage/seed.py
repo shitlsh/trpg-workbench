@@ -4,13 +4,6 @@ from app.storage.database import get_session_factory
 
 DEFAULT_RULE_SETS = [
     {
-        "id": "builtin-blank",
-        "name": "空白规则体系",
-        "slug": "blank",
-        "description": "无特定规则体系，自由创作",
-        "genre": None,
-    },
-    {
         "id": "builtin-horror-investigation",
         "name": "恐怖调查",
         "slug": "horror-investigation",
