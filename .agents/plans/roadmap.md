@@ -22,7 +22,10 @@
                                                                                                                     └── ✅ M14 Help 文档重建
                                                                                                                           └── ✅ M15 知识库归属规则集
                                                                                                                                   ├── ✅ M16 AssetType 开放化
-                                                                                                                                 └── ✅ M17 用户自定义 Agent Skill
+                                                                                                                                  └── ✅ M17 用户自定义 Agent Skill
+                                                                                                                                        └── 🔲 M18 File-first 自包含 Workspace
+                                                                                                                                              ├── 🔲 M19 Agent 上下文控制
+                                                                                                                                              └── 🔲 M20 发布打包 & CI/CD
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -59,7 +62,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| — | — | — | — |
+| M18 | File-first 自包含 Workspace | 资产/配置/聊天全部以文件为真相源，DB 降级为可重建缓存索引，工作空间目录可拷贝即迁移 | [m18-file-first-workspace.md](m18-file-first-workspace.md) |
 
 ---
 
@@ -72,7 +75,7 @@
 - **后端**：Python + FastAPI + Agno，禁止 LangChain
 - **数据库**：SQLite（本地），禁止 PostgreSQL（第一版）
 - **向量库**：lancedb 或 hnswlib（本地文件型），禁止外部向量服务
-- **资产格式**：JSON + Markdown 双文件，JSON 是真相源
+- **资产格式**：Frontmatter Markdown 为真相源（M18 起），`.trpg/cache.db` 为可重建索引
 - **前端通信**：查询型用 TanStack Query，禁止组件内裸 fetch
 - **状态管理**：Zustand，禁止 Redux
 
