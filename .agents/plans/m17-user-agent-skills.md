@@ -1,18 +1,50 @@
-# M17：用户自定义 Agent Skill
+# M17：Workspace Skill 框架
 
-**前置条件**：无强依赖（后端新表独立，Workflow 注入是加法，不改现有逻辑；可与 M16 并行）。
+**前置条件**：无强依赖（文件存储独立，Workflow 注入是加法；可与 M16 并行）。
 
-**目标**：允许用户为每个 Agent 类型编写独立的创作框架指令（Skill），注入到 Workflow 执行中，让用户从"被动接受 AI 生成结果"变为"主动塑造 AI 创作框架"。
+**目标**：建立 workspace 级别的 skill 发现与加载框架，允许用户在工作区中添加 skill 文件，Agent 在 Workflow 执行时自动发现并加载匹配的 skill，从而让 workbench 具备面向未来的可扩展能力。
 
 ---
 
 ## 背景与动机
 
-当前 `PromptProfile` 允许用户编写全局风格提示词，注入所有创作型 Agent。但用户无法对单个 Agent 类型（如 NPC Agent、Monster Agent）设定独立的创作维度要求。每次开始创作时，用户只能在对话中重复说明框架要求（如"NPC 必须包含神话接触程度字段"），无法持久化。
+当前用户只能通过 PromptProfile 在 RuleSet 级别注入全局风格指令，无法对单个 Agent 类型设定持久化的创作框架要求。每次 Workflow 执行时，用户只能在对话中临时说明（如"NPC 必须包含神话接触程度"），无法积累。
 
-AgentSkill 是 PromptProfile 的精细化版本：粒度从 RuleSet 级全局风格，变为 Workspace × Agent 类型级创作框架指令。
+更根本的问题是：trpg-workbench 当前没有可扩展的 Agent 能力机制。未来有人写了一个"怪物描述→风格化配图"的 skill，我们没有框架来发现和加载它。
 
 来源：`docs/benchmark-reviews/accepted/2026-04-24_user-defined-agent-skills.md`
+
+### 关键设计决策：文件而非数据库
+
+Skill 存储在 workspace 数据目录下的 `skills/` 子目录中，每个 skill 是一个 Markdown 文件，
+不是数据库行。原因：
+
+- 文件可以被复制、分享、版本化，DB 行不能
+- 文件格式可以随时在 frontmatter 中增加新字段（未来的 `tools:`、`hooks:` 等），不需要迁移 schema
+- 与已有的 `.agents/skills/` 机制完全一致，用户和开发者共享同一套心智模型
+
+---
+
+## Skill 文件格式规范
+
+```markdown
+---
+name: coc-npc-framework
+description: CoC 7e NPC 创作框架。当创作任何 NPC 时自动应用，确保包含神话接触程度、
+             职业背景、心理稳定性等关键维度。
+agent_types: [npc]    # 适用的 agent 类型列表；留空或省略表示所有创作型 Agent
+enabled: true
+---
+
+在创作 NPC 时，必须包含以下维度：
+- 职业：NPC 在 1920s 社会中的角色
+- 神话接触程度：无 / 轻微 / 深度
+- 心理稳定性：正常 / 不稳定 / 已崩溃
+- 线索载体：此 NPC 能揭示哪条调查线索（可为空）
+```
+
+**合法的 `agent_types` 值：** `npc`, `monster`, `plot`, `lore`, `rules`  
+**留空或省略**：对所有创作型 Agent 生效（通配）
 
 ---
 
@@ -20,114 +52,139 @@ AgentSkill 是 PromptProfile 的精细化版本：粒度从 RuleSet 级全局风
 
 ### A 类：当前实现（本 milestone 必须完成）
 
-**A1：后端 — agent_skills 表与 CRUD API**
+**A1：后端 — Skill 文件存储与 CRUD API**
 
-数据库：
-```sql
-CREATE TABLE agent_skills (
-  id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL,
-  agent_type TEXT NOT NULL,   -- "npc" | "monster" | "plot" | "lore" | "rules" | "consistency"
-  name TEXT NOT NULL,
-  prompt_patch TEXT NOT NULL,
-  enabled BOOLEAN DEFAULT TRUE,
-  sort_order INTEGER DEFAULT 0,
-  created_at TEXT,
-  updated_at TEXT,
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
-);
+Skill 文件保存在：
+```
+{WORKSPACE_DATA_ROOT}/{workspace_id}/skills/{skill_slug}.md
 ```
 
-API（挂载在 `/workspaces/{workspace_id}/agent-skills`）：
-- `GET /workspaces/{id}/agent-skills` — 列出当前工作区所有 skill（可按 agent_type 筛选）
-- `POST /workspaces/{id}/agent-skills` — 创建 skill
-- `PATCH /workspaces/{id}/agent-skills/{skill_id}` — 更新（name / prompt_patch / enabled / sort_order）
-- `DELETE /workspaces/{id}/agent-skills/{skill_id}` — 删除
+API 挂载在 `/workspaces/{workspace_id}/skills`：
+- `GET /workspaces/{id}/skills` — 列出所有 skill（读目录，解析 frontmatter，返回元数据列表）
+- `POST /workspaces/{id}/skills` — 创建 skill（写文件，slug 由 name 生成，冲突时加后缀）
+- `GET /workspaces/{id}/skills/{slug}` — 读取单个 skill（返回 frontmatter + 正文）
+- `PUT /workspaces/{id}/skills/{slug}` — 覆盖更新（全量替换文件内容）
+- `PATCH /workspaces/{id}/skills/{slug}` — 部分更新（只改 frontmatter 字段，如 enabled）
+- `DELETE /workspaces/{id}/skills/{slug}` — 删除文件
 
-**A2：后端 — Workflow 注入逻辑**
+**返回格式（GET list）：**
+```python
+[
+    {
+        "slug": "coc-npc-framework",
+        "name": "coc-npc-framework",
+        "description": "CoC 7e NPC 创作框架...",
+        "agent_types": ["npc"],
+        "enabled": True,
+    },
+    ...
+]
+```
 
-在 `create_module` 和 `modify_asset` Workflow 中，调用每个专项 Agent 前，查询该 Agent 类型对应的 skill 并注入 user prompt：
+**A2：后端 — Workflow 发现与注入逻辑**
+
+在 `workflows/utils.py` 中实现 skill 加载工具函数：
 
 ```python
-# apps/backend/app/workflows/utils.py 或各 workflow 文件
-def inject_agent_skills(db, workspace_id: str, agent_type: str, task_prompt: str) -> str:
-    skills = get_enabled_skills(db, workspace_id, agent_type)
-    if not skills:
-        return task_prompt
-    skill_block = "\n\n".join(
-        f"[用户创作框架指令 - {s.name}]\n{s.prompt_patch}"
-        for s in skills
-    )
-    return f"{skill_block}\n\n{task_prompt}"
+def load_workspace_skills(workspace_id: str) -> list[dict]:
+    """扫描 skills/ 目录，返回所有 enabled skill 的元数据（frontmatter）列表。"""
+
+def get_skills_for_agent(workspace_id: str, agent_type: str) -> list[dict]:
+    """返回适用于指定 agent_type 的 enabled skill（agent_types 匹配或为空）。"""
+
+def inject_skills(skills: list[dict], task_prompt: str) -> str:
+    """将 skill 正文内容注入 task_prompt 前面。"""
 ```
 
-注入点（每个专项 Agent 调用前）：
-- NPC Agent → `agent_type = "npc"`
-- Monster Agent → `agent_type = "monster"`
-- Plot Agent → `agent_type = "plot"`
-- Lore Agent → `agent_type = "lore"`
-- Rules Agent → `agent_type = "rules"`
+**workspace_context 中追加 skill 摘要：**
+```python
+"skills": [
+    {"name": s["name"], "description": s["description"], "agent_types": s["agent_types"]}
+    for s in load_workspace_skills(workspace_id)
+    if s["enabled"]
+]
+```
+Director 可据此感知当前工作区激活了哪些 skill。
 
-**A3：前端 — 工作区设置页新增 Agent Skills 标签页**
+**Workflow 注入点（`create_module.py` 和 `modify_asset.py`）：**
+```python
+# 在每个专项 Agent 调用前
+skills = get_skills_for_agent(workspace_id, "npc")
+task_prompt = inject_skills(skills, task_prompt)
+```
 
-位置：WorkspaceSettingsPage（或现有工作区设置的标签页系统）
+注入层次顺序（不可打乱）：
+```
+Agent System Prompt  （全局，开发者维护）
+  + style_prompt      （PromptProfile，RuleSet 级）
+  + skill content     （Workspace Skill，本 milestone）  ← 新增
+  + task_prompt       （运行时任务）
+  + knowledge_context （RAG）
+```
 
-UI 结构：
-- 按 agent_type 分组展示（NPC / Monster / Plot / Lore / Rules）
-- 每条 skill 卡片：名称 + prompt_patch 文本域 + enabled 开关 + 删除按钮
-- 每个 agent_type 分组右上角有"添加指令"按钮
-- 文字标签使用"创作指令"，不出现"prompt"或"skill"技术词
-- 不需要复杂编辑器，纯 `<textarea>` 足够
+**A3：前端 — Workspace 设置页 Skill 管理 UI**
+
+在 WorkspaceSettingsPage（或同等入口）新增"Skill"标签页：
+
+- 列表展示当前工作区的所有 skill（slug + name + description 摘要 + agent_types + enabled 开关）
+- 点击某条 skill 展开完整编辑（name、description、agent_types 多选、正文 textarea、enabled）
+- "添加 Skill"按钮打开新建表单
+- 删除带确认
+- 对外文字统一用"Skill"（不翻译），避免自创中文词造成歧义
 
 **A4：前端 — shared-schema 类型定义**
 
 ```typescript
-export interface AgentSkill {
-  id: string;
-  workspace_id: string;
-  agent_type: string;
+export interface WorkspaceSkillMeta {
+  slug: string;
   name: string;
-  prompt_patch: string;
+  description: string;
+  agent_types: string[];   // 空数组表示通配
   enabled: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
 }
 
-export interface CreateAgentSkillRequest {
-  agent_type: string;
+export interface WorkspaceSkill extends WorkspaceSkillMeta {
+  body: string;   // Markdown 正文（frontmatter 之后的内容）
+}
+
+export interface CreateWorkspaceSkillRequest {
   name: string;
-  prompt_patch: string;
+  description: string;
+  agent_types?: string[];
+  body: string;
   enabled?: boolean;
 }
 
-export interface UpdateAgentSkillRequest {
+export interface UpdateWorkspaceSkillRequest {
   name?: string;
-  prompt_patch?: string;
+  description?: string;
+  agent_types?: string[];
+  body?: string;
   enabled?: boolean;
-  sort_order?: number;
 }
 ```
 
 **A5：帮助文档**
 
-在 `apps/desktop/src/help/` 补充"Agent 创作指令"使用说明：
-- 是什么 / 能做什么 / 不能做什么
-- CoC NPC Agent 示例（包含神话接触程度、心理稳定性等维度）
+在 `apps/desktop/src/help/` 新增"Skill"帮助文章：
+- 是什么 / 能做什么
+- Skill 文件格式说明（frontmatter 字段解释）
+- CoC NPC 框架 skill 完整示例
 - 与"创作风格"（PromptProfile）的区别
 
-### B 类：后续扩展（规划为扩展，不强制当前实现）
+### B 类：后续扩展
 
-- **B1：RuleSet 级内置 Skill 预设**：开发者为 CoC/D&D 等系统预置内置 skill 包，创建工作区时自动激活。详见 `docs/benchmark-reviews/proposed/2026-04-24_builtin-agent-skill-presets.md`，计划进入 M18+
-- **B2：Skill 排序拖拽**：当前 `sort_order` 字段已预留，UI 拖拽排序推迟实现
-- **B3：跨工作区 Skill 复制**：将某工作区的 skill 导出/导入到其他工作区
+- **B1：开发者内置 Skill 预设**：随应用分发的内置 skill 文件（CoC/D&D 等系统），创建工作区时复制到 skills 目录。详见 `docs/benchmark-reviews/proposed/2026-04-24_builtin-agent-skill-presets.md`
+- **B2：能力型 Skill（工具调用）**：frontmatter 中加 `tools:` 字段，声明 skill 可调用的工具（如图像生成 API）。Workflow 加载时执行工具调用而不只是注入文字。这是 M17 框架的自然延伸，不需要重新设计，只需扩展 frontmatter schema 和执行器
+- **B3：Skill 排序与分组**：frontmatter 加 `sort_order`，UI 支持拖拽排序
+- **B4：跨工作区 Skill 复制**：导出 skill 文件供其他工作区导入（本质是文件复制，UI 问题）
 
 ### C 类：明确不承诺
 
-- 不引入 Skill 版本管理（无 revision 历史）
-- 不对 prompt_patch 内容做格式验证或质量检测
-- 不为 Document Agent 和 Consistency Agent 提供 skill 注入（这两个是格式化/检查角色，注入框架指令语义不清晰）
-- 不提供"skill 市场"或社区共享功能
+- 不做 skill 市场或远程分发（B4 只是本地文件操作）
+- 不做 skill 版本历史（Git 跟踪 skill 文件是用户自己的事）
+- 不对 skill 正文做语义验证
+- Document Agent 和 Consistency Agent 不在 A 类注入范围（功能定位不符合框架指令语义）
 
 ---
 
@@ -136,117 +193,139 @@ export interface UpdateAgentSkillRequest {
 ### 新增文件
 
 ```
-apps/backend/app/api/agent_skills.py          ← CRUD API
-apps/backend/app/models/agent_skill_orm.py    ← ORM 模型（或追加到 orm.py）
-apps/desktop/src/help/agent-skills.md         ← 帮助文档
+apps/backend/app/api/workspace_skills.py      ← CRUD API（文件操作）
+apps/desktop/src/help/skills.md               ← 帮助文档
 ```
 
 ### 修改文件
 
 ```
-apps/backend/app/models/orm.py                ← 追加 AgentSkillORM
-apps/backend/app/models/schemas.py            ← 追加 AgentSkillSchema / Create / Update
-apps/backend/app/storage/database.py          ← 追加建表语句
 apps/backend/app/main.py                      ← 注册新 router
+apps/backend/app/workflows/utils.py           ← load_workspace_skills / get_skills_for_agent / inject_skills
 apps/backend/app/workflows/create_module.py   ← 各专项 Agent 调用前注入 skill
 apps/backend/app/workflows/modify_asset.py    ← 同上
-apps/backend/app/workflows/utils.py           ← 新增 inject_agent_skills() / get_enabled_skills()
-packages/shared-schema/src/index.ts           ← 追加 AgentSkill 相关类型
-apps/desktop/src/pages/WorkspaceSettingsPage.tsx (或同等入口)  ← 新增标签页
+packages/shared-schema/src/index.ts           ← 追加 WorkspaceSkill 相关类型
+apps/desktop/src/pages/WorkspaceSettingsPage.tsx (或同等入口)  ← 新增 Skill 标签页
 apps/desktop/src/help/index.ts (或同等索引)   ← 注册新帮助文章
 ```
+
+**无需修改：**
+- `orm.py` / `schemas.py` / `database.py` — Skill 用文件存储，不需要新 DB 表
 
 ---
 
 ## 关键设计约束
 
-### 注入层次顺序（不可打乱）
+### Skill 文件路径约定
 
-```
-Agent System Prompt（全局，开发者维护，prompts/*.txt）
-  + style_prompt（PromptProfile，RuleSet 级，风格）
-  + skill patches（AgentSkill，Workspace × Agent 级，框架）  ← 本 milestone 新增
-  + task_prompt（运行时任务描述）
-  + knowledge_context（RAG，运行时动态）
+```python
+SKILLS_DIR = Path(WORKSPACE_DATA_ROOT) / workspace_id / "skills"
 ```
 
-skill patches 在 task_prompt 之前注入，让框架指令比任务描述更靠近 system context。
+`WORKSPACE_DATA_ROOT` 从环境变量或应用配置读取，与现有 workspace 数据目录保持一致。
+`SKILLS_DIR` 在第一次写入时自动创建（`mkdir -p`）。
 
-### Workflow 注入点
+### Slug 生成规则
 
-- `create_module`：在 Step 6（NPC Agent）、Step 7（Monster Agent）、Step 8（Lore Agent）、Step 4/5（Plot Agent）各自调用前注入
-- `modify_asset`：在 Step 3（专项 Agent 调用）前注入
-- `rules_review`：在 Rules Agent 调用前注入（可选，Rules Agent 注入后注意不改变其"仅建议"性质）
+```python
+import re
+def name_to_slug(name: str) -> str:
+    slug = re.sub(r'[^\w\s-]', '', name.lower())
+    slug = re.sub(r'[\s_]+', '-', slug)
+    return slug.strip('-')
+```
 
-### 数据库迁移
+重复 slug 自动加数字后缀：`coc-npc-framework`, `coc-npc-framework-2`, ...
 
-`agent_skills` 表在 `database.py` 的 `init_db()` 中用 `CREATE TABLE IF NOT EXISTS` 创建，无需单独迁移文件。
+### Frontmatter 解析
+
+使用 `python-frontmatter` 库（已在 Python 生态成熟）：
+```python
+import frontmatter
+
+post = frontmatter.load(skill_path)
+meta = {
+    "name": post.get("name", slug),
+    "description": post.get("description", ""),
+    "agent_types": post.get("agent_types", []),
+    "enabled": post.get("enabled", True),
+}
+body = post.content
+```
+
+### 注入格式
+
+```python
+def inject_skills(skills: list[dict], task_prompt: str) -> str:
+    if not skills:
+        return task_prompt
+    blocks = [
+        f"[Skill: {s['name']}]\n{s['body']}"
+        for s in skills
+    ]
+    return "\n\n".join(blocks) + "\n\n" + task_prompt
+```
 
 ---
 
 ## Todo
 
-### A1：后端 — 数据库与 ORM
+### A1：后端 — Skill 文件 API
 
-- [ ] **A1.1**：`apps/backend/app/storage/database.py` — 追加 `agent_skills` 建表语句（`CREATE TABLE IF NOT EXISTS`）
-- [ ] **A1.2**：`apps/backend/app/models/orm.py` — 追加 `AgentSkillORM` SQLAlchemy 模型
-- [ ] **A1.3**：`apps/backend/app/models/schemas.py` — 追加 `AgentSkillSchema`, `AgentSkillCreate`, `AgentSkillUpdate`
+- [ ] **A1.1**：`apps/backend/app/api/workspace_skills.py` — 实现 GET list / POST / GET single / PUT / PATCH / DELETE，内部用 `python-frontmatter` 读写文件
+- [ ] **A1.2**：`apps/backend/app/main.py` — 注册 router，路径前缀 `/workspaces/{workspace_id}/skills`
+- [ ] **A1.3**：确认 `python-frontmatter` 已在 `requirements.txt` 中（或改用纯正则解析，视依赖策略决定）
 
-### A2：后端 — API
+### A2：后端 — Workflow 发现与注入
 
-- [ ] **A2.1**：`apps/backend/app/api/agent_skills.py` — 实现 GET / POST / PATCH / DELETE 四个端点
-- [ ] **A2.2**：`apps/backend/app/main.py` — 注册 router，路径前缀 `/workspaces/{workspace_id}/agent-skills`
+- [ ] **A2.1**：`workflows/utils.py` — 实现 `load_workspace_skills()`、`get_skills_for_agent()`、`inject_skills()`
+- [ ] **A2.2**：`workflows/utils.py` `get_workspace_context()` — 追加 `skills` 摘要字段
+- [ ] **A2.3**：`workflows/create_module.py` — 在 NPC / Monster / Plot / Lore Agent 调用前注入 skill
+- [ ] **A2.4**：`workflows/modify_asset.py` — 在专项 Agent 调用前注入 skill
 
-### A3：后端 — Workflow 注入
+### A3：前端 — 类型定义
 
-- [ ] **A3.1**：`apps/backend/app/workflows/utils.py` — 实现 `get_enabled_skills(db, workspace_id, agent_type)` 和 `inject_agent_skills(db, workspace_id, agent_type, task_prompt) -> str`
-- [ ] **A3.2**：`apps/backend/app/workflows/create_module.py` — 在 Plot/NPC/Monster/Lore Agent 调用前注入 skill
-- [ ] **A3.3**：`apps/backend/app/workflows/modify_asset.py` — 在专项 Agent 调用前注入 skill
+- [ ] **A3.1**：`packages/shared-schema/src/index.ts` — 追加 `WorkspaceSkillMeta`、`WorkspaceSkill`、`CreateWorkspaceSkillRequest`、`UpdateWorkspaceSkillRequest`
 
-### A4：前端 — 类型与 API
+### A4：前端 — UI
 
-- [ ] **A4.1**：`packages/shared-schema/src/index.ts` — 追加 `AgentSkill`, `CreateAgentSkillRequest`, `UpdateAgentSkillRequest`
-- [ ] **A4.2**：前端 API client — 追加 agent skills 的 CRUD 调用函数（或 TanStack Query hooks）
+- [ ] **A4.1**：WorkspaceSettingsPage — 新增"Skill"标签页，列出当前工作区 skill，含 enabled 开关
+- [ ] **A4.2**：Skill 编辑表单：name + description + agent_types 多选 + body textarea + enabled
+- [ ] **A4.3**："添加 Skill"按钮与新建流程，删除带确认
 
-### A5：前端 — UI
+### A5：帮助文档
 
-- [ ] **A5.1**：工作区设置页 — 新增"Agent 创作指令"标签页，按 agent_type 分组展示 skill 列表
-- [ ] **A5.2**：每条 skill 的展示组件：名称 + 文本域 + enabled 开关 + 删除按钮
-- [ ] **A5.3**：每个 agent_type 分组的"添加指令"按钮与新建表单
-
-### A6：帮助文档
-
-- [ ] **A6.1**：`apps/desktop/src/help/agent-skills.md` — 编写"Agent 创作指令"帮助文章（含 CoC 示例）
-- [ ] **A6.2**：注册到 HelpPage 文章索引
+- [ ] **A5.1**：`apps/desktop/src/help/skills.md` — 编写 Skill 帮助文章，含 frontmatter 格式说明和 CoC NPC 示例
+- [ ] **A5.2**：注册到 HelpPage 文章索引
 
 ---
 
 ## 验收标准
 
-1. 用户在工作区设置中为 NPC Agent 添加一条 skill（含"神话接触程度"维度要求），执行 create_module Workflow 后，NPC Agent 生成的结果包含该维度
-2. 禁用（enabled=false）某条 skill 后，下次 Workflow 执行不再注入该 skill 的内容
-3. 删除 skill 后，该 skill 不再出现在设置页，后续 Workflow 不注入
-4. 不存在 skill 的工作区，Workflow 行为与修改前完全一致（注入函数返回原始 task_prompt）
-5. 工作区设置页"Agent 创作指令"标签页正确加载、创建、编辑、删除 skill
-6. `packages/shared-schema` 中 `AgentSkill` 类型导出正常，前端无 TypeScript 编译错误
+1. 用户在工作区设置 Skill 标签页中创建一个 `agent_types: [npc]` 的 skill，执行 create_module Workflow 后，NPC Agent 生成结果符合 skill 中的框架约束
+2. 将 skill 的 `enabled` 改为 false 后，下次 Workflow 执行不注入该 skill
+3. 删除 skill 文件后，Workflow 不再注入，API 列表不再返回该 skill
+4. 不存在任何 skill 的工作区，Workflow 行为与修改前完全一致（inject_skills 返回原始 task_prompt）
+5. `agent_types` 为空的 skill 对所有创作型 Agent 生效
+6. skill 文件在 `workspace-data/{workspace_id}/skills/` 目录中以 `.md` 文件形式存在，可手动打开查看内容
+7. TypeScript 编译无错误，`WorkspaceSkill` 类型正确导出
 
 ---
 
 ## 与其他里程碑的关系
 
 ```
-M15（知识库归属规则集）
-  ├── M16（AssetType 开放化）← 无依赖关系，可并行
-  └── M17（用户自定义 Agent Skill）← 本 milestone
-        └── M18+（B1：开发者预置 Skill 包，待规划）
+M16（AssetType 开放化）← 无依赖，已完成
+M17（Workspace Skill 框架）← 本 milestone
+  └── M18+（B1：内置 Skill 预设包，B2：能力型 Skill / 工具调用）
 ```
 
 ---
 
 ## 非目标
 
+- 不做 skill 版本历史（无 revision 机制）
+- 不做 skill 内容语义验证或质量检测
 - 不为 Document Agent 和 Consistency Agent 提供 skill 注入
-- 不引入 skill 版本历史（无 revision）
-- 不做 skill 内容格式验证
-- 不做跨工作区 skill 共享或导出
-- 不做 RuleSet 级内置 skill 预设（B1，留给 M18+）
+- 不做 skill 市场或远程安装
+- B2（工具调用型 skill）的执行器留给 M18+，M17 只建立文件框架和加载路径
