@@ -12,10 +12,10 @@ LLM 是驱动所有 Agent 生成内容的核心引擎。
 
 **支持的供应商：**
 
-| 供应商 | 代表模型 | 说明 |
+| 供应商 | 代表系列 | 说明 |
 |--------|---------|------|
-| Google | Gemini 2.0 Flash | 推荐，长上下文，适合 TRPG |
-| OpenAI | GPT-4o | 通用能力强 |
+| Google | Gemini 系列 | 推荐，长上下文，适合 TRPG |
+| OpenAI | GPT 系列 | 通用能力强 |
 | Anthropic | Claude 系列 | 长文本理解好 |
 | OpenRouter | 聚合多家供应商 | 需填写 Base URL |
 | OpenAI Compatible | 任何兼容接口，含本地模型 | 需填写 Base URL |
@@ -45,23 +45,26 @@ LLM 是驱动所有 Agent 生成内容的核心引擎。
 | **LM Studio**（推荐） | 图形界面，内置模型下载，一键启动服务 | [lmstudio.ai](https://lmstudio.ai) |
 | **Ollama** | 命令行，轻量，支持 Docker 部署 | [ollama.com](https://ollama.com) |
 
-### 推荐模型（2026 Q2）
+### 推荐模型
 
-> 以下均为 Q4_K_M 量化版本，在创作质量和内存占用之间取得较好平衡。
+根据可用内存选择适合的档位：
 
-| 模型 | 最低内存 | 适合场景 | 中文能力 |
+| 档位 | 最低内存 | 推荐模型 | 适合场景 |
 |------|---------|---------|---------|
-| **Qwen2.5-14B-Instruct** | 10 GB | TRPG 创作主力，综合最佳 | ★★★★★ |
-| **Qwen3-30B-A3B**（MoE） | 16 GB | 高质量，激活参数少，推理快 | ★★★★★ |
-| Gemma3-12B-it | 10 GB | 英文创作，工具调用稳定 | ★★★☆☆ |
-| Gemma3-27B-it | 20 GB | 旗舰本地质量 | ★★★☆☆ |
-| Qwen2.5-7B-Instruct | 6 GB | 入门选项，创作质量受限 | ★★★★☆ |
+| **高端** | ≥ 20 GB | Gemma3-27B、Qwen3-32B、Qwen3-30B-A3B | 最高本地质量 |
+| **高质量** | ≥ 12 GB | Qwen3-14B、Gemma3-12B | 创作主力，综合性价比高 |
+| **平衡** | ≥ 8 GB | Qwen3-8B | 推荐入门首选 |
+| **轻量** | ≥ 4 GB | Qwen3-4B、Gemma3-4B | 设备受限时的可用选项 |
+
+> **兼容备选：** Qwen2.5-7B / Qwen2.5-14B，适合不支持 Qwen3 的旧版运行软件。
+>
+> 具体量化格式（如 Q4_K_M）由运行软件自动推荐，一般选默认即可。也可在「模型发现」标签页浏览最新目录。
 
 **内存参考：**
-- ≥ 20 GB → 可稳定运行 27B 模型
-- ≥ 16 GB → 推荐 Qwen3-30B-A3B（MoE 架构，实际激活参数约 3B）
-- ≥ 10 GB → 推荐 Qwen2.5-14B（中文 TRPG 场景最性价比）
-- ≥ 6 GB &nbsp;&nbsp;→ 可运行 7B，但复杂创作任务可能质量不稳定
+- ≥ 20 GB → 可稳定运行高端档
+- ≥ 12 GB → 高质量档，中文 TRPG 场景性价比最佳
+- ≥ 8 GB &nbsp;→ 平衡档，入门首选
+- ≥ 4 GB &nbsp;→ 轻量档，复杂创作任务质量受限
 
 ### 配置方法
 
@@ -89,12 +92,9 @@ LLM 是驱动所有 Agent 生成内容的核心引擎。
 
 ### 本地 Embedding 模型
 
-| 模型 | 运行方式 | Base URL |
-|------|---------|---------|
-| nomic-embed-text | Ollama：`ollama pull nomic-embed-text` | `http://localhost:11434/v1` |
-| nomic-embed-text-v1.5 | LM Studio 内置支持 | `http://localhost:1234/v1` |
+Embedding 模型同样可以本地运行，无需联网。推荐在「模型发现」标签页搜索支持 Embedding 的模型；常见可用选项如 `nomic-embed-text` 系列在 LM Studio 和 Ollama 中均有支持。
 
-Embedding 供应商同样选「OpenAI Compatible」，模型名称填 `nomic-embed-text`。
+Embedding 供应商选「OpenAI Compatible」，Base URL 与 LLM 相同，模型名称填你在运行软件中加载的模型名称。
 
 ### 注意事项
 
@@ -110,7 +110,7 @@ Embedding 模型将知识库文档转换为向量表示，使得 Agent 在创作
 
 **支持的供应商：** OpenAI、OpenAI Compatible（含本地模型，详见上方）
 
-**推荐配置（云端）：** Jina Embeddings v3（多语言支持，适合中文 TRPG）
+**推荐配置（云端）：** Jina Embeddings 系列（多语言支持，适合中文 TRPG）
 
 添加步骤与 LLM 相同。使用 Jina 时，供应商选择「OpenAI Compatible」，Base URL 填写 `https://api.jina.ai/v1`。
 

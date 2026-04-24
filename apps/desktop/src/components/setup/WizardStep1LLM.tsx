@@ -83,7 +83,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
       <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            推荐本地（≥16GB 内存）：数据不离本机，无需 API Key
+            推荐本地（≥8GB 内存即可起步）：数据不离本机，无需 API Key
           </span>
           <button
             type="button"
@@ -98,10 +98,10 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
             {/* 硬件门槛提示 */}
             <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 10px", background: "rgba(0,0,0,0.15)", borderRadius: 4, lineHeight: 1.6 }}>
-              内存 ≥ 20GB → 可运行 27B 模型（Gemma3-27B / Qwen2.5-32B）<br />
-              内存 ≥ 16GB → 推荐 14B 模型（Qwen2.5-14B / Qwen3-30B-A3B MoE）<br />
-              内存 ≥ 10GB → 可运行 12B 模型（Gemma3-12B）<br />
-              内存 ≥ 6GB &nbsp;&nbsp;→ 可运行 7B 模型（能用，创作质量受限）
+              内存 ≥ 20GB → 高端：Gemma3-27B / Qwen3-32B / Qwen3-30B-A3B<br />
+              内存 ≥ 12GB → 高质量：Qwen3-14B / Gemma3-12B<br />
+              内存 ≥ 8GB &nbsp;→ 平衡：Qwen3-8B（推荐入门首选）<br />
+              内存 ≥ 4GB &nbsp;→ 轻量：Qwen3-4B / Gemma3-4B
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

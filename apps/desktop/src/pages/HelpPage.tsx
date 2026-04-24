@@ -5,6 +5,17 @@ import remarkGfm from "remark-gfm";
 import { ThemeToggle } from "../components/ThemeToggle";
 import styles from "./HelpPage.module.css";
 
+// Open external URLs in the system browser (Tauri v2 does not auto-handle target=_blank)
+async function openExternal(url: string) {
+  try {
+    const { open } = await import("@tauri-apps/plugin-shell");
+    await open(url);
+  } catch {
+    // Fallback for web / non-Tauri environments
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 // Vite ?raw imports for dev mode
 import gettingStarted from "../help/getting-started.md?raw";
 import modelSetup from "../help/model-setup.md?raw";
@@ -40,7 +51,11 @@ const mdComponents: Components = {
       return <Link to={href} replace={isHelpLink}>{children}</Link>;
     }
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer">
+      <a
+        href={href}
+        onClick={(e) => { e.preventDefault(); openExternal(href!); }}
+        style={{ cursor: "pointer" }}
+      >
         {children}
       </a>
     );
