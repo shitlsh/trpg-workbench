@@ -22,10 +22,7 @@ class LibraryNotIndexedError(Exception):
 def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> LLMProfileORM:
     """
     Resolve the LLM profile to use for a given task.
-
-    task_type:
-      - "rules_review": uses workspace.rules_llm_profile_id, falls back to default
-      - everything else: uses workspace.default_llm_profile_id
+    All task types use workspace.default_llm_profile_id.
 
     Raises ModelNotConfiguredError if no profile is configured.
     """
@@ -33,11 +30,7 @@ def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> LLMProfi
     if not workspace:
         raise ModelNotConfiguredError(f"Workspace {workspace_id} not found")
 
-    profile_id: str | None = None
-    if task_type == "rules_review" and workspace.rules_llm_profile_id:
-        profile_id = workspace.rules_llm_profile_id
-    else:
-        profile_id = workspace.default_llm_profile_id
+    profile_id = workspace.default_llm_profile_id
 
     if not profile_id:
         raise ModelNotConfiguredError(

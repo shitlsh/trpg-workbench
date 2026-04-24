@@ -84,8 +84,7 @@ def delete_llm_profile(profile_id: str, db: Session = Depends(get_db)):
 
     # Check workspace references
     refs = db.query(WorkspaceORM).filter(
-        (WorkspaceORM.default_llm_profile_id == profile_id) |
-        (WorkspaceORM.rules_llm_profile_id == profile_id)
+        WorkspaceORM.default_llm_profile_id == profile_id
     ).all()
     if refs:
         workspace_names = [w.name for w in refs]

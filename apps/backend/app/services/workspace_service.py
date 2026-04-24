@@ -22,7 +22,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "rule_set": "",
     "models": {
         "default_llm": "",
-        "rules_llm": "",
         "embedding": "",
         "rerank": "",
     },

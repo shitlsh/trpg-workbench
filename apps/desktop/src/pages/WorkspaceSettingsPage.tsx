@@ -333,7 +333,6 @@ export default function WorkspaceSettingsPage() {
   const [description, setDescription] = useState("");
   const [ruleSetName, setRuleSetName] = useState("");
   const [defaultLlmName, setDefaultLlmName] = useState("");
-  const [rulesLlmName, setRulesLlmName] = useState("");
   const [embeddingName, setEmbeddingName] = useState("");
   const [rerankName, setRerankName] = useState("");
   const [rerankEnabled, setRerankEnabled] = useState(false);
@@ -347,7 +346,6 @@ export default function WorkspaceSettingsPage() {
       setDescription(config.description ?? "");
       setRuleSetName(config.rule_set ?? "");
       setDefaultLlmName(config.models?.default_llm ?? "");
-      setRulesLlmName(config.models?.rules_llm ?? "");
       setEmbeddingName(config.models?.embedding ?? "");
       setRerankName(config.models?.rerank ?? "");
       setRerankEnabled(config.rerank?.enabled ?? false);
@@ -392,7 +390,6 @@ export default function WorkspaceSettingsPage() {
       rule_set: ruleSetName,
       models: {
         default_llm: defaultLlmName,
-        rules_llm: rulesLlmName,
         embedding: embeddingName,
         rerank: rerankName,
       },
@@ -417,7 +414,6 @@ export default function WorkspaceSettingsPage() {
 
   // Resolve name-based references to profiles for catalog hints
   const selectedDefaultLlm = llmProfiles.find((p) => p.name === defaultLlmName);
-  const selectedRulesLlm = llmProfiles.find((p) => p.name === rulesLlmName);
   const selectedEmbedding = embeddingProfiles.find((p) => p.name === embeddingName);
 
   return (
@@ -460,16 +456,6 @@ export default function WorkspaceSettingsPage() {
             </span>
             <select className={styles.select} value={defaultLlmName} onChange={(e) => setDefaultLlmName(e.target.value)}>
               <option value="">不指定</option>
-              {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
-            </select>
-          </label>
-          <label className={styles.label}>
-            <span>
-              规则审查 LLM（留空则使用默认 LLM）
-              <CatalogHint profile={selectedRulesLlm} catalog={llmCatalog} />
-            </span>
-            <select className={styles.select} value={rulesLlmName} onChange={(e) => setRulesLlmName(e.target.value)}>
-              <option value="">使用默认 LLM</option>
               {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
