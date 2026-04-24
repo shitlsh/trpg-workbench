@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M15 全部完成。
+核心功能链路已通过 M1–M15 全部完成。M16 / M17 进行中。
 
 ```
 ✅ M1 基础骨架
@@ -21,6 +21,8 @@
                                                                                                              └── ✅ M13 UI 视觉语言升级
                                                                                                                     └── ✅ M14 Help 文档重建
                                                                                                                           └── ✅ M15 知识库归属规则集
+                                                                                                                                 ├── M16 AssetType 开放化
+                                                                                                                                 └── M17 用户自定义 Agent Skill
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -53,7 +55,10 @@
 
 ### 进行中 / 待启动
 
-（暂无）
+| # | 名称 | 目标 | 计划文件 |
+|---|------|------|---------|
+| M16 | AssetType 开放化与跨系统资产树兼容 | `AssetType` 改为开放字符串，前端对任意 type 具备基本展示能力 | [m16-asset-type-openness.md](m16-asset-type-openness.md) |
+| M17 | 用户自定义 Agent Skill | 用户为每个 Agent 类型编写持久化创作框架指令，注入 Workflow 执行 | [m17-user-agent-skills.md](m17-user-agent-skills.md) |
 
 ---
 
