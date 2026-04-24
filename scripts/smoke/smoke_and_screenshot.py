@@ -74,11 +74,10 @@ P0_PAGES = [
         ],
     ),
     (
-        "knowledge",
-        "/knowledge",
+        "rule-sets",
+        "/settings/rule-sets",
         [
-            ("知识库", "knowledge page heading"),
-            ("新建知识库", "new-library button"),
+            ("规则集", "rule set page heading"),
         ],
     ),
 ]
@@ -304,8 +303,7 @@ HELP_IMAGE_PAGES = [
     ("home.png",         "/",                "Home page"),
     ("model-config.png", "/settings/models", "Model config (tabs)"),
     ("settings-llm.png", "/settings/models", "LLM config form"),
-    ("knowledge.png",    "/knowledge",       "Knowledge library"),
-    ("ruleset.png",      "/settings/rule-sets", "Rule set management"),
+    ("ruleset.png",      "/settings/rule-sets", "Rule set & knowledge management"),
     ("help-page.png",    "/help/getting-started", "Help page"),
 ]
 
