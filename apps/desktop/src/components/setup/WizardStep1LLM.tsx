@@ -10,26 +10,48 @@ interface MemoryTier {
   minGb: number;
   models: string;
   description: string;
+  lmStudioDefault: string;  // fallback model name when service offline
+  ollamaDefault: string;
 }
 
 const MEMORY_TIERS: MemoryTier[] = [
-  { label: "高端", minGb: 20, models: "Gemma3-27B / Qwen3-32B / Qwen3-30B-A3B", description: "最高本地质量" },
-  { label: "高质量", minGb: 12, models: "Qwen3-14B / Gemma3-12B", description: "创作主力，综合性价比高" },
-  { label: "平衡", minGb: 8, models: "Qwen3-8B", description: "推荐入门首选" },
-  { label: "轻量", minGb: 4, models: "Qwen3-4B / Gemma3-4B", description: "设备受限时的可用选项" },
+  { label: "高端",   minGb: 20, models: "Gemma3-27B / Qwen3-32B / Qwen3-30B-A3B", description: "最高本地质量",        lmStudioDefault: "lmstudio-community/Qwen3-30B-A3B-GGUF",  ollamaDefault: "qwen3:30b-a3b" },
+  { label: "高质量", minGb: 12, models: "Qwen3-14B / Gemma3-12B",                  description: "创作主力，综合性价比高", lmStudioDefault: "lmstudio-community/Qwen3-14B-GGUF",       ollamaDefault: "qwen3:14b" },
+  { label: "平衡",   minGb: 8,  models: "Qwen3-8B",                                description: "推荐入门首选",        lmStudioDefault: "lmstudio-community/Qwen3-8B-GGUF",        ollamaDefault: "qwen3:8b" },
+  { label: "轻量",   minGb: 4,  models: "Qwen3-4B / Gemma3-4B",                    description: "设备受限时的可用选项", lmStudioDefault: "lmstudio-community/Qwen3-4B-GGUF",        ollamaDefault: "qwen3:4b" },
 ];
+
+const FALLBACK_TIER: MemoryTier = {
+  label: "极轻量", minGb: 0, models: "Qwen3-4B（仅限尝试）", description: "内存不足 4GB，创作质量受限",
+  lmStudioDefault: "lmstudio-community/Qwen3-4B-GGUF", ollamaDefault: "qwen3:4b",
+};
 
 function getTierForMemory(gb: number): MemoryTier {
   for (const tier of MEMORY_TIERS) {
     if (gb >= tier.minGb) return tier;
   }
-  return { label: "极轻量", minGb: 0, models: "Qwen3-4B（仅限尝试）", description: "内存不足 4GB，创作质量受限" };
+  return FALLBACK_TIER;
 }
 
 async function fetchSystemMemoryGb(): Promise<number | null> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<number>("get_system_memory_gb");
+  } catch {
+    return null;
+  }
+}
+
+// ── Local service detection ───────────────────────────────────────────────────
+
+type ProbeStatus = "idle" | "detecting" | "found" | "offline";
+
+async function probeModels(baseUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return null;
+    const data = await res.json() as { data?: { id: string }[] };
+    return data.data?.[0]?.id ?? null;
   } catch {
     return null;
   }
@@ -67,12 +89,58 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   const [form, setForm] = useState<CreateLLMProfileRequest>(EMPTY_FORM);
   const [showLocalGuide, setShowLocalGuide] = useState(false);
   const [memoryGb, setMemoryGb] = useState<number | null>(null);
+  const [lmStudioStatus, setLmStudioStatus] = useState<ProbeStatus>("idle");
+  const [ollamaStatus, setOllamaStatus] = useState<ProbeStatus>("idle");
+  const [lmStudioModel, setLmStudioModel] = useState<string | null>(null);
+  const [ollamaModel, setOllamaModel] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSystemMemoryGb().then(setMemoryGb);
   }, []);
 
-  const recommendedTier = memoryGb !== null ? getTierForMemory(memoryGb) : null;
+  const recommendedTier = memoryGb !== null ? getTierForMemory(memoryGb) : MEMORY_TIERS[2]; // fallback: 平衡
+
+  async function handleLmStudioPreset() {
+    setLmStudioStatus("detecting");
+    const detected = await probeModels("http://localhost:1234/v1");
+    const modelName = detected ?? recommendedTier.lmStudioDefault;
+    const displayName = detected
+      ? `LM Studio - ${modelName.split("/").pop()?.replace(/-GGUF$/i, "") ?? modelName}`
+      : `LM Studio - ${recommendedTier.label}档推荐`;
+    setLmStudioModel(detected);
+    setLmStudioStatus(detected ? "found" : "offline");
+    setForm((f) => ({
+      ...f,
+      ...LLM_DEFAULTS["openai_compatible"],
+      provider_type: "openai_compatible",
+      base_url: "http://localhost:1234/v1",
+      model_name: modelName,
+      api_key: "lm-studio",
+      name: displayName,
+      supports_json_mode: true,
+      supports_tools: false,
+    }));
+  }
+
+  async function handleOllamaPreset() {
+    setOllamaStatus("detecting");
+    const detected = await probeModels("http://localhost:11434/v1");
+    const modelName = detected ?? recommendedTier.ollamaDefault;
+    const displayName = detected
+      ? `Ollama - ${modelName}`
+      : `Ollama - ${recommendedTier.label}档推荐`;
+    setOllamaModel(detected);
+    setOllamaStatus(detected ? "found" : "offline");
+    setForm((f) => ({
+      ...f,
+      ...LLM_DEFAULTS["openai_compatible"],
+      provider_type: "openai_compatible",
+      base_url: "http://localhost:11434/v1",
+      model_name: modelName,
+      api_key: "ollama",
+      name: displayName,
+    }));
+  }
 
   const isLocalProvider = form.provider_type === "openai_compatible";
 
@@ -123,7 +191,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
             {memoryGb !== null
-              ? `检测到内存 ${memoryGb} GB → 推荐${recommendedTier!.label}档（${recommendedTier!.models}）`
+              ? `检测到内存 ${memoryGb} GB → 推荐${recommendedTier.label}档（${recommendedTier.models}）`
               : "推荐本地（≥8GB 内存即可起步）：数据不离本机，无需 API Key"}
           </span>
           <button
@@ -142,11 +210,11 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
               {memoryGb !== null ? (
                 <>
                   <span style={{ color: "#22c55e", fontWeight: 600 }}>
-                    你的内存：{memoryGb} GB → 推荐{recommendedTier!.label}档
+                    你的内存：{memoryGb} GB → 推荐{recommendedTier.label}档
                   </span>
                   <br />
-                  推荐模型：{recommendedTier!.models}<br />
-                  <span style={{ opacity: 0.7 }}>{recommendedTier!.description}</span>
+                  推荐模型：{recommendedTier.models}<br />
+                  <span style={{ opacity: 0.7 }}>{recommendedTier.description}</span>
                   <br />
                   <span style={{ opacity: 0.7 }}>
                     全部档位：≥20GB 高端 / ≥12GB 高质量 / ≥8GB 平衡 / ≥4GB 轻量
@@ -163,38 +231,38 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                style={localPresetBtnStyle}
-                onClick={() => setForm((f) => ({
-                  ...f,
-                  ...LLM_DEFAULTS["openai_compatible"],
-                  provider_type: "openai_compatible",
-                  base_url: "http://localhost:1234/v1",
-                  model_name: "lmstudio-community/Qwen2.5-14B-Instruct-GGUF",
-                  api_key: "lm-studio",
-                  name: "LM Studio - Qwen2.5-14B",
-                  supports_json_mode: true,   // LM Studio 支持 JSON mode
-                  supports_tools: false,
-                }))}
-              >
-                LM Studio（推荐）
-              </button>
-              <button
-                type="button"
-                style={localPresetBtnStyle}
-                onClick={() => setForm((f) => ({
-                  ...f,
-                  ...LLM_DEFAULTS["openai_compatible"],
-                  provider_type: "openai_compatible",
-                  base_url: "http://localhost:11434/v1",
-                  model_name: "qwen2.5:14b",
-                  api_key: "ollama",
-                  name: "Ollama - qwen2.5:14b",
-                }))}
-              >
-                Ollama
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <button
+                  type="button"
+                  style={localPresetBtnStyle}
+                  disabled={lmStudioStatus === "detecting"}
+                  onClick={handleLmStudioPreset}
+                >
+                  {lmStudioStatus === "detecting" ? "检测中…" : "LM Studio（推荐）"}
+                </button>
+                {lmStudioStatus === "found" && (
+                  <span style={{ fontSize: 10, color: "#22c55e" }}>✓ 已检测到：{lmStudioModel}</span>
+                )}
+                {lmStudioStatus === "offline" && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>服务未运行，已填入推荐默认值</span>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <button
+                  type="button"
+                  style={localPresetBtnStyle}
+                  disabled={ollamaStatus === "detecting"}
+                  onClick={handleOllamaPreset}
+                >
+                  {ollamaStatus === "detecting" ? "检测中…" : "Ollama"}
+                </button>
+                {ollamaStatus === "found" && (
+                  <span style={{ fontSize: 10, color: "#22c55e" }}>✓ 已检测到：{ollamaModel}</span>
+                )}
+                {ollamaStatus === "offline" && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>服务未运行，已填入推荐默认值</span>
+                )}
+              </div>
             </div>
             <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
               点击后会自动填入下方表单，你可以修改模型名称。
