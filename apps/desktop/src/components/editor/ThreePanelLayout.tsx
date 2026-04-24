@@ -125,8 +125,8 @@ export function ThreePanelLayout({
         collapsed={leftCollapsed}
         onWidthChange={setLeftWidth}
         onCollapse={setLeftCollapsed}
-        minWidth={180}
-        maxWidth={360}
+        minWidth={280}
+        maxWidth={480}
       >
         {left}
       </ResizablePanel>
@@ -141,8 +141,8 @@ export function ThreePanelLayout({
         collapsed={rightCollapsed}
         onWidthChange={setRightWidth}
         onCollapse={setRightCollapsed}
-        minWidth={280}
-        maxWidth={480}
+        minWidth={180}
+        maxWidth={360}
       >
         {right}
       </ResizablePanel>

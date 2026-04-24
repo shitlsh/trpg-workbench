@@ -59,13 +59,13 @@ export function WorkspacePage() {
       {/* Three panel layout */}
       <div style={{ flex: 1, overflow: "hidden" }}>
         <ThreePanelLayout
-          left={<AssetTree workspaceId={workspace.id} />}
-          center={<EditorCenter />}
-          right={
+          left={
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <AgentPanel workspaceId={workspace.id} />
             </div>
           }
+          center={<EditorCenter />}
+          right={<AssetTree workspaceId={workspace.id} />}
         />
       </div>
     </div>
