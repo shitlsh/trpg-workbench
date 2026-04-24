@@ -592,4 +592,32 @@ class SearchTestResponse(BaseModel):
     results: list[SearchTestResultSchema]
     reranked: bool
     warnings: list[str] = []
+
+
+# ─── M16: Custom Asset Type Configs ──────────────────────────────────────────
+
+class CustomAssetTypeConfigSchema(BaseModel):
+    id: str
+    rule_set_id: str
+    type_key: str
+    label: str
+    icon: str
+    sort_order: int
+    created_at: str
+    updated_at: str
+
+    model_config = {"from_attributes": True}
+
+
+class CustomAssetTypeConfigCreate(BaseModel):
+    type_key: str
+    label: str
+    icon: str
+    sort_order: int = 0
+
+
+class CustomAssetTypeConfigUpdate(BaseModel):
+    label: str | None = None
+    icon: str | None = None
+    sort_order: int | None = None
     error: str | None = None

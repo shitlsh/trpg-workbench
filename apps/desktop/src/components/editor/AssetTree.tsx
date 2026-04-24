@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, ChevronDown, Plus, Search, Trash2 } from "lucide-react";
-import type { Asset, AssetType, AssetWithContent, CreateAssetRequest } from "@trpg-workbench/shared-schema";
+import type { Asset, AssetWithContent, CreateAssetRequest, CustomAssetTypeConfig } from "@trpg-workbench/shared-schema";
 import { useEditorStore } from "@/stores/editorStore";
 import { apiFetch } from "@/lib/api";
+import { useCustomAssetTypes } from "@/hooks/useCustomAssetTypes";
 import {
   getAssetTypeIcon,
+  getCustomTypeEmoji,
   getAssetTypeColor,
   getAssetTypeLabel,
   ALL_ASSET_TYPES,
@@ -28,12 +30,13 @@ function slugify(name: string): string {
 
 interface NewAssetFormProps {
   workspaceId: string;
+  customConfigs: CustomAssetTypeConfig[];
   onClose: () => void;
 }
 
-function NewAssetForm({ workspaceId, onClose }: NewAssetFormProps) {
+function NewAssetForm({ workspaceId, customConfigs, onClose }: NewAssetFormProps) {
   const qc = useQueryClient();
-  const [type, setType] = useState<AssetType>("npc");
+  const [type, setType] = useState<string>("npc");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
@@ -58,6 +61,7 @@ function NewAssetForm({ workspaceId, onClose }: NewAssetFormProps) {
     if (!slugEdited) setSlug(slugify(v));
   };
 
+  const emoji = getCustomTypeEmoji(type, customConfigs);
   const TypeIcon = getAssetTypeIcon(type);
 
   return (
@@ -70,14 +74,26 @@ function NewAssetForm({ workspaceId, onClose }: NewAssetFormProps) {
     }}>
       <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13 }}>新建资产</div>
 
+      {/* A6: type selector with builtin + custom groups */}
       <select
         value={type}
-        onChange={(e) => setType(e.target.value as AssetType)}
+        onChange={(e) => setType(e.target.value)}
         style={inputStyle}
       >
-        {ALL_ASSET_TYPES.map((t) => (
-          <option key={t} value={t}>{getAssetTypeLabel(t)}</option>
-        ))}
+        <optgroup label="内置类型">
+          {ALL_ASSET_TYPES.map((t) => (
+            <option key={t} value={t}>{getAssetTypeLabel(t)}</option>
+          ))}
+        </optgroup>
+        {customConfigs.length > 0 && (
+          <optgroup label="自定义类型">
+            {customConfigs.map((c) => (
+              <option key={c.type_key} value={c.type_key}>
+                {c.icon} {c.label}
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
 
       {/* Type preview */}
@@ -87,8 +103,11 @@ function NewAssetForm({ workspaceId, onClose }: NewAssetFormProps) {
         background: "var(--bg-surface)", borderRadius: 4, fontSize: 12,
         color: getAssetTypeColor(type),
       }}>
-        <TypeIcon size={13} />
-        <span>{getAssetTypeLabel(type)}</span>
+        {emoji
+          ? <span style={{ fontSize: 13 }}>{emoji}</span>
+          : <TypeIcon size={13} />
+        }
+        <span>{getAssetTypeLabel(type, customConfigs)}</span>
       </div>
 
       <input
@@ -125,7 +144,7 @@ function NewAssetForm({ workspaceId, onClose }: NewAssetFormProps) {
   );
 }
 
-export function AssetTree({ workspaceId }: { workspaceId: string }) {
+export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; ruleSetId?: string | null }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -141,6 +160,8 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
     queryFn: () => apiFetch<Asset[]>(`/workspaces/${workspaceId}/assets`),
   });
 
+  const { data: customConfigs = [] } = useCustomAssetTypes(ruleSetId);
+
   const deleteMutation = useMutation({
     mutationFn: async (assetId: string) => {
       await apiFetch(`/assets/${assetId}`, { method: "DELETE" });
@@ -152,11 +173,25 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
     (a) => a.status !== "deleted" && a.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const byType = ALL_ASSET_TYPES.reduce<Record<string, Asset[]>>((acc, t) => {
+  // A4.2: Group assets — builtin types first (fixed order), then custom types, then "其他"
+  const builtinKeys = ALL_ASSET_TYPES as string[];
+  const customKeys = customConfigs.map((c) => c.type_key);
+  const allKnownTypes = new Set([...builtinKeys, ...customKeys]);
+
+  const byType: Record<string, Asset[]> = {};
+  // Builtin groups
+  for (const t of builtinKeys) {
     const items = filtered.filter((a) => a.type === t);
-    if (items.length > 0) acc[t] = items;
-    return acc;
-  }, {});
+    if (items.length > 0) byType[t] = items;
+  }
+  // Custom type groups
+  for (const t of customKeys) {
+    const items = filtered.filter((a) => a.type === t);
+    if (items.length > 0) byType[t] = items;
+  }
+  // "其他" — types present in data but not registered anywhere
+  const otherItems = filtered.filter((a) => !allKnownTypes.has(a.type));
+  if (otherItems.length > 0) byType["__other__"] = otherItems;
 
   const toggleCollapse = (type: string) => {
     setCollapsed((prev) => {
@@ -209,15 +244,17 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
 
       {/* New asset form */}
       {showNewForm && (
-        <NewAssetForm workspaceId={workspaceId} onClose={() => setShowNewForm(false)} />
+        <NewAssetForm workspaceId={workspaceId} customConfigs={customConfigs} onClose={() => setShowNewForm(false)} />
       )}
 
       {/* Tree */}
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
         {Object.entries(byType).map(([type, items]) => {
-          const assetType = type as AssetType;
-          const TypeIcon = getAssetTypeIcon(assetType);
-          const typeColor = getAssetTypeColor(assetType);
+          const isOther = type === "__other__";
+          const emoji = isOther ? null : getCustomTypeEmoji(type, customConfigs);
+          const TypeIcon = isOther ? null : getAssetTypeIcon(type);
+          const typeColor = isOther ? "var(--text-muted)" : getAssetTypeColor(type);
+          const typeLabel = isOther ? "其他" : getAssetTypeLabel(type, customConfigs);
 
           return (
             <div key={type}>
@@ -242,8 +279,11 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
                   ? <ChevronRight size={11} />
                   : <ChevronDown size={11} />
                 }
-                <TypeIcon size={11} color={typeColor} />
-                <span style={{ color: typeColor }}>{getAssetTypeLabel(assetType)}</span>
+                {emoji
+                  ? <span style={{ fontSize: 11, color: typeColor }}>{emoji}</span>
+                  : TypeIcon && <TypeIcon size={11} color={typeColor} />
+                }
+                <span style={{ color: typeColor }}>{typeLabel}</span>
                 <span style={{ marginLeft: "auto", color: "var(--text-subtle)" }}>{items.length}</span>
               </button>
 
@@ -251,8 +291,9 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
               {!collapsed.has(type) && items.map((asset) => {
                 const isActive = activeTabId === asset.id;
                 const isHovered = hoverAssetId === asset.id;
-                const RowIcon = getAssetTypeIcon(asset.type as AssetType);
-                const rowColor = getAssetTypeColor(asset.type as AssetType);
+                const rowEmoji = getCustomTypeEmoji(asset.type, customConfigs);
+                const RowIcon = getAssetTypeIcon(asset.type);
+                const rowColor = getAssetTypeColor(asset.type);
 
                 return (
                   <div
@@ -273,8 +314,6 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
                       cursor: "pointer",
                       borderRadius: 4,
                       margin: "1px 4px",
-                      // Active: left border + tinted background
-                      // Hover (non-active): plain bg-hover
                       background: isActive
                         ? `color-mix(in srgb, ${rowColor} 10%, transparent)`
                         : isHovered
@@ -287,7 +326,10 @@ export function AssetTree({ workspaceId }: { workspaceId: string }) {
                   >
                     {/* indent after the border */}
                     <span style={{ width: 20, flexShrink: 0 }} />
-                    <RowIcon size={13} color={isActive ? rowColor : "var(--text-muted)"} />
+                    {rowEmoji
+                      ? <span style={{ fontSize: 13, color: isActive ? rowColor : "var(--text-muted)" }}>{rowEmoji}</span>
+                      : <RowIcon size={13} color={isActive ? rowColor : "var(--text-muted)"} />
+                    }
                     <span style={{
                       flex: 1,
                       fontSize: 13,

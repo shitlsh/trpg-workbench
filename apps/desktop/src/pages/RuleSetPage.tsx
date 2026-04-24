@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
-  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers,
+  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag,
 } from "lucide-react";
 import { apiFetch, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
+import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import type {
   RuleSet,
@@ -22,6 +23,8 @@ import type {
   SearchTestRequest,
   SearchTestResponse,
   PromptProfile,
+  CustomAssetTypeConfig,
+  CreateCustomAssetTypeRequest,
 } from "@trpg-workbench/shared-schema";
 import styles from "./RuleSetPage.module.css";
 import { HelpButton } from "../components/HelpButton";
@@ -744,6 +747,13 @@ export default function RuleSetPage() {
   // Library detail drill-down
   const [activeLibId, setActiveLibId] = useState<string | null>(null);
 
+  // Custom asset type state (A5)
+  const [showNewTypeForm, setShowNewTypeForm] = useState(false);
+  const [newTypeKey, setNewTypeKey] = useState("");
+  const [newTypeLabel, setNewTypeLabel] = useState("");
+  const [newTypeIcon, setNewTypeIcon] = useState("");
+  const [newTypeError, setNewTypeError] = useState<string | null>(null);
+
   const { data: ruleSets = [], isLoading } = useQuery({
     queryKey: ["rule-sets"],
     queryFn: () => apiFetch<RuleSet[]>("/rule-sets"),
@@ -807,6 +817,33 @@ export default function RuleSetPage() {
     mutationFn: (id: string) => apiFetch(`/knowledge/libraries/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge", "libraries"] });
+    },
+  });
+
+  // Custom asset type mutations (A5)
+  const { data: customAssetTypes = [] } = useCustomAssetTypes(selectedId);
+
+  const createTypeMutation = useMutation({
+    mutationFn: (body: CreateCustomAssetTypeRequest) =>
+      apiFetch<CustomAssetTypeConfig>(`/rule-sets/${selectedId}/asset-type-configs`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["custom-asset-types", selectedId] });
+      setShowNewTypeForm(false);
+      setNewTypeKey(""); setNewTypeLabel(""); setNewTypeIcon(""); setNewTypeError(null);
+    },
+    onError: (err: unknown) => {
+      setNewTypeError((err as Error).message ?? "创建失败");
+    },
+  });
+
+  const deleteTypeMutation = useMutation({
+    mutationFn: (configId: string) =>
+      apiFetch(`/rule-sets/${selectedId}/asset-type-configs/${configId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["custom-asset-types", selectedId] });
     },
   });
 
@@ -973,6 +1010,103 @@ export default function RuleSetPage() {
                       >
                         <Trash2 size={13} />
                       </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Asset Types section (A5) */}
+              <div className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <span className={styles.sectionLabel}><Tag size={12} /> 资产类型（{customAssetTypes.length}）</span>
+                  {!isBuiltin(selectedRuleSet.id) && (
+                    <button
+                      className={styles.btnSecondary}
+                      style={{ fontSize: 12, padding: "4px 10px" }}
+                      onClick={() => { setShowNewTypeForm((v) => !v); setNewTypeError(null); }}
+                    >
+                      <Plus size={12} /> 添加类型
+                    </button>
+                  )}
+                </div>
+
+                {/* New type form */}
+                {showNewTypeForm && !isBuiltin(selectedRuleSet.id) && (
+                  <div className={styles.promptCard} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          className={styles.input}
+                          placeholder="类型键（英文，如 spell）"
+                          value={newTypeKey}
+                          onChange={(e) => setNewTypeKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                          style={{ flex: 2 }}
+                        />
+                        <input
+                          className={styles.input}
+                          placeholder="显示名称（如 法术）"
+                          value={newTypeLabel}
+                          onChange={(e) => setNewTypeLabel(e.target.value)}
+                          style={{ flex: 2 }}
+                        />
+                        <input
+                          className={styles.input}
+                          placeholder="图标（emoji）"
+                          value={newTypeIcon}
+                          onChange={(e) => setNewTypeIcon(e.target.value)}
+                          style={{ flex: 1, textAlign: "center", fontSize: 16 }}
+                          maxLength={4}
+                        />
+                      </div>
+                      {newTypeError && (
+                        <p className={styles.error} style={{ margin: 0 }}>{newTypeError}</p>
+                      )}
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          className={styles.btnPrimary}
+                          style={{ flex: 1, fontSize: 12 }}
+                          disabled={!newTypeKey || !newTypeLabel || !newTypeIcon || createTypeMutation.isPending}
+                          onClick={() => createTypeMutation.mutate({ type_key: newTypeKey, label: newTypeLabel, icon: newTypeIcon })}
+                        >
+                          {createTypeMutation.isPending ? "创建中..." : "创建"}
+                        </button>
+                        <button
+                          className={styles.btnSecondary}
+                          style={{ flex: 1, fontSize: 12 }}
+                          onClick={() => { setShowNewTypeForm(false); setNewTypeError(null); }}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {customAssetTypes.length === 0 ? (
+                  <p className={styles.empty}>
+                    暂无自定义类型——点击「添加类型」注册新的资产种类（如 spell、item、handout）
+                  </p>
+                ) : (
+                  customAssetTypes.map((ct) => (
+                    <div key={ct.id} className={styles.bindingItem}>
+                      <span style={{ fontSize: 16 }}>{ct.icon}</span>
+                      <span className={styles.bindingName}>{ct.label}</span>
+                      <span className={styles.bindingType} style={{ fontFamily: "monospace", fontSize: 11 }}>
+                        {ct.type_key}
+                      </span>
+                      {!isBuiltin(selectedRuleSet.id) && (
+                        <button
+                          className={styles.btnGhost}
+                          onClick={() => {
+                            if (confirm(`确认删除类型「${ct.label}」？已有此类型的资产不受影响。`)) {
+                              deleteTypeMutation.mutate(ct.id);
+                            }
+                          }}
+                          title="删除"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   ))
                 )}

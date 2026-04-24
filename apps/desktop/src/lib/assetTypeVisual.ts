@@ -9,13 +9,15 @@ import {
   Clock,
   Map,
   Scroll,
+  Folder,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { AssetType } from "@trpg-workbench/shared-schema";
+import type { CustomAssetTypeConfig } from "@trpg-workbench/shared-schema";
+import { BUILTIN_ASSET_TYPES } from "@trpg-workbench/shared-schema";
 
 // ─── Per-type icon mapping ────────────────────────────────────────────────────
 
-const ASSET_TYPE_ICONS: Record<AssetType, LucideIcon> = {
+const ASSET_TYPE_ICONS: Partial<Record<string, LucideIcon>> = {
   outline:   BookOpen,
   stage:     Theater,
   npc:       Users,
@@ -30,7 +32,7 @@ const ASSET_TYPE_ICONS: Record<AssetType, LucideIcon> = {
 
 // ─── Per-type CSS variable mapping ───────────────────────────────────────────
 
-const ASSET_TYPE_COLOR_VARS: Record<AssetType, string> = {
+const ASSET_TYPE_COLOR_VARS: Partial<Record<string, string>> = {
   outline:   "var(--color-type-outline)",
   stage:     "var(--color-type-stage)",
   npc:       "var(--color-type-npc)",
@@ -45,7 +47,7 @@ const ASSET_TYPE_COLOR_VARS: Record<AssetType, string> = {
 
 // ─── Per-type Chinese labels ──────────────────────────────────────────────────
 
-const ASSET_TYPE_LABELS: Record<AssetType, string> = {
+const ASSET_TYPE_LABELS: Partial<Record<string, string>> = {
   outline:   "大纲",
   stage:     "场景",
   npc:       "NPC",
@@ -60,17 +62,40 @@ const ASSET_TYPE_LABELS: Record<AssetType, string> = {
 
 // ─── Public helpers ───────────────────────────────────────────────────────────
 
-export function getAssetTypeIcon(type: AssetType): LucideIcon {
-  return ASSET_TYPE_ICONS[type] ?? BookOpen;
+/** Returns the Lucide icon for a type. For custom types (emoji-based), returns Folder as fallback. */
+export function getAssetTypeIcon(type: string): LucideIcon {
+  return ASSET_TYPE_ICONS[type] ?? Folder;
+}
+
+/**
+ * For custom (non-builtin) types: returns the emoji icon string from the config if available.
+ * Returns null for builtin types (which use Lucide icons instead).
+ */
+export function getCustomTypeEmoji(
+  type: string,
+  customConfigs: CustomAssetTypeConfig[],
+): string | null {
+  if (ASSET_TYPE_ICONS[type]) return null;
+  const config = customConfigs.find((c) => c.type_key === type);
+  return config?.icon ?? null;
 }
 
 /** Returns a CSS variable string, e.g. "var(--color-type-npc)". Never hardcodes hex. */
-export function getAssetTypeColor(type: AssetType): string {
+export function getAssetTypeColor(type: string): string {
   return ASSET_TYPE_COLOR_VARS[type] ?? "var(--text-muted)";
 }
 
-export function getAssetTypeLabel(type: AssetType): string {
-  return ASSET_TYPE_LABELS[type] ?? type;
+/**
+ * Returns the display label for a type.
+ * Custom types use their label from config; completely unregistered types show the raw type_key.
+ */
+export function getAssetTypeLabel(
+  type: string,
+  customConfigs?: CustomAssetTypeConfig[],
+): string {
+  if (ASSET_TYPE_LABELS[type]) return ASSET_TYPE_LABELS[type]!;
+  const config = customConfigs?.find((c) => c.type_key === type);
+  return config?.label ?? type;
 }
 
-export const ALL_ASSET_TYPES: AssetType[] = Object.keys(ASSET_TYPE_LABELS) as AssetType[];
+export const ALL_ASSET_TYPES: string[] = [...BUILTIN_ASSET_TYPES];

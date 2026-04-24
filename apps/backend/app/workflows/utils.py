@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.orm import (
     WorkflowStateORM, WorkspaceORM, AssetORM,
     KnowledgeLibraryORM, WorkspaceLibraryBindingORM,
-    PromptProfileORM,
+    PromptProfileORM, CustomAssetTypeConfigORM,
 )
 
 
@@ -112,6 +112,19 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
     ]
     library_ids = list(dict.fromkeys(rs_libs + ws_libs))  # deduplicate, preserve order
 
+    # M16: custom asset types registered for this rule set
+    custom_asset_types = []
+    if ws.rule_set_id:
+        custom_asset_types = [
+            {"type_key": c.type_key, "label": c.label, "icon": c.icon}
+            for c in (
+                db.query(CustomAssetTypeConfigORM)
+                .filter_by(rule_set_id=ws.rule_set_id)
+                .order_by(CustomAssetTypeConfigORM.sort_order, CustomAssetTypeConfigORM.created_at)
+                .all()
+            )
+        ]
+
     return {
         "workspace_name": ws.name,
         "rule_set": ws.rule_set_id,
@@ -121,4 +134,5 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
             {"type": a.type, "name": a.name, "slug": a.slug}
             for a in assets
         ],
+        "custom_asset_types": custom_asset_types,
     }

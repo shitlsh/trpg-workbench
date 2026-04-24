@@ -65,7 +65,7 @@ export function WorkspacePage() {
             </div>
           }
           center={<EditorCenter />}
-          right={<AssetTree workspaceId={workspace.id} />}
+          right={<AssetTree workspaceId={workspace.id} ruleSetId={workspace.rule_set_id} />}
         />
       </div>
     </div>

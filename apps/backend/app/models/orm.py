@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, Float, Integer, ForeignKey, DateTime, Boolean
+from sqlalchemy import String, Text, Float, Integer, ForeignKey, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.storage.database import Base
 
@@ -339,3 +339,20 @@ class EmbeddingCatalogEntryORM(Base):
     source: Mapped[str] = mapped_column(String(20), default="static")
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ─── M16: Custom Asset Type Configs ──────────────────────────────────────────
+
+class CustomAssetTypeConfigORM(Base):
+    __tablename__ = "custom_asset_type_configs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    rule_set_id: Mapped[str] = mapped_column(String(36), ForeignKey("rule_sets.id"), nullable=False)
+    type_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    icon: Mapped[str] = mapped_column(String(100), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    __table_args__ = (UniqueConstraint("rule_set_id", "type_key", name="uq_rule_set_type_key"),)

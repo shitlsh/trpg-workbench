@@ -5,7 +5,7 @@ import type {
   ChatSession, ChatMessage, WorkflowState,
   ChangePlan, ConsistencyReport, PatchProposal,
   LLMProfile, ModelCatalogEntry, ClarificationQuestion, RulesSuggestion,
-  AssetWithContent, AssetType,
+  AssetWithContent,
 } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
 import { useEditorStore } from "@/stores/editorStore";
@@ -26,9 +26,8 @@ function ChangePlanView({ plan }: { plan: ChangePlan }) {
         <div style={{ marginBottom: 4 }}>
           <span style={{ color: "var(--text-muted)" }}>涉及资产：</span>
           {plan.affected_asset_types.map((t) => {
-            const assetType = t as AssetType;
-            const TypeIcon = getAssetTypeIcon(assetType);
-            const typeColor = getAssetTypeColor(assetType);
+            const TypeIcon = getAssetTypeIcon(t);
+            const typeColor = getAssetTypeColor(t);
             return (
               <span key={t} style={{
                 display: "inline-flex", alignItems: "center", gap: 3,
@@ -37,7 +36,7 @@ function ChangePlanView({ plan }: { plan: ChangePlan }) {
                 color: typeColor,
               }}>
                 <TypeIcon size={10} />
-                {getAssetTypeLabel(assetType)}
+                {getAssetTypeLabel(t)}
               </span>
             );
           })}

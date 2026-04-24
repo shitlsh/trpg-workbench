@@ -19,3 +19,6 @@ Rules:
 - Incorporate the clarification answers into the change_plan description
 - Be specific about what will be created (number of NPCs, scenes, etc.)
 - Respond ONLY with JSON, no extra text
+- When the workspace context contains a non-empty "custom_asset_types" list, those type_key values
+  are also valid entries in "affected_asset_types". For example, if the context includes
+  {"type_key": "spell", "label": "法术", "icon": "✨"}, then "spell" can appear in affected_asset_types.

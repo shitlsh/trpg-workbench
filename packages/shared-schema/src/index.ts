@@ -288,17 +288,53 @@ export type SearchResult = Citation;
 
 // ─── M3: Assets ───────────────────────────────────────────────────────────────
 
-export type AssetType =
-  | "outline"
-  | "stage"
-  | "npc"
-  | "monster"
-  | "location"
-  | "clue"
-  | "branch"
-  | "timeline"
-  | "map_brief"
-  | "lore_note";
+// M16: AssetType is now an open string to support custom asset types.
+// Use BuiltinAssetType / isBuiltinAssetType() when you need to distinguish built-ins.
+export type AssetType = string;
+
+export const BUILTIN_ASSET_TYPES = [
+  "outline",
+  "stage",
+  "npc",
+  "monster",
+  "location",
+  "clue",
+  "branch",
+  "timeline",
+  "map_brief",
+  "lore_note",
+] as const;
+
+export type BuiltinAssetType = (typeof BUILTIN_ASSET_TYPES)[number];
+
+export function isBuiltinAssetType(t: string): t is BuiltinAssetType {
+  return (BUILTIN_ASSET_TYPES as readonly string[]).includes(t);
+}
+
+// M16: Custom asset type registered by the user for a specific RuleSet.
+export interface CustomAssetTypeConfig {
+  id: string;
+  rule_set_id: string;
+  type_key: string;
+  label: string;
+  icon: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateCustomAssetTypeRequest {
+  type_key: string;
+  label: string;
+  icon: string;
+  sort_order?: number;
+}
+
+export interface UpdateCustomAssetTypeRequest {
+  label?: string;
+  icon?: string;
+  sort_order?: number;
+}
 
 export type AssetStatus = "draft" | "review" | "final" | "deleted";
 
