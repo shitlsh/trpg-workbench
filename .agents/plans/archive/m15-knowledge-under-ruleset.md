@@ -2,6 +2,8 @@
 
 **前置条件**：M14 完成（Help 文档重建已归档）。
 
+**状态：✅ 已完成（未提交，待归档时一并 commit）**
+
 **目标**：将知识库从独立顶级页面合并为规则集的下级管理面板，消除 `/knowledge` 独立路由，统一后端数据模型为严格一对多（`KnowledgeLibrary.rule_set_id` NOT NULL），移除冗余的 M:N binding 表。
 
 ---
@@ -190,47 +192,47 @@ apps/desktop/src/pages/KnowledgePage.module.css — 配套样式
 
 ### A1：后端数据模型统一
 
-- [ ] **A1.1**：`orm.py` — `KnowledgeLibrary.rule_set_id` 改为 NOT NULL
-- [ ] **A1.2**：`orm.py` — 删除 `RuleSetLibraryBindingORM` 类
-- [ ] **A1.3**：`schemas.py` — 删除 `RuleSetLibraryBinding*` schema，`CreateKnowledgeLibraryRequest.rule_set_id` 改必填
-- [ ] **A1.4**：`rule_sets.py` — 删除 `/{rule_set_id}/library-bindings` 相关端点
-- [ ] **A1.5**：`knowledge_libraries.py` — `GET` 按 `rule_set_id` 筛选，`POST` 必须传 `rule_set_id`
-- [ ] **A1.6**：Agent 运行时知识库获取逻辑更新（如 `workspace_context` 相关代码）
+- [x] **A1.1**：`orm.py` — `KnowledgeLibrary.rule_set_id` 改为 NOT NULL
+- [x] **A1.2**：`orm.py` — 删除 `RuleSetLibraryBindingORM` 类
+- [x] **A1.3**：`schemas.py` — 删除 `RuleSetLibraryBinding*` schema，`CreateKnowledgeLibraryRequest.rule_set_id` 改必填
+- [x] **A1.4**：`rule_sets.py` — 删除 `/{rule_set_id}/library-bindings` 相关端点
+- [x] **A1.5**：`knowledge_libraries.py` — `GET` 按 `rule_set_id` 筛选，`POST` 必须传 `rule_set_id`
+- [x] **A1.6**（实现在 `workflows/utils.py` 和 `api/workflows.py`，非 `workspace_context.py`）：Agent 运行时知识库获取逻辑更新（如 `workspace_context` 相关代码）
 
 ### A2：前端 RuleSetPage 扩展
 
-- [ ] **A2.1**：提取 KnowledgePage 核心组件为可复用模块（DocumentRow, DocumentPreviewPanel, SearchTestDialog）
-- [ ] **A2.2**：RuleSetPage detail 区域新增知识库 section（列表 + 展开详情）
-- [ ] **A2.3**：新建知识库 modal — 自动绑定当前 rule_set_id
-- [ ] **A2.4**：知识库展开后显示文档列表、上传区、检索测试入口
+- [x] **A2.1**（直接在 RuleSetPage.tsx 内实现为子组件，未提取为独立模块）：提取 KnowledgePage 核心组件为可复用模块（DocumentRow, DocumentPreviewPanel, SearchTestDialog）
+- [x] **A2.2**：RuleSetPage detail 区域新增知识库 section（列表 + 展开详情）
+- [x] **A2.3**：新建知识库 modal — 自动绑定当前 rule_set_id
+- [x] **A2.4**：知识库展开后显示文档列表、上传区、检索测试入口
 
 ### A3：删除独立 KnowledgePage
 
-- [ ] **A3.1**：`App.tsx` — 删除 `/knowledge` 路由
-- [ ] **A3.2**：删除 `KnowledgePage.tsx` 和 `KnowledgePage.module.css`
-- [ ] **A3.3**：清理 `HelpPage.tsx` 中 knowledge-import doc 的链接引用（如有指向 `/knowledge` 的）
+- [x] **A3.1**：`App.tsx` — 删除 `/knowledge` 路由
+- [x] **A3.2**：删除 `KnowledgePage.tsx` 和 `KnowledgePage.module.css`
+- [x] **A3.3**（HelpPage 中无 `/knowledge` 路由引用，仅有 `/help/knowledge-import` 文档链接）：清理 `HelpPage.tsx` 中 knowledge-import doc 的链接引用（如有指向 `/knowledge` 的）
 
 ### A4：首页和引用更新
 
-- [ ] **A4.1**：`HomePage.tsx` — 删除「知识库」按钮，更新空状态文案
-- [ ] **A4.2**：`WorkspaceSettingsPage.tsx` — 额外知识库选择器适配（改为直接查全部知识库）
-- [ ] **A4.3**：`shared-schema` — 删除 `RuleSetLibraryBinding` 等类型
-- [ ] **A4.4**：Help 文档更新（getting-started, knowledge-import, rule-set-management）
-- [ ] **A4.5**：Help 截图更新（`refresh-help-images.sh`）
+- [x] **A4.1**：`HomePage.tsx` — 删除「知识库」按钮，更新空状态文案
+- [x] **A4.2**：`WorkspaceSettingsPage.tsx` — 额外知识库选择器适配（改为直接查全部知识库）
+- [x] **A4.3**：`shared-schema` — 删除 `RuleSetLibraryBinding` 等类型
+- [x] **A4.4**：Help 文档更新（getting-started, knowledge-import, rule-set-management）
+- [ ] **A4.5**（截图更新推迟，需运行应用）：Help 截图更新（`refresh-help-images.sh`）
 
 ### A5：Skill 约束同步
 
-- [ ] **A5.1**：`frontend-ui-patterns/SKILL.md` — 删除"保持独立"约束，更新路由表
-- [ ] **A5.2**：`trpg-workbench-architecture/SKILL.md` — 确认一对多约束，清理 M:N 残留
-- [ ] **A5.3**：`agent-workflow-patterns/SKILL.md` — 更新知识库获取方式
-- [ ] **A5.4**：`pdf-knowledge-ingestion/SKILL.md` — 更新知识库创建流程
+- [x] **A5.1**：`frontend-ui-patterns/SKILL.md` — 删除"保持独立"约束，更新路由表
+- [x] **A5.2**（已在 M15 前更新为一对多，无 M:N 残留）：`trpg-workbench-architecture/SKILL.md` — 确认一对多约束，清理 M:N 残留
+- [x] **A5.3**（已在 M15 前更新，无 binding 残留）：`agent-workflow-patterns/SKILL.md` — 更新知识库获取方式
+- [x] **A5.4**（已在 M15 前更新，无 binding 残留）：`pdf-knowledge-ingestion/SKILL.md` — 更新知识库创建流程
 
 ### A6：清理 pre-1.0 技术债
 
-- [ ] **A6.1**：`database.py` — 删除 `_migrate_add_column()` 函数及其调用
-- [ ] **A6.2**：`orm.py` — 删除 `KnowledgeLibraryORM.embedding_config` 字段
-- [ ] **A6.3**：`schemas.py` — 删除 `KnowledgeLibrarySchema.embedding_config` 字段
-- [ ] **A6.4**：`shared-schema/index.ts` — 删除 `KnowledgeLibrary.embedding_config` 字段
+- [x] **A6.1**：`database.py` — 删除 `_migrate_add_column()` 函数及其调用
+- [x] **A6.2**：`orm.py` — 删除 `KnowledgeLibraryORM.embedding_config` 字段
+- [x] **A6.3**：`schemas.py` — 删除 `KnowledgeLibrarySchema.embedding_config` 字段
+- [x] **A6.4**：`shared-schema/index.ts` — 删除 `KnowledgeLibrary.embedding_config` 字段
 
 ---
 

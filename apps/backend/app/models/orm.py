@@ -25,7 +25,7 @@ class RuleSetORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     workspaces: Mapped[list["WorkspaceORM"]] = relationship("WorkspaceORM", back_populates="rule_set")
-    library_bindings: Mapped[list["RuleSetLibraryBindingORM"]] = relationship("RuleSetLibraryBindingORM", back_populates="rule_set", cascade="all, delete-orphan")
+    libraries: Mapped[list["KnowledgeLibraryORM"]] = relationship("KnowledgeLibraryORM", back_populates="rule_set", cascade="all, delete-orphan")
 
 
 class WorkspaceORM(Base):
@@ -103,16 +103,16 @@ class KnowledgeLibraryORM(Base):
     __tablename__ = "knowledge_libraries"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    rule_set_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rule_sets.id"), nullable=True)
+    rule_set_id: Mapped[str] = mapped_column(String(36), ForeignKey("rule_sets.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False, default="core_rules")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    embedding_config: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON, M2 legacy field
     embedding_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     embedding_model_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON snapshot at index time
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
+    rule_set: Mapped["RuleSetORM"] = relationship("RuleSetORM", back_populates="libraries")
     documents: Mapped[list["KnowledgeDocumentORM"]] = relationship("KnowledgeDocumentORM", back_populates="library", cascade="all, delete-orphan")
     workspace_bindings: Mapped[list["WorkspaceLibraryBindingORM"]] = relationship("WorkspaceLibraryBindingORM", back_populates="library", cascade="all, delete-orphan")
 
@@ -147,19 +147,6 @@ class WorkspaceLibraryBindingORM(Base):
     scope_rules_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     library: Mapped["KnowledgeLibraryORM"] = relationship("KnowledgeLibraryORM", back_populates="workspace_bindings")
-
-
-class RuleSetLibraryBindingORM(Base):
-    __tablename__ = "rule_set_library_bindings"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    rule_set_id: Mapped[str] = mapped_column(String(36), ForeignKey("rule_sets.id"), nullable=False)
-    library_id: Mapped[str] = mapped_column(String(36), ForeignKey("knowledge_libraries.id"), nullable=False)
-    priority: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-
-    rule_set: Mapped["RuleSetORM"] = relationship("RuleSetORM", back_populates="library_bindings")
-    library: Mapped["KnowledgeLibraryORM"] = relationship("KnowledgeLibraryORM")
 
 
 class IngestTaskORM(Base):

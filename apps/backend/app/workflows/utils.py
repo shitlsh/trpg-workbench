@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.orm import (
     WorkflowStateORM, WorkspaceORM, AssetORM,
     KnowledgeLibraryORM, WorkspaceLibraryBindingORM,
-    PromptProfileORM, RuleSetLibraryBindingORM,
+    PromptProfileORM,
 )
 
 
@@ -99,10 +99,10 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
         if pp:
             style_prompt = pp.system_prompt
 
-    # library_ids: rule set library bindings + workspace extra bindings
+    # library_ids: rule set libraries (via FK) + workspace extra bindings
     rs_libs = [
-        b.library_id
-        for b in db.query(RuleSetLibraryBindingORM).filter_by(rule_set_id=ws.rule_set_id).all()
+        lib.id
+        for lib in db.query(KnowledgeLibraryORM).filter_by(rule_set_id=ws.rule_set_id).all()
     ] if ws.rule_set_id else []
     ws_libs = [
         b.library_id

@@ -42,17 +42,17 @@ async def _build_knowledge_retriever(workspace_id: str, task_type: str, db: Sess
     Integrates optional rerank if workspace has rerank enabled for this task_type.
     Returns None if no libraries are bound to the workspace.
     """
-    from app.models.orm import WorkspaceORM, RuleSetLibraryBindingORM
+    from app.models.orm import WorkspaceORM, KnowledgeLibraryORM
     from app.services.model_routing import get_embedding_for_query, LibraryNotIndexedError
 
     workspace = db.get(WorkspaceORM, workspace_id)
 
-    # Rule set library bindings + workspace extra bindings (same logic as get_workspace_context)
+    # Rule set libraries (via FK) + workspace extra bindings
     rs_libs = []
     if workspace and workspace.rule_set_id:
         rs_libs = [
-            b.library_id
-            for b in db.query(RuleSetLibraryBindingORM)
+            lib.id
+            for lib in db.query(KnowledgeLibraryORM)
             .filter_by(rule_set_id=workspace.rule_set_id)
             .all()
         ]

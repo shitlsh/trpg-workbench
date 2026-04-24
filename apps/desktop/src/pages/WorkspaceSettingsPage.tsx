@@ -6,7 +6,7 @@ import { apiFetch, BACKEND_URL } from "../lib/api";
 import type {
   Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry,
   EmbeddingCatalogEntry, RerankProfile, WorkspaceLibraryBinding,
-  CreateBindingRequest, KnowledgeLibrary, RuleSetLibraryBinding,
+  CreateBindingRequest, KnowledgeLibrary,
 } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
 import { HelpButton } from "../components/HelpButton";
@@ -22,9 +22,9 @@ function ExtraLibrariesSection({ workspaceId, ruleSetId }: { workspaceId: string
     queryFn: () => apiFetch<KnowledgeLibrary[]>("/knowledge/libraries"),
   });
 
-  const { data: rsBindings = [] } = useQuery({
-    queryKey: ["rule-sets", ruleSetId, "library-bindings"],
-    queryFn: () => apiFetch<RuleSetLibraryBinding[]>(`/rule-sets/${ruleSetId}/library-bindings`),
+  const { data: rsLibraries = [] } = useQuery({
+    queryKey: ["knowledge", "libraries", { rule_set_id: ruleSetId }],
+    queryFn: () => apiFetch<KnowledgeLibrary[]>(`/knowledge/libraries?rule_set_id=${ruleSetId}`),
     enabled: !!ruleSetId,
   });
 
@@ -52,9 +52,8 @@ function ExtraLibrariesSection({ workspaceId, ruleSetId }: { workspaceId: string
     },
   });
 
-  const rsLibIds = rsBindings.map((b) => b.library_id);
+  const rsLibIds = rsLibraries.map((l) => l.id);
   const wsLibIds = wsBindings.map((b) => b.library_id);
-  const rsLibs = allLibraries.filter((l) => rsLibIds.includes(l.id));
 
   return (
     <div style={{ marginTop: 32, padding: 20, border: "1px solid var(--border)", borderRadius: 8 }}>
@@ -62,13 +61,13 @@ function ExtraLibrariesSection({ workspaceId, ruleSetId }: { workspaceId: string
         <Library size={15} /> 额外知识库（规则集之外的补充）
       </div>
 
-      {ruleSetId && rsLibs.length > 0 && (
+      {ruleSetId && rsLibraries.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
-            当前规则集已关联 {rsLibs.length} 个知识库（继承，不可在此修改）：
+            当前规则集已包含 {rsLibraries.length} 个知识库（继承，不可在此修改）：
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {rsLibs.map((l) => (
+            {rsLibraries.map((l) => (
               <span key={l.id} style={{
                 padding: "2px 10px", background: "rgba(124,106,247,0.12)",
                 color: "var(--accent)", borderRadius: 100, fontSize: 12,

@@ -37,20 +37,6 @@ export interface UpdateRuleSetRequest {
   genre?: string;
 }
 
-export interface RuleSetLibraryBinding {
-  id: string;
-  rule_set_id: string;
-  library_id: string;
-  priority: number;
-  created_at: string;
-  library?: KnowledgeLibrary | null;
-}
-
-export interface CreateRuleSetLibraryBindingRequest {
-  library_id: string;
-  priority?: number;
-}
-
 // ─── Workspace ────────────────────────────────────────────────────────────────
 
 export interface Workspace {
@@ -206,11 +192,10 @@ export type LibraryType =
 
 export interface KnowledgeLibrary {
   id: string;
-  rule_set_id: string | null;
+  rule_set_id: string;
   name: string;
   type: LibraryType;
   description: string | null;
-  embedding_config: string | null;
   embedding_profile_id: string | null;
   embedding_model_snapshot: string | null;
   document_count: number;
@@ -222,7 +207,7 @@ export interface CreateKnowledgeLibraryRequest {
   name: string;
   type: LibraryType;
   description?: string;
-  rule_set_id?: string;
+  rule_set_id: string;
 }
 
 export type ParseStatus =

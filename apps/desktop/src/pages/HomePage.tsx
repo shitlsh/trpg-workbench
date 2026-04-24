@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { BookMarked, Library, Cpu, BarChart2 } from "lucide-react";
+import { BookMarked, Cpu, BarChart2 } from "lucide-react";
 import { apiFetch } from "../lib/api";
 import type {
   Workspace, RuleSet, CreateWorkspaceRequest,
-  RuleSetLibraryBinding, PromptProfile,
+  KnowledgeLibrary, PromptProfile,
 } from "@trpg-workbench/shared-schema";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { HelpButton } from "../components/HelpButton";
@@ -31,9 +31,9 @@ export default function HomePage() {
   });
 
   // For the new-workspace modal: preview selected rule set's metadata
-  const { data: selectedRsBindings = [] } = useQuery({
-    queryKey: ["rule-sets", newRuleSetId, "library-bindings"],
-    queryFn: () => apiFetch<RuleSetLibraryBinding[]>(`/rule-sets/${newRuleSetId}/library-bindings`),
+  const { data: selectedRsLibraries = [] } = useQuery({
+    queryKey: ["knowledge", "libraries", { rule_set_id: newRuleSetId }],
+    queryFn: () => apiFetch<KnowledgeLibrary[]>(`/knowledge/libraries?rule_set_id=${newRuleSetId}`),
     enabled: !!newRuleSetId,
   });
 
@@ -83,10 +83,6 @@ export default function HomePage() {
             <BookMarked size={14} style={{ flexShrink: 0 }} />
             规则集
           </button>
-          <button className={styles.btnSecondary} onClick={() => navigate("/knowledge")}>
-            <Library size={14} style={{ flexShrink: 0 }} />
-            知识库
-          </button>
           <button className={styles.btnSecondary} onClick={() => navigate("/settings/models")}>
             <Cpu size={14} style={{ flexShrink: 0 }} />
             模型配置
@@ -119,7 +115,7 @@ export default function HomePage() {
               新建第一个工作空间
             </button>
             <div style={{ display: "flex", gap: 12, marginTop: 16, fontSize: 13, color: "var(--text-muted, #888)" }}>
-              <span>💡 建议先在"知识库"中导入规则书 PDF</span>
+              <span>建议先在"规则集"中创建知识库并导入规则书 PDF</span>
             </div>
           </div>
         )}
@@ -215,7 +211,7 @@ export default function HomePage() {
                   gap: 16,
                 }}>
                   <span>
-                    📚 知识库：<strong style={{ color: "var(--text)" }}>{selectedRsBindings.length} 个</strong>
+                    📚 知识库：<strong style={{ color: "var(--text)" }}>{selectedRsLibraries.length} 个</strong>
                   </span>
                   <span>
                     ✍️ 提示词：<strong style={{ color: "var(--text)" }}>

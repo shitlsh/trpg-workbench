@@ -1,11 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.storage.database import get_db
-from app.models.orm import RuleSetORM, WorkspaceORM, RuleSetLibraryBindingORM, KnowledgeLibraryORM
+from app.models.orm import RuleSetORM, WorkspaceORM
 from app.models.schemas import (
     RuleSetSchema, RuleSetCreate, RuleSetUpdate,
-    RuleSetLibraryBindingSchema, RuleSetLibraryBindingCreate,
-    KnowledgeLibrarySchema,
 )
 
 router = APIRouter(prefix="/rule-sets", tags=["rule-sets"])
@@ -61,48 +59,5 @@ def delete_rule_set(rule_set_id: str, db: Session = Depends(get_db)):
             detail={"message": "Rule set is in use by workspaces", "workspaces": names}
         )
     db.delete(rs)
-    db.commit()
-
-
-# ─── Library bindings ──────────────────────────────────────────────────────────
-
-@router.get("/{rule_set_id}/library-bindings", response_model=list[RuleSetLibraryBindingSchema])
-def list_library_bindings(rule_set_id: str, db: Session = Depends(get_db)):
-    rs = db.get(RuleSetORM, rule_set_id)
-    if not rs:
-        raise HTTPException(status_code=404, detail="Rule set not found")
-    return db.query(RuleSetLibraryBindingORM).filter(
-        RuleSetLibraryBindingORM.rule_set_id == rule_set_id
-    ).all()
-
-
-@router.post("/{rule_set_id}/library-bindings", response_model=RuleSetLibraryBindingSchema, status_code=201)
-def add_library_binding(rule_set_id: str, body: RuleSetLibraryBindingCreate, db: Session = Depends(get_db)):
-    rs = db.get(RuleSetORM, rule_set_id)
-    if not rs:
-        raise HTTPException(status_code=404, detail="Rule set not found")
-    lib = db.get(KnowledgeLibraryORM, body.library_id)
-    if not lib:
-        raise HTTPException(status_code=404, detail="Knowledge library not found")
-    existing = db.query(RuleSetLibraryBindingORM).filter_by(
-        rule_set_id=rule_set_id, library_id=body.library_id
-    ).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Library already bound to this rule set")
-    binding = RuleSetLibraryBindingORM(rule_set_id=rule_set_id, **body.model_dump())
-    db.add(binding)
-    db.commit()
-    db.refresh(binding)
-    return binding
-
-
-@router.delete("/{rule_set_id}/library-bindings/{binding_id}", status_code=204)
-def remove_library_binding(rule_set_id: str, binding_id: str, db: Session = Depends(get_db)):
-    binding = db.query(RuleSetLibraryBindingORM).filter_by(
-        id=binding_id, rule_set_id=rule_set_id
-    ).first()
-    if not binding:
-        raise HTTPException(status_code=404, detail="Binding not found")
-    db.delete(binding)
     db.commit()
 

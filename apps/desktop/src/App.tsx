@@ -8,7 +8,6 @@ import FailedScreen from "./pages/FailedScreen";
 import HomePage from "./pages/HomePage";
 import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
 import SettingsPage from "./pages/SettingsPage";
-import KnowledgePage from "./pages/KnowledgePage";
 import PromptProfilesPage from "./pages/PromptProfilesPage";
 import UsagePage from "./pages/UsagePage";
 import { WorkspacePage } from "./pages/WorkspacePage";
@@ -100,7 +99,6 @@ export default function App() {
         <Route path="/usage" element={<UsagePage />} />
         <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
         <Route path="/workspace/:id" element={<WorkspacePage />} />
-        <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/help/:doc" element={<HelpPage />} />
         <Route path="/help" element={<Navigate to="/help/getting-started" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

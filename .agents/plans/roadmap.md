@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M14 全部完成。
+核心功能链路已通过 M1–M15 全部完成。
 
 ```
 ✅ M1 基础骨架
@@ -20,7 +20,7 @@
                                                                                                       └── ✅ M12 Agent 透明度
                                                                                                              └── ✅ M13 UI 视觉语言升级
                                                                                                                     └── ✅ M14 Help 文档重建
-                                                                                                                          └── M15 知识库归属规则集
+                                                                                                                          └── ✅ M15 知识库归属规则集
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -49,12 +49,11 @@
 
 | M13 ✅ | UI 视觉语言升级 | 彩色 per-type 资产图标、三档文字颜色梯度、Active 状态焦点指示 | [archive/m13-visual-language.md](archive/m13-visual-language.md) |
 | M14 ✅ | Help 文档重建与维护机制 | 重写 Help 文档（人工编写、任务导向、嵌入截图），调整维护机制，增强 HelpPage 交互 | [archive/m14-help-rebuild.md](archive/m14-help-rebuild.md) |
+| M15 ✅ | 知识库归属规则集 | 知识库作为规则集下级管理（合并进 RuleSetPage），消除独立 /knowledge 路由，统一 1:N 数据模型 | [archive/m15-knowledge-under-ruleset.md](archive/m15-knowledge-under-ruleset.md) |
 
 ### 进行中 / 待启动
 
-| # | 名称 | 目标 | 计划文件 |
-|---|------|------|---------|
-| M15 | 知识库归属规则集 | 知识库作为规则集下级管理（合并进 RuleSetPage），消除独立 /knowledge 路由，统一 1:N 数据模型 | [m15-knowledge-under-ruleset.md](m15-knowledge-under-ruleset.md) |
+（暂无）
 
 ---
 

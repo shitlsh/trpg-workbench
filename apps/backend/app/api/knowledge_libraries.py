@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.storage.database import get_db
-from app.models.orm import KnowledgeLibraryORM, KnowledgeDocumentORM
+from app.models.orm import KnowledgeLibraryORM, KnowledgeDocumentORM, RuleSetORM
 from app.models.schemas import KnowledgeLibrarySchema, KnowledgeLibraryCreate
 
 router = APIRouter(prefix="/knowledge/libraries", tags=["knowledge-libraries"])
@@ -29,6 +29,9 @@ def list_libraries(rule_set_id: str | None = None, db: Session = Depends(get_db)
 
 @router.post("", response_model=KnowledgeLibrarySchema, status_code=201)
 def create_library(body: KnowledgeLibraryCreate, db: Session = Depends(get_db)):
+    rs = db.get(RuleSetORM, body.rule_set_id)
+    if not rs:
+        raise HTTPException(status_code=404, detail="Rule set not found")
     lib = KnowledgeLibraryORM(**body.model_dump())
     db.add(lib)
     db.commit()

@@ -26,21 +26,6 @@ class RuleSetUpdate(BaseModel):
     genre: str | None = None
 
 
-class RuleSetLibraryBindingSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: str
-    rule_set_id: str
-    library_id: str
-    priority: int
-    created_at: datetime
-    library: "KnowledgeLibrarySchema | None" = None
-
-
-class RuleSetLibraryBindingCreate(BaseModel):
-    library_id: str
-    priority: int = 0
-
-
 class WorkspaceSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -178,11 +163,10 @@ class EmbeddingTestResult(BaseModel):
 class KnowledgeLibrarySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
-    rule_set_id: str | None
+    rule_set_id: str
     name: str
     type: str
     description: str | None
-    embedding_config: str | None
     embedding_profile_id: str | None
     embedding_model_snapshot: str | None
     document_count: int = 0
@@ -194,7 +178,7 @@ class KnowledgeLibraryCreate(BaseModel):
     name: str
     type: str = "core_rules"
     description: str | None = None
-    rule_set_id: str | None = None
+    rule_set_id: str
 
 
 class KnowledgeDocumentSchema(BaseModel):

@@ -234,3 +234,63 @@
 .selectListItem:hover { background: var(--bg-hover); }
 .selectListItem.disabled { opacity: 0.4; cursor: not-allowed; }
 .selectListItem.selected { background: rgba(124,106,247,0.12); }
+
+/* Dropzone */
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dropzone:hover {
+  border-color: var(--accent);
+  background: rgba(124,106,247,0.04);
+}
+
+/* Progress */
+.progressBox {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.progressBar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progressFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.errorBox {
+  background: rgba(224,82,82,0.08);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+/* Doc list */
+.docList { display: flex; flex-direction: column; gap: 6px; }
