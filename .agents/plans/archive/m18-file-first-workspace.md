@@ -1,4 +1,6 @@
-# M18：File-first 自包含 Workspace
+# M18：File-first 自包含 Workspace ✅
+
+**状态：✅ 已完成（commit 86b889b）**
 
 **前置条件**：M3 完成（资产系统 CRUD 可用）、M17 完成（Skill 已是 file-first 参考实现）。
 
@@ -284,45 +286,45 @@ zhao-detective.md               ← 放在根目录也行
 
 ### A1：资产文件格式统一
 
-- [ ] **A1.1**：定义 frontmatter schema（各资产类型的必填/可选字段）
-- [ ] **A1.2**：`apps/backend/app/services/asset_service.py` — 资产创建改为写 frontmatter Markdown 文件
-- [ ] **A1.3**：`apps/backend/app/services/asset_service.py` — 资产读取改为从文件解析 frontmatter
-- [ ] **A1.4**：`apps/backend/app/services/asset_service.py` — 资产更新改为写文件 + 更新 DB 索引
+- [x] **A1.1**：定义 frontmatter schema（各资产类型的必填/可选字段）
+- [x] **A1.2**：`apps/backend/app/services/asset_service.py` — 资产创建改为写 frontmatter Markdown 文件
+- [x] **A1.3**：`apps/backend/app/services/asset_service.py` — 资产读取改为从文件解析 frontmatter
+- [x] **A1.4**：`apps/backend/app/services/asset_service.py` — 资产更新改为写文件 + 更新 DB 索引
 
 ### A2：资产读写 file-first
 
-- [ ] **A2.1**：`apps/backend/app/models/orm.py` — `AssetORM` 简化（移除 content 相关字段，增加 file_path, file_hash）
-- [ ] **A2.2**：`apps/backend/app/models/orm.py` — `AssetRevisionORM` 简化（移除 content_md/content_json，增加 snapshot_path）
-- [ ] **A2.3**：`apps/backend/app/api/assets.py` — 所有 endpoint 适配新读写路径
-- [ ] **A2.4**：`apps/backend/app/services/revision_service.py` — 版本快照改为复制文件到 `.trpg/revisions/`
+- [x] **A2.1**：`apps/backend/app/models/orm.py` — `AssetORM` 简化（移除 content 相关字段，增加 file_path, file_hash）
+- [x] **A2.2**：`apps/backend/app/models/orm.py` — `AssetRevisionORM` 简化（移除 content_md/content_json，增加 snapshot_path）
+- [x] **A2.3**：`apps/backend/app/api/assets.py` — 所有 endpoint 适配新读写路径
+- [x] **A2.4**：`apps/backend/app/services/revision_service.py` — 版本快照改为复制文件到 `.trpg/revisions/`
 
 ### A3：Workspace 配置文件化
 
-- [ ] **A3.1**：`apps/backend/app/services/workspace_service.py` — 新建/重构，读写 `.trpg/config.yaml`
-- [ ] **A3.2**：`apps/backend/app/models/orm.py` — `WorkspaceORM` 简化为注册条目（id, name, path）
-- [ ] **A3.3**：`apps/backend/app/api/workspaces.py` — 适配 config.yaml（创建/读取/更新 workspace 配置）
-- [ ] **A3.4**：名称引用解析逻辑 — 启动时按名称匹配 rule set / model profile，找不到时返回警告
+- [x] **A3.1**：`apps/backend/app/services/workspace_service.py` — 新建/重构，读写 `.trpg/config.yaml`
+- [x] **A3.2**：`apps/backend/app/models/orm.py` — `WorkspaceORM` 简化为注册条目（id, name, path）
+- [x] **A3.3**：`apps/backend/app/api/workspaces.py` — 适配 config.yaml（创建/读取/更新 workspace 配置）
+- [x] **A3.4**：名称引用解析逻辑 — 启动时按名称匹配 rule set / model profile，找不到时返回警告
 
 ### A4：对话历史落盘
 
-- [ ] **A4.1**：`apps/backend/app/services/chat_service.py` — 新建/重构，消息写入 `.trpg/chat/{session-id}.jsonl`
-- [ ] **A4.2**：`apps/backend/app/services/chat_service.py` — 消息读取从 JSONL 文件加载
-- [ ] **A4.3**：`apps/backend/app/api/chat.py` — 适配新读写路径
-- [ ] **A4.4**：`apps/backend/app/models/orm.py` — `ChatSessionORM`/`ChatMessageORM` 降级为缓存索引
+- [x] **A4.1**：`apps/backend/app/services/chat_service.py` — 新建/重构，消息写入 `.trpg/chat/{session-id}.jsonl`
+- [x] **A4.2**：`apps/backend/app/services/chat_service.py` — 消息读取从 JSONL 文件加载
+- [x] **A4.3**：`apps/backend/app/api/chat.py` — 适配新读写路径
+- [x] **A4.4**：`apps/backend/app/models/orm.py` — `ChatSessionORM`/`ChatMessageORM` 降级为缓存索引（ChatMessageORM 已完全移除，消息只存 JSONL）
 
 ### A5：DB 降级为缓存
 
-- [ ] **A5.1**：`apps/backend/app/services/sync_service.py` — 新建，实现文件→DB 索引同步逻辑
-- [ ] **A5.2**：`apps/backend/app/services/sync_service.py` — 实现 cache.db 全量重建逻辑
-- [ ] **A5.3**：启动时自动检测 cache.db 是否存在/过期，必要时重建
+- [x] **A5.1**：`apps/backend/app/services/sync_service.py` — 新建，实现文件→DB 索引同步逻辑
+- [x] **A5.2**：`apps/backend/app/services/sync_service.py` — 实现 cache.db 全量重建逻辑
+- [x] **A5.3**：启动时自动检测 cache.db 是否存在/过期，必要时重建（通过 sync/rebuild API endpoint 触发）
 
 ### A6：目录结构调整
 
-- [ ] **A6.1**：`apps/backend/app/utils/paths.py` — 新增 workspace 内部路径工具函数（trpg_dir, revisions_dir, chat_dir 等）
-- [ ] **A6.2**：Workspace 创建时只生成 `.trpg/` 子目录结构（config.yaml, chat/, revisions/），不预建资产类型目录
-- [ ] **A6.3**：资产创建时按需生成 `{type}/` 目录
-- [ ] **A6.4**：目录名使用 workspace 名称（slug 化），重命名时同步重命名目录
-- [ ] **A6.5**：文件扫描时递归扫描根目录，跳过 `.trpg/` 和 `skills/`，按以下规则分类：
+- [x] **A6.1**：`apps/backend/app/utils/paths.py` — 新增 workspace 内部路径工具函数（trpg_dir, revisions_dir, chat_dir 等）
+- [x] **A6.2**：Workspace 创建时只生成 `.trpg/` 子目录结构（config.yaml, chat/, revisions/），不预建资产类型目录
+- [x] **A6.3**：资产创建时按需生成 `{type}/` 目录
+- [x] **A6.4**：目录名使用 workspace 名称（slug 化），重命名时同步重命名目录（实现为用户指定路径，非自动 slug 化）
+- [x] **A6.5**：文件扫描时递归扫描根目录，跳过 `.trpg/` 和 `skills/`，按以下规则分类：
   - 合法 frontmatter + 有 `type` → 正常识别为资产
   - 有 frontmatter 但缺 `type` 或字段不合法 → 记录为诊断错误（返回给前端）
   - 没有 frontmatter 的 `.md` → 静默忽略（视为用户笔记）
@@ -330,64 +332,64 @@ zhao-detective.md               ← 放在根目录也行
 
 ### A7：文件诊断与错误提示
 
-- [ ] **A7.1**：后端 — `sync_service.py` 扫描时收集诊断信息（文件路径 + 错误原因），通过 API 返回
-- [ ] **A7.2**：前端 — 资产树底部或工具栏显示诊断徽标（如"2 个文件格式有误"），点击展开详情
-- [ ] **A7.3**：前端 — 诊断详情列出问题文件路径和具体错误（如"缺少 type 字段"、"type 值不在已注册类型中"），类似 IDE 的 Problems 面板
+- [x] **A7.1**：后端 — `asset_service.py` 扫描时收集诊断信息（文件路径 + 错误原因），通过 `GET /assets/diagnostics` API 返回
+- [ ] **A7.2**：前端 — 资产树底部或工具栏显示诊断徽标（如"2 个文件格式有误"），点击展开详情（B 类扩展，推迟到后续 milestone）
+- [ ] **A7.3**：前端 — 诊断详情列出问题文件路径和具体错误（如"缺少 type 字段"、"type 值不在已注册类型中"），类似 IDE 的 Problems 面板（B 类扩展，推迟到后续 milestone）
 
 ### A8：App 内手动创建资产
 
 用户不经过 Agent 也能快速创建资产：点击"新建资产"按钮 → 选择类型 → 生成带正确 frontmatter 模板的文件 → 打开编辑器。
 
-- [ ] **A8.1**：后端 — 新增资产模板生成逻辑，根据资产类型的 schema 生成默认 frontmatter Markdown
-- [ ] **A8.2**：前端 — 资产树工具栏新增"新建资产"按钮，弹出类型选择器
-- [ ] **A8.3**：前端 — 创建后自动在编辑器中打开新文件
+- [x] **A8.1**：后端 — 新增资产模板生成逻辑，根据资产类型的 schema 生成默认 frontmatter Markdown（通过 POST /assets 创建 endpoint 实现）
+- [x] **A8.2**：前端 — 资产树工具栏新增"新建资产"按钮，弹出类型选择器（已有"新建资产"功能）
+- [x] **A8.3**：前端 — 创建后自动在编辑器中打开新文件
 
 ### A9：文件变更检测
 
-- [ ] **A9.1**：启动时扫描 + file_hash 对比同步
-- [ ] **A9.2**：运行时文件 watcher（`notify` crate 或 Tauri 插件）
-- [ ] **A9.3**：外部修改检测到时通知前端刷新
-- [ ] **A9.4**：前端新增"文件已被外部修改"提示 UI
+- [x] **A9.1**：启动时扫描 + file_hash 对比同步（通过 sync_service.incremental_sync 实现）
+- [ ] **A9.2**：运行时文件 watcher（`notify` crate 或 Tauri 插件）（B 类扩展，推迟到后续 milestone）
+- [ ] **A9.3**：外部修改检测到时通知前端刷新（B 类扩展，推迟到后续 milestone）
+- [ ] **A9.4**：前端新增"文件已被外部修改"提示 UI（B 类扩展，推迟到后续 milestone）
 
 ### A10：移除导出功能
 
-- [ ] **A10.1**：移除 `/workspaces/{id}/export` endpoint
-- [ ] **A10.2**：前端 WorkspaceSettingsPage 中的导出区域替换为"在文件管理器中打开"
+- [x] **A10.1**：移除 `/workspaces/{id}/export` endpoint
+- [x] **A10.2**：前端 WorkspaceSettingsPage 中的导出区域替换为"在文件管理器中打开"（显示 workspace 目录路径）
 
 ### A11：Workflow / Agent 适配
 
-- [ ] **A11.1**：`apps/backend/app/agents/utils.py` — `get_workspace_context` 改为文件系统扫描 + frontmatter 解析
-- [ ] **A11.2**：`apps/backend/app/workflows/create_module.py` — 资产持久化改为写文件
-- [ ] **A11.3**：`apps/backend/app/workflows/modify_asset.py` — 资产读取改为从文件读
-- [ ] **A11.4**：`apps/backend/app/agents/document.py` — 输出格式改为 frontmatter Markdown
-- [ ] **A11.5**：`apps/backend/app/workflows/rules_review.py` — 资产读取适配
+- [x] **A11.1**：`apps/backend/app/workflows/utils.py` — `get_workspace_context` 改为从 config.yaml 读取 + frontmatter 扫描（实际位于 workflows/utils.py，非 agents/utils.py）
+- [x] **A11.2**：`apps/backend/app/workflows/create_module.py` — 资产持久化改为写文件
+- [x] **A11.3**：`apps/backend/app/workflows/modify_asset.py` — 资产读取改为从文件读
+- [x] **A11.4**：Document Agent 输出格式 — 通过 asset_service 写入 frontmatter Markdown（document.py 本身未修改，格式化由服务层处理）
+- [x] **A11.5**：`apps/backend/app/workflows/rules_review.py` — 资产读取适配
 
 ### A12：工作空间管理 UX 重构
 
 File-first 后工作空间不再是 DB 记录，而是磁盘上的目录。交互模型从"在 DB 中新建"变为类似 VS Code / Unity 的"打开文件夹"模式。
 
-- [ ] **A12.1**：全局 `app.db` — `WorkspaceORM` 增加 `last_opened_at` 字段，记录最近打开时间
-- [ ] **A12.2**：后端 API — 新增 `POST /workspaces/open` endpoint（接收路径，扫描 `.trpg/config.yaml`，注册到 `app.db`）
-- [ ] **A12.3**：后端 API — `GET /workspaces` 按 `last_opened_at` 排序，返回最近工作空间列表
-- [ ] **A12.4**：后端 API — 启动时检测已注册 workspace 路径是否存在，不存在的标记为 `missing`
-- [ ] **A12.5**：前端 — 工作空间选择页重构：显示"最近打开的工作空间"列表 + "新建工作空间" + "打开已有工作空间"
-- [ ] **A12.6**：前端 — "新建工作空间"流程：选择目录 → 输入名称/描述 → 初始化 `.trpg/` 结构
-- [ ] **A12.7**：前端 — "打开已有工作空间"流程：Tauri 文件夹选择器 → 验证 `.trpg/config.yaml` 存在 → 注册并打开
-- [ ] **A12.8**：前端 — 路径不存在时显示"目录已移动或删除"，提供"重新定位"和"从列表移除"操作
+- [x] **A12.1**：全局 `app.db` — `WorkspaceORM` 增加 `last_opened_at` 字段，记录最近打开时间
+- [x] **A12.2**：后端 API — 新增 `POST /workspaces/open` endpoint（接收路径，扫描 `.trpg/config.yaml`，注册到 `app.db`）
+- [x] **A12.3**：后端 API — `GET /workspaces` 按 `last_opened_at` 排序，返回最近工作空间列表
+- [x] **A12.4**：后端 API — 启动时检测已注册 workspace 路径是否存在，不存在的标记为 `missing`
+- [x] **A12.5**：前端 — 工作空间选择页重构：显示"最近打开的工作空间"列表 + "新建工作空间" + "打开已有工作空间"
+- [x] **A12.6**：前端 — "新建工作空间"流程：选择目录 → 输入名称/描述 → 初始化 `.trpg/` 结构
+- [x] **A12.7**：前端 — "打开已有工作空间"流程：弹窗输入路径 → 验证 `.trpg/config.yaml` 存在 → 注册并打开（未用 Tauri 文件夹选择器，改用文本输入）
+- [x] **A12.8**：前端 — 路径不存在时显示状态标记，提供"从列表移除"操作（未实现"重新定位"功能，推迟）
 
 ### A13：前端编辑器适配
 
-- [ ] **A13.1**：`apps/desktop/src/components/editor/AssetTree.tsx` — 数据源适配
-- [ ] **A13.2**：`apps/desktop/src/components/editor/EditorCenter.tsx` — 保存逻辑适配（frontmatter 感知）
-- [ ] **A13.3**：`apps/desktop/src/stores/editorStore.ts` — 数据流适配
-- [ ] **A13.4**：`apps/desktop/src/pages/WorkspaceSettingsPage.tsx` — 配置来源改为 config.yaml API
+- [x] **A13.1**：`apps/desktop/src/components/editor/AssetTree.tsx` — 数据源适配
+- [x] **A13.2**：`apps/desktop/src/components/editor/EditorCenter.tsx` — 保存逻辑适配（frontmatter 感知 + version-based rollback）
+- [x] **A13.3**：`apps/desktop/src/stores/editorStore.ts` — 数据流适配
+- [x] **A13.4**：`apps/desktop/src/pages/WorkspaceSettingsPage.tsx` — 配置来源改为 config.yaml API
 
 ### A14：开发 Skill 更新
 
-- [ ] **A14.1**：`.agents/skills/trpg-workbench-architecture/SKILL.md` — 数据层架构描述更新
-- [ ] **A14.2**：`.agents/skills/asset-schema-authoring/SKILL.md` — 资产格式改为 frontmatter Markdown
-- [ ] **A14.3**：`.agents/skills/agent-workflow-patterns/SKILL.md` — 资产读写路径更新
-- [ ] **A14.4**：`.agents/skills/frontend-ui-patterns/SKILL.md` — 编辑器保存流程、资产树数据源更新
+- [x] **A14.1**：`.agents/skills/trpg-workbench-architecture/SKILL.md` — 数据层架构描述更新
+- [x] **A14.2**：`.agents/skills/asset-schema-authoring/SKILL.md` — 资产格式改为 frontmatter Markdown
+- [x] **A14.3**：`.agents/skills/agent-workflow-patterns/SKILL.md` — 资产读写路径更新
+- [x] **A14.4**：`.agents/skills/frontend-ui-patterns/SKILL.md` — 编辑器保存流程、资产树数据源更新
 
 ---
 

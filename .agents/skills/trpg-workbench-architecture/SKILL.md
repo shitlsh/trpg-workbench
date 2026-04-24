@@ -20,7 +20,7 @@ description: 约束 trpg-workbench 项目的整体架构决策、技术选型和
 | AI 编排 | Python + Agno | LangChain、LlamaIndex、纯 OpenAI SDK |
 | 数据库 | SQLite（第一版）| MySQL、MongoDB（第一版禁用） |
 | 向量索引 | 本地轻量方案（如 lancedb、hnswlib）| 第一版禁止依赖外部向量服务 |
-| 资产格式 | JSON + Markdown 双轨 | 纯富文本、纯 HTML |
+| 资产格式 | 单文件 Markdown（YAML frontmatter + body） | 纯富文本、纯 HTML |
 
 > **关于 PostgreSQL**：本地桌面端不引入 PostgreSQL，原因是需要独立安装数据库服务，严重损害"开箱即用"体验。SQLite 对本项目的写入并发需求完全足够（单用户桌面工具）。未来云同步阶段可引入 PostgreSQL + pgvector。
 
@@ -49,10 +49,10 @@ D. AI 编排层    Python + Agno
    - Director / Rules / Plot / NPC / Monster / Lore / Consistency / Document Agent
    - Workflow 编排、Knowledge 检索、会话与记忆
 
-E. 数据层       SQLite + 本地文件系统 + 本地向量索引
-   - SQLite: 主业务数据（workspace、asset、chat、model profile 等）
-   - 文件系统: 资产 MD/JSON 文件、PDF 原始文件、图像资源
-   - 向量索引目录: 独立管理，不混入 SQLite
+E. 数据层       文件系统（真相源） + SQLite（可重建缓存索引） + 本地向量索引
+    - 文件系统: 资产 .md 文件（frontmatter + body）、config.yaml、JSONL 对话、revision 快照
+    - SQLite: 全局 app.db（workspace 注册表、model profiles）+ workspace.db（资产/对话缓存索引）
+    - 向量索引目录: 独立管理，不混入 SQLite
 ```
 
 **前后端通信**：第一版使用本地 HTTP API（`http://127.0.0.1:<port>`），Python 后端在 Tauri 启动时作为子进程拉起。后续可升级为 Tauri sidecar 模式。
@@ -68,27 +68,96 @@ RuleSet（规则集，用户可创建和管理）
         └── KnowledgeDocument（具体 PDF 文件）
               └── KnowledgeChunk（切块 + 向量引用）
 
-Workspace（工作空间）── 归属一个 RuleSet
+Workspace（工作空间）── 文件夹即工作空间
+  ├── .trpg/config.yaml（工作空间配置：名称、描述、规则集、模型绑定、Rerank 设置）
+  ├── .trpg/revisions/{slug}/v{N}.md（资产历史快照）
+  ├── .trpg/chat/{session_id}.jsonl（对话历史，JSONL 格式）
+  ├── {type}/{slug}.md（资产文件，frontmatter + Markdown body）
   ├── WorkspaceLibraryBinding（工作空间级额外知识库绑定，补充规则集之外的知识库）
-  ├── Asset（结构化资产）
-  │     └── AssetRevision（每次落盘生成一条，不可删除）
-  └── ChatSession（对话历史）
-        └── ChatMessage（含引用和 tool_calls）
+  └── WorkspaceORM（全局 app.db 中的注册条目，仅 id + name + path + last_opened_at）
 
 LLMProfile（LLM 供应商配置，全局可复用）
 EmbeddingProfile（Embedding 供应商配置，全局可复用）
 ModelCatalogEntry（LLM 模型目录，含 pricing/context_window 元数据）
 EmbeddingCatalogEntry（Embedding 模型目录）
 LLMUsageRecord（每次 LLM 调用的 token 用量记录，绑定 workspace）
-ImageGenerationJob（图像生成任务，绑定 Asset）
 ```
+
+### M18 File-First 架构（关键变更）
+
+**文件系统是真相源，SQLite 是可重建的缓存索引。**
+
+```
+Workspace 目录结构：
+  my-workspace/
+    .trpg/                        # 内部结构，用户不应手动编辑
+      config.yaml                 # 工作空间配置（name、rule_set、models、rerank）
+      revisions/{slug}/v{N}.md    # 资产历史快照（不可删除）
+      chat/{session_id}.jsonl     # 对话消息（每行一条 JSON）
+      workspace.db                # 本地缓存索引（可从文件重建）
+    npc/                          # 按 type 分目录存放（惯例，非强制）
+      mayor-arthur.md             # 资产文件：YAML frontmatter + Markdown body
+    monster/
+    outline/
+    ...
+```
+
+**config.yaml 使用名称引用（非 UUID），确保可移植性：**
+```yaml
+name: 午夜图书馆
+description: 一个克苏鲁调查模组
+rule_set: coc-7e           # 规则集名称
+models:
+  default_llm: gemini-2.5-flash   # LLM Profile 名称
+  rules_llm: ""
+  embedding: text-embedding-3
+  rerank: jina-reranker
+rerank:
+  enabled: true
+  top_n: 5
+  top_k: 20
+```
+
+**资产文件格式（frontmatter + body）：**
+```markdown
+---
+type: npc
+name: Arthur Hale
+slug: mayor-arthur
+status: draft
+version: 3
+summary: 镇长，表面亲和，实则掩盖旧案
+---
+
+# Arthur Hale
+
+## 概述
+温和可靠的镇长，掩盖十五年前的失踪案...
+```
+
+**Convention + Tolerance 策略：**
+- 资产类型由 frontmatter `type` 字段决定，**不由目录决定**
+- 应用写入时按惯例存入 `{type}/` 目录
+- 读取时递归扫描整个工作空间，接受文件放在任意位置
+- 有 frontmatter 但缺少 `type` → 诊断错误（IDE Problems 风格）
+- 无 frontmatter → 静默忽略（用户笔记）
+
+**WorkspaceORM 简化为注册表：**
+- 全局 `app.db` 中只存 `id`, `name`, `workspace_path`, `last_opened_at`, `status`
+- 所有配置（rule_set、模型绑定、rerank）都在 `.trpg/config.yaml`
+- `DELETE /workspaces/:id` 仅从注册表移除，不删除磁盘文件
+- `POST /workspaces/open` 注册已有目录到 app.db
+
+**sync_service 同步机制：**
+- `incremental_sync()`: 扫描文件，比对 file_hash，更新/新建/标记删除 AssetORM
+- `rebuild_cache()`: 清空 AssetORM 表，从文件完全重建
 
 ### 关键约束
 
 - **Workspace 只能归属一个 RuleSet**，不可跨规则体系混用
-- **每次 Asset 落盘都必须写 AssetRevision**，不允许直接覆盖
+- **每次 Asset 落盘都必须写 AssetRevision**（快照到 `.trpg/revisions/{slug}/v{N}.md`），不允许直接覆盖
 - **KnowledgeChunk 必须保留 page_from / page_to**，引用必须追溯到页码
-- **Asset 必须同时维护 content_json 和 content_md**，缺一不可
+- **Asset 是单文件 frontmatter + Markdown body**（`{slug}.md`），文件系统是真相源，DB 是缓存索引
 - **KnowledgeLibrary 归属某个 RuleSet**（一对多，通过 `KnowledgeLibrary.rule_set_id` 外键）；在规则集管理页内创建和管理，不是全局独立资产
 - **WorkspaceLibraryBinding 是工作空间级扩充**，用于为单个工作空间追加规则集之外的知识库；工作空间实际可用的知识库 = 规则集归属的库 + 工作空间额外绑定的库
 
@@ -123,7 +192,7 @@ interface WorkflowState {
 ```python
 {
     "workspace_name": str,
-    "rule_set": str,           # rule_set_id
+    "rule_set": str,           # rule_set 名称（如 "coc-7e"），从 config.yaml 读取
     "style_prompt": str | None, # 规则集 PromptProfile 的 system_prompt，供 Agent 注入风格约束
     "library_ids": list[str],  # 合并后的知识库 ID 列表（规则集绑定 + 工作空间额外绑定，已去重）
     "existing_assets": [{"type": str, "name": str, "slug": str}],
@@ -151,32 +220,15 @@ M10 prompt prefix 注入顺序：
 
 以下一级目录划分是架构边界，不可更改：
 
-- `workspaces/<workspace-id>/assets/` 下必须按资产类型分子目录
+- Workspace 就是一个普通文件夹，`.trpg/` 子目录存放内部结构（config、revisions、chat、cache DB）
+- 资产文件按 `{type}/` 惯例分目录（Convention），但读取时递归扫描、按 frontmatter `type` 识别（Tolerance）
 - `knowledge/libraries/<library-id>/` 下必须有 `source/`、`parsed/`、`index/` 三级
-- `settings/` 存放全局配置文件
 
 ### 参考结构（内部子目录可在不破坏边界前提下演进）
 
 ```
 trpg-workbench-data/
-  app.db                         # SQLite 主数据库
-  workspaces/
-    <workspace-id>/
-      assets/
-        outline/
-        stages/
-        npcs/
-        monsters/
-        locations/
-        clues/
-        branches/
-        timelines/
-        map_briefs/
-        lore_notes/
-      revisions/                 # revision 文件备份
-      exports/
-      images/
-      logs/
+  app.db                         # 全局 SQLite（workspace 注册表、model profiles、rule sets）
   knowledge/
     libraries/
       <library-id>/
@@ -185,8 +237,25 @@ trpg-workbench-data/
           manifest.json
           chunks.jsonl
         index/                   # 向量索引文件
-  settings/
-    # 全局配置由 SQLite 管理，无独立配置文件
+
+<user-chosen-path>/              # Workspace 目录（用户指定路径）
+  .trpg/                         # 内部结构，用户不应手动编辑
+    config.yaml                  # 工作空间配置（name、rule_set、models、rerank）
+    revisions/                   # 资产历史快照
+      <slug>/
+        v1.md
+        v2.md
+    chat/                        # 对话历史
+      <session_id>.jsonl         # 每行一条 JSON 消息
+    workspace.db                 # 本地缓存索引（可从文件完全重建）
+  npc/                           # 按 type 惯例分目录
+    mayor-arthur.md              # 资产文件：YAML frontmatter + Markdown body
+  monster/
+  outline/
+  stage/
+  location/
+  clue/
+  ...
 ```
 
 > 若需调整内部子目录结构（如将 `storage/` 拆分为 `db/` + `fs/`），可在不破坏上方核心边界的前提下调整，但必须同步更新本 skill 中的参考结构。
@@ -235,7 +304,7 @@ trpg-workbench/
 ## 产品原则（禁止违背）
 
 1. **Local-first**：第一版所有功能必须在本地可运行，不依赖云服务（调用用户配置的云模型 API 除外）
-2. **结构化优先**：AI 生成结果必须是 JSON + Markdown，不接受纯长文本成品
+2. **结构化优先**：AI 生成结果必须是 frontmatter + Markdown 结构化文件，不接受纯长文本成品
 3. **AI 是共创编辑器**：AI 输出必须可追踪、可局部修改、可查看引用与变更摘要
 4. **不承诺严格规则引擎**：Rules Agent 只做建议性校验，不承诺数值绝对正确
 

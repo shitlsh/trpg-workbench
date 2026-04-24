@@ -190,8 +190,8 @@ run_director(user_message, workspace_context, model,
 **职责定位：结构化格式化器，不是写文件的角色**
 
 **负责**：
-- 将其他 Agent 的输出格式化为标准资产 JSON + Markdown
-- 遵守 `asset-schema-authoring` skill 的所有规范
+- 将其他 Agent 的输出格式化为标准资产文件（YAML frontmatter + Markdown body）
+- 遵守 `asset-schema-authoring` skill 的所有规范（单文件 frontmatter 格式）
 - 生成变更摘要（change_summary）
 - 生成 patch 方案，返回给应用服务层
 
@@ -235,8 +235,8 @@ run_director(user_message, workspace_context, model,
 8.  Lore Agent 生成地点与世界观词条
 9.  Plot Agent 生成线索链
 10. Consistency Agent 运行一致性检查
-11. Document Agent 格式化所有资产
-12. 应用服务层落盘（写 JSON + MD + revision）
+11. Document Agent 格式化所有资产（frontmatter + Markdown body）
+12. 应用服务层落盘（写 .md 文件 + revision 快照到 .trpg/revisions/）
 13. 完成
 ```
 
@@ -258,7 +258,7 @@ run_director(user_message, workspace_context, model,
 4. Consistency Agent 运行一致性检查
 5. Document Agent 生成 patch 方案
 6. 等待用户确认（step.status = "waiting_confirm"，wf.status = "paused"）
-7. 应用服务层落盘（写 revision，更新资产文件）
+7. 应用服务层落盘（写 .md 文件 + revision 快照，更新缓存索引）
    ← 由 apply_modify_asset_patches() 触发（用户确认后调用）
 8. 完成
 ```
@@ -266,7 +266,7 @@ run_director(user_message, workspace_context, model,
 ### Workflow 3：规则咨询（rules_review）
 
 ```
-1. 读取选中资产（JSON + MD）
+1. 读取资产文件（frontmatter + Markdown body）
 2. Rules Agent 检索知识库
 3. Rules Agent 汇总引用与建议
 4. 输出建议列表（含引用来源）
@@ -277,13 +277,13 @@ run_director(user_message, workspace_context, model,
 ### Workflow 4：图像生成（generate_image）
 
 ```
-1. 读取资产 JSON（含 image_brief 或生成 image_brief）
+1. 读取资产 frontmatter（含 image_brief 或生成 image_brief）
 2. Document Agent 生成图像 prompt
 3. 用户确认或编辑 prompt
 4. 调用外部图像 API
 5. 保存图像到 workspaces/<id>/images/
-6. 更新资产 JSON 中的 image_brief.generated_image_path
-7. 写 revision（source_type = "agent"）
+6. 更新资产文件 frontmatter 中的 image_brief.generated_image_path
+7. 写 revision 快照（source_type = "agent"）
 ```
 
 ---
@@ -295,7 +295,7 @@ run_director(user_message, workspace_context, model,
 - **禁止 Rules Agent 自动落盘**：规则建议必须经用户确认才能触发修改
 - **禁止 Consistency Agent 自动修改资产**：只输出问题报告，不自动改
 - **禁止 Document Agent 做创作判断**：只做格式转换，不改变内容语义
-- **禁止 Document Agent 直接写文件或数据库**：它只生成 patch，落盘由应用服务层执行
+- **禁止 Document Agent 直接写文件或数据库**：它只生成 patch（frontmatter + body 格式），落盘由应用服务层执行
 - **禁止大任务绕过 Workflow 直接单次调用**：凡涉及多种资产类型的任务必须走对应 Workflow
 - **禁止单次对话上下文承担 Workflow 状态**：Workflow 状态必须持久化，支持中断恢复
 
@@ -303,7 +303,7 @@ run_director(user_message, workspace_context, model,
 
 ## Workflow State 持久化（最低字段要求）
 
-Workflow 执行状态必须持久化到 SQLite，不能只存在内存或对话上下文中。完整字段（M10）：
+Workflow 执行状态持久化到 SQLite（WorkflowStateORM），资产落盘写入文件系统。完整字段（M10）：
 
 ```json
 {
