@@ -25,7 +25,7 @@ const STARTUP_TIMEOUT = 30_000;
 export default function App() {
   const { status, setStatus } = useBackendStore();
   const { theme } = useThemeStore();
-  const { hasCompletedSetup } = useSettingsStore();
+  const { hasCompletedSetup, resetSetup } = useSettingsStore();
   const startTimeRef = useRef(Date.now());
   const reconnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -33,6 +33,15 @@ export default function App() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // Dev: reset setup wizard if VITE_RESET_WIZARD=1
+  useEffect(() => {
+    if (import.meta.env.VITE_RESET_WIZARD === "1") {
+      resetSetup();
+      console.info("[dev] Setup wizard reset via VITE_RESET_WIZARD");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Startup polling
   useEffect(() => {

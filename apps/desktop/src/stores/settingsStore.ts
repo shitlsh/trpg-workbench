@@ -9,6 +9,7 @@ interface SettingsState {
   setLLMProfiles: (profiles: LLMProfile[]) => void;
   setEmbeddingProfiles: (profiles: EmbeddingProfile[]) => void;
   completeSetup: () => void;
+  resetSetup: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -20,6 +21,7 @@ export const useSettingsStore = create<SettingsState>()(
       setLLMProfiles: (profiles) => set({ llmProfiles: profiles }),
       setEmbeddingProfiles: (profiles) => set({ embeddingProfiles: profiles }),
       completeSetup: () => set({ hasCompletedSetup: true }),
+      resetSetup: () => set({ hasCompletedSetup: false }),
     }),
     { name: "trpg-settings" }
   )

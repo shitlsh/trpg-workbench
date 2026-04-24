@@ -6,9 +6,11 @@
 #   退出时（Ctrl+C）自动清理所有子进程和占用的端口
 #
 # 使用：
-#   bash scripts/dev.sh           # 完整启动（后端 + Tauri 桌面应用）
-#   bash scripts/dev.sh --web     # 仅启动后端 + Vite web dev server（浏览器访问）
-#   bash scripts/dev.sh --backend # 仅启动后端
+#   bash scripts/dev.sh                        # 完整启动（后端 + Tauri 桌面应用）
+#   bash scripts/dev.sh --web                  # 仅启动后端 + Vite web dev server（浏览器访问）
+#   bash scripts/dev.sh --backend              # 仅启动后端
+#   bash scripts/dev.sh --reset-wizard         # 完整启动，同时重置 Setup Wizard（从头引导）
+#   bash scripts/dev.sh --web --reset-wizard   # Web 模式 + 重置 Setup Wizard
 #
 # 前置条件：
 #   - apps/backend/.venv 已存在（参考 .agents/skills/dev-env-setup/SKILL.md）
@@ -26,10 +28,12 @@ VENV_PYTHON="${BACKEND_DIR}/.venv/bin/python3"
 
 # ── 参数解析 ────────────────────────────────────────────────────────────────────
 MODE="tauri"   # default: full Tauri desktop app
+RESET_WIZARD=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --web)     MODE="web";     shift ;;
-    --backend) MODE="backend"; shift ;;
+    --web)           MODE="web";     shift ;;
+    --backend)       MODE="backend"; shift ;;
+    --reset-wizard)  RESET_WIZARD=1; shift ;;
     --help|-h)
       sed -n '2,20p' "$0" | sed 's/^# //' | sed 's/^#//'
       exit 0
@@ -75,6 +79,7 @@ trap cleanup EXIT INT TERM
 
 # ── 前置检查 ───────────────────────────────────────────────────────────────────
 echo "[dev] Mode: ${MODE}"
+[[ "${RESET_WIZARD}" == "1" ]] && echo "[dev] Setup Wizard will be reset on startup"
 echo "[dev] Project root: ${PROJECT_ROOT}"
 
 if [[ ! -f "${VENV_PYTHON}" ]]; then
@@ -122,10 +127,14 @@ fi
 # ── 启动前端 ───────────────────────────────────────────────────────────────────
 cd "${DESKTOP_DIR}"
 
+# 构造可选的环境变量前缀（--reset-wizard 时注入 VITE_RESET_WIZARD=1）
+VITE_ENV=""
+[[ "${RESET_WIZARD}" == "1" ]] && VITE_ENV="VITE_RESET_WIZARD=1"
+
 if [[ "${MODE}" == "web" ]]; then
   echo "[dev] Starting Vite web dev server on :1420 ..."
   echo "[dev] Open http://localhost:1420 in your browser"
-  pnpm dev &
+  env ${VITE_ENV} pnpm dev &
   FRONTEND_PID=$!
   PIDS+=("${FRONTEND_PID}")
   echo "[dev] Press Ctrl+C to stop all services."
@@ -134,7 +143,7 @@ else
   # Full Tauri mode
   echo "[dev] Starting Tauri desktop app (this may take a while on first run)..."
   echo "[dev] The desktop window will open automatically."
-  pnpm tauri dev &
+  env ${VITE_ENV} pnpm tauri dev &
   TAURI_PID=$!
   PIDS+=("${TAURI_PID}")
   echo "[dev] Press Ctrl+C to stop all services."
