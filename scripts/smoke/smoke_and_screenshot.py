@@ -317,6 +317,38 @@ def _click_wizard_skip(page, button_text: str, step_name: str):
     print(f"    → clicked '{button_text}' ({step_name})")
 
 
+def _capture_ruleset_page(page, out_dir: Path):
+    """Capture rule set page with interaction: select first rule set, then drill into library detail."""
+    # Click the first rule set in the sidebar to show detail with knowledge section
+    rs_items = page.locator("aside button").all()
+    if rs_items:
+        rs_items[0].click()
+        page.wait_for_timeout(1500)
+
+    # Screenshot: rule set detail showing knowledge library list
+    page.screenshot(path=str(out_dir / "ruleset.png"), full_page=True)
+    print("  ✓ ruleset.png  (rule set detail with knowledge section)")
+
+    # Try to click into a knowledge library detail (click on underlined library name)
+    lib_links = page.locator("text=核心规则 >> xpath=..").locator("span[style*='underline']").all()
+    if not lib_links:
+        # Fallback: look for any clickable library name in the binding items
+        lib_links = page.locator("span[style*='cursor: pointer'][style*='underline']").all()
+    if lib_links:
+        lib_links[0].click()
+        page.wait_for_timeout(1500)
+        page.screenshot(path=str(out_dir / "ruleset-library-detail.png"), full_page=True)
+        print("  ✓ ruleset-library-detail.png  (knowledge library detail with upload & docs)")
+
+        # Go back to rule set list view for subsequent pages
+        back_btn = page.get_by_text("← 返回知识库列表")
+        if back_btn.count() > 0:
+            back_btn.click()
+            page.wait_for_timeout(800)
+    else:
+        print("  — no knowledge library found, skipping library detail screenshot")
+
+
 def generate_help_images(frontend_url: str, backend_url: str):
     """Capture screenshots for in-app Help docs.
 
@@ -380,6 +412,12 @@ def generate_help_images(frontend_url: str, backend_url: str):
                 page.goto(frontend_url + route, timeout=NAV_TIMEOUT)
                 page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
                 page.wait_for_timeout(1500)
+
+                # Rule set page: click first rule set to show detail with knowledge section
+                if filename == "ruleset.png":
+                    _capture_ruleset_page(page, out_dir)
+                    continue
+
                 page.screenshot(
                     path=str(out_dir / filename), full_page=True
                 )

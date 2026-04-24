@@ -4,6 +4,8 @@
 
 知识库直属于规则集，在 [规则集](/settings/rule-sets) 页面中管理。
 
+![规则集页面中的知识库区域](/help-images/ruleset.png)
+
 ---
 
 ## 创建知识库
@@ -14,6 +16,8 @@
 4. 点击「创建」
 
 创建后，新知识库出现在知识库列表中。点击知识库名称进入详情页面。
+
+![知识库详情页面](/help-images/ruleset-library-detail.png)
 
 ---
 
