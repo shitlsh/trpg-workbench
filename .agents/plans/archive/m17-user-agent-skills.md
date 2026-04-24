@@ -2,6 +2,8 @@
 
 **前置条件**：无强依赖（文件存储独立，Workflow 注入是加法；可与 M16 并行）。
 
+**状态：✅ 已完成（commit f92ba24）**
+
 **目标**：建立 workspace 级别的 skill 发现与加载框架，允许用户在工作区中添加 skill 文件，Agent 在 Workflow 执行时自动发现并加载匹配的 skill，从而让 workbench 具备面向未来的可扩展能力。
 
 ---
@@ -290,26 +292,26 @@ def inject_skills(skills: list[dict], task_prompt: str) -> str:
 
 ### A1：后端 — Skill 文件 API
 
-- [ ] **A1.1**：`apps/backend/app/api/workspace_skills.py` — 实现 GET list / POST / GET single / PUT / PATCH / DELETE，内部用 `python-frontmatter` 读写文件
-- [ ] **A1.2**：`apps/backend/app/main.py` — 注册 router，路径前缀 `/workspaces/{workspace_id}/skills`
-- [ ] **A1.3**：确认 `python-frontmatter` 已在 `requirements.txt` 中（或改用纯正则解析，视依赖策略决定）
+- [x] **A1.1**：`apps/backend/app/api/workspace_skills.py` — 实现 GET list / POST / GET single / PUT / PATCH / DELETE，内部用 `python-frontmatter` 读写文件
+- [x] **A1.2**：`apps/backend/app/main.py` — 注册 router，路径前缀 `/workspaces/{workspace_id}/skills`
+- [x] **A1.3**：确认 `python-frontmatter` 已在 `requirements.txt` 中（或改用纯正则解析，视依赖策略决定）
 
 ### A2：后端 — Workflow 发现与注入
 
-- [ ] **A2.1**：`workflows/utils.py` — 实现 `load_workspace_skills()`、`get_skills_for_agent()`、`inject_skills()`
-- [ ] **A2.2**：`workflows/utils.py` `get_workspace_context()` — 追加 `skills` 摘要字段
-- [ ] **A2.3**：`workflows/create_module.py` — 在 NPC / Monster / Plot / Lore Agent 调用前注入 skill
-- [ ] **A2.4**：`workflows/modify_asset.py` — 在专项 Agent 调用前注入 skill
+- [x] **A2.1**：`workflows/utils.py` — 实现 `load_workspace_skills()`、`get_skills_for_agent()`、`inject_skills()`
+- [x] **A2.2**：`workflows/utils.py` `get_workspace_context()` — 追加 `skills` 摘要字段
+- [x] **A2.3**：`workflows/create_module.py` — 在 NPC / Monster / Plot / Lore Agent 调用前注入 skill
+- [x] **A2.4**：`workflows/modify_asset.py` — 在专项 Agent 调用前注入 skill
 
 ### A3：前端 — 类型定义
 
-- [ ] **A3.1**：`packages/shared-schema/src/index.ts` — 追加 `WorkspaceSkillMeta`、`WorkspaceSkill`、`CreateWorkspaceSkillRequest`、`UpdateWorkspaceSkillRequest`
+- [x] **A3.1**：`packages/shared-schema/src/index.ts` — 追加 `WorkspaceSkillMeta`、`WorkspaceSkill`、`CreateWorkspaceSkillRequest`、`UpdateWorkspaceSkillRequest`
 
 ### A4：前端 — UI
 
-- [ ] **A4.1**：WorkspaceSettingsPage — 新增"Skill"标签页，列出当前工作区 skill，含 enabled 开关
-- [ ] **A4.2**：Skill 编辑表单：name + description + agent_types 多选 + body textarea + enabled
-- [ ] **A4.3**："添加 Skill"按钮与新建流程，删除带确认
+- [x] **A4.1**：WorkspaceSettingsPage — 新增"Skill"区块，列出当前工作区 skill，含 enabled 开关
+- [x] **A4.2**：Skill 编辑表单：name + description + agent_types 多选 + body textarea + enabled
+- [x] **A4.3**："添加 Skill"按钮与新建流程，删除带确认
 
 ### A5：帮助文档
 
@@ -320,12 +322,10 @@ def inject_skills(skills: list[dict], task_prompt: str) -> str:
 
 - [x] **A6.1**：`apps/backend/app/prompts/director/clarification.txt` — 加入 `create_skill` intent/workflow 定义和不触发澄清规则
 - [x] **A6.2**：`apps/backend/app/prompts/director/planning.txt` — 加入 `create_skill` intent/workflow 枚举
-- [ ] **A6.3**：`apps/backend/app/prompts/skill/system.txt` — Skill Agent system prompt
-- [ ] **A6.4**：`apps/backend/app/agents/skill_agent.py` — 实现 `run_skill_agent()`
-- [ ] **A6.5**：`apps/backend/app/api/chat.py` — 处理 `create_skill` workflow，调用 skill_agent + 写文件，返回 slug + name
-- [ ] **A6.6**：`apps/desktop/src/help/skills.md` — 新增「通过对话创建 Skill」章节
-
----
+- [x] **A6.3**：`apps/backend/app/prompts/skill/system.txt` — Skill Agent system prompt
+- [x] **A6.4**：`apps/backend/app/agents/skill_agent.py` — 实现 `run_skill_agent()`
+- [x] **A6.5**：`apps/backend/app/api/chat.py` — 处理 `create_skill` workflow，调用 skill_agent + 写文件，返回 slug + name
+- [x] **A6.6**：`apps/desktop/src/help/skills.md` — 新增「通过对话创建 Skill」章节
 
 ## 验收标准
 

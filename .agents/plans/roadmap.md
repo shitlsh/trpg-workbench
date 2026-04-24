@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M16 全部完成。M17 进行中。
+核心功能链路已通过 M1–M17 全部完成。
 
 ```
 ✅ M1 基础骨架
@@ -22,7 +22,7 @@
                                                                                                                     └── ✅ M14 Help 文档重建
                                                                                                                           └── ✅ M15 知识库归属规则集
                                                                                                                                   ├── ✅ M16 AssetType 开放化
-                                                                                                                                 └── M17 用户自定义 Agent Skill
+                                                                                                                                 └── ✅ M17 用户自定义 Agent Skill
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -53,12 +53,13 @@
 | M14 ✅ | Help 文档重建与维护机制 | 重写 Help 文档（人工编写、任务导向、嵌入截图），调整维护机制，增强 HelpPage 交互 | [archive/m14-help-rebuild.md](archive/m14-help-rebuild.md) |
 | M15 ✅ | 知识库归属规则集 | 知识库作为规则集下级管理（合并进 RuleSetPage），消除独立 /knowledge 路由，统一 1:N 数据模型 | [archive/m15-knowledge-under-ruleset.md](archive/m15-knowledge-under-ruleset.md) |
 | M16 ✅ | AssetType 开放化与自定义类型注册 | `AssetType` 改为开放字符串，用户可在 RuleSet 中注册自定义资产类型（名称、标签、图标） | [archive/m16-asset-type-openness.md](archive/m16-asset-type-openness.md) |
+| M17 ✅ | 用户自定义 Agent Skill | 用户为每个 Agent 类型编写持久化创作框架指令，注入 Workflow 执行；Chat 可对话创建 Skill | [archive/m17-user-agent-skills.md](archive/m17-user-agent-skills.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M17 | 用户自定义 Agent Skill | 用户为每个 Agent 类型编写持久化创作框架指令，注入 Workflow 执行 | [m17-user-agent-skills.md](m17-user-agent-skills.md) |
+| — | — | — | — |
 
 ---
 

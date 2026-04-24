@@ -97,6 +97,8 @@ async def send_message(session_id: str, body: SendMessageRequest, db: Session = 
                         f"您可以在工作区设置 → Skill 中查看和编辑。"
                     ),
                 }
+        except HTTPException:
+            raise  # Propagate HTTP errors (e.g. 422 ModelNotConfigured) as-is
         except Exception as e:
             change_plan = {
                 **change_plan,
