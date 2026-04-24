@@ -1,10 +1,20 @@
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
+#[tauri::command]
+fn get_system_memory_gb() -> u64 {
+    use sysinfo::System;
+    let mut sys = System::new();
+    sys.refresh_memory();
+    let bytes = sys.total_memory();
+    bytes / (1024 * 1024 * 1024)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![get_system_memory_gb])
         .setup(|app| {
             #[cfg(debug_assertions)]
             {

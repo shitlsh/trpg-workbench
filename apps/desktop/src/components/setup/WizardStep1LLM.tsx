@@ -1,7 +1,39 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
 import type { LLMProfile, CreateLLMProfileRequest } from "@trpg-workbench/shared-schema";
+
+// ── Hardware tier detection ───────────────────────────────────────────────────
+
+interface MemoryTier {
+  label: string;
+  minGb: number;
+  models: string;
+  description: string;
+}
+
+const MEMORY_TIERS: MemoryTier[] = [
+  { label: "高端", minGb: 20, models: "Gemma3-27B / Qwen3-32B / Qwen3-30B-A3B", description: "最高本地质量" },
+  { label: "高质量", minGb: 12, models: "Qwen3-14B / Gemma3-12B", description: "创作主力，综合性价比高" },
+  { label: "平衡", minGb: 8, models: "Qwen3-8B", description: "推荐入门首选" },
+  { label: "轻量", minGb: 4, models: "Qwen3-4B / Gemma3-4B", description: "设备受限时的可用选项" },
+];
+
+function getTierForMemory(gb: number): MemoryTier {
+  for (const tier of MEMORY_TIERS) {
+    if (gb >= tier.minGb) return tier;
+  }
+  return { label: "极轻量", minGb: 0, models: "Qwen3-4B（仅限尝试）", description: "内存不足 4GB，创作质量受限" };
+}
+
+async function fetchSystemMemoryGb(): Promise<number | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<number>("get_system_memory_gb");
+  } catch {
+    return null;
+  }
+}
 
 const LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "openai_compatible"] as const;
 type LLMProviderType = typeof LLM_PROVIDERS[number];
@@ -34,6 +66,13 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CreateLLMProfileRequest>(EMPTY_FORM);
   const [showLocalGuide, setShowLocalGuide] = useState(false);
+  const [memoryGb, setMemoryGb] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchSystemMemoryGb().then(setMemoryGb);
+  }, []);
+
+  const recommendedTier = memoryGb !== null ? getTierForMemory(memoryGb) : null;
 
   const isLocalProvider = form.provider_type === "openai_compatible";
 
@@ -83,7 +122,9 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
       <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            推荐本地（≥8GB 内存即可起步）：数据不离本机，无需 API Key
+            {memoryGb !== null
+              ? `检测到内存 ${memoryGb} GB → 推荐${recommendedTier!.label}档（${recommendedTier!.models}）`
+              : "推荐本地（≥8GB 内存即可起步）：数据不离本机，无需 API Key"}
           </span>
           <button
             type="button"
@@ -97,11 +138,28 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
         {showLocalGuide && (
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
             {/* 硬件门槛提示 */}
-            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 10px", background: "rgba(0,0,0,0.15)", borderRadius: 4, lineHeight: 1.6 }}>
-              内存 ≥ 20GB → 高端：Gemma3-27B / Qwen3-32B / Qwen3-30B-A3B<br />
-              内存 ≥ 12GB → 高质量：Qwen3-14B / Gemma3-12B<br />
-              内存 ≥ 8GB &nbsp;→ 平衡：Qwen3-8B（推荐入门首选）<br />
-              内存 ≥ 4GB &nbsp;→ 轻量：Qwen3-4B / Gemma3-4B
+            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 10px", background: "rgba(0,0,0,0.15)", borderRadius: 4, lineHeight: 1.8 }}>
+              {memoryGb !== null ? (
+                <>
+                  <span style={{ color: "#22c55e", fontWeight: 600 }}>
+                    你的内存：{memoryGb} GB → 推荐{recommendedTier!.label}档
+                  </span>
+                  <br />
+                  推荐模型：{recommendedTier!.models}<br />
+                  <span style={{ opacity: 0.7 }}>{recommendedTier!.description}</span>
+                  <br />
+                  <span style={{ opacity: 0.7 }}>
+                    全部档位：≥20GB 高端 / ≥12GB 高质量 / ≥8GB 平衡 / ≥4GB 轻量
+                  </span>
+                </>
+              ) : (
+                <>
+                  内存 ≥ 20GB → 高端：Gemma3-27B / Qwen3-32B / Qwen3-30B-A3B<br />
+                  内存 ≥ 12GB → 高质量：Qwen3-14B / Gemma3-12B<br />
+                  内存 ≥ 8GB &nbsp;→ 平衡：Qwen3-8B（推荐入门首选）<br />
+                  内存 ≥ 4GB &nbsp;→ 轻量：Qwen3-4B / Gemma3-4B
+                </>
+              )}
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
