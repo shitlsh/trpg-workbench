@@ -36,7 +36,6 @@ export function WorkspacePage() {
   if (config) {
     if (!config.rule_set) configWarnings.push("未绑定规则集");
     if (!config.models?.default_llm) configWarnings.push("未配置 LLM 模型");
-    if (!config.models?.embedding) configWarnings.push("未配置 Embedding 模型");
   }
 
   if (isLoading) {

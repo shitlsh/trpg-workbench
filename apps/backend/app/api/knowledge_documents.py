@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.storage.database import get_db
 from app.models.orm import KnowledgeDocumentORM, KnowledgeLibraryORM, IngestTaskORM
 from app.models.schemas import KnowledgeDocumentSchema, IngestTaskSchema
-from app.services.model_routing import get_embedding_for_ingest, ModelNotConfiguredError
+from app.models.orm import EmbeddingProfileORM as _EmbeddingProfileORM
 
 router = APIRouter(prefix="/knowledge/libraries", tags=["knowledge-documents"])
 
@@ -31,7 +31,7 @@ def list_documents(library_id: str, db: Session = Depends(get_db)):
 async def upload_document(
     library_id: str,
     file: UploadFile = File(...),
-    workspace_id: str = Query(..., description="Workspace ID to resolve embedding profile"),
+    embedding_profile_id: str = Query(..., description="Embedding profile ID to use for indexing"),
     db: Session = Depends(get_db),
 ):
     lib = db.get(KnowledgeLibraryORM, library_id)
@@ -41,13 +41,12 @@ async def upload_document(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
-    # Resolve embedding profile before creating records
-    try:
-        embedding_profile = get_embedding_for_ingest(workspace_id, db)
-    except ModelNotConfiguredError as exc:
+    # Resolve embedding profile directly by ID
+    embedding_profile = db.get(_EmbeddingProfileORM, embedding_profile_id)
+    if not embedding_profile:
         raise HTTPException(
             status_code=422,
-            detail={"error": exc.message, "error_type": "ModelNotConfiguredError"},
+            detail={"error": f"Embedding profile '{embedding_profile_id}' not found", "error_type": "ModelNotConfiguredError"},
         )
 
     # Sanitize filename to prevent path traversal

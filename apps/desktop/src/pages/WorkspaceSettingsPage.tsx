@@ -308,11 +308,6 @@ export default function WorkspaceSettingsPage() {
     queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
   });
 
-  const { data: embeddingProfiles = [] } = useQuery({
-    queryKey: ["embedding-profiles"],
-    queryFn: () => apiFetch<EmbeddingProfile[]>("/settings/embedding-profiles"),
-  });
-
   const { data: rerankProfiles = [] } = useQuery({
     queryKey: ["rerank-profiles"],
     queryFn: () => apiFetch<RerankProfile[]>("/settings/rerank-profiles"),
@@ -323,17 +318,11 @@ export default function WorkspaceSettingsPage() {
     queryFn: () => apiFetch<ModelCatalogEntry[]>("/settings/model-catalog"),
   });
 
-  const { data: embCatalog = [] } = useQuery({
-    queryKey: ["embedding-catalog"],
-    queryFn: () => apiFetch<EmbeddingCatalogEntry[]>("/settings/model-catalog/embedding"),
-  });
-
   // Form state — populated from config
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [ruleSetName, setRuleSetName] = useState("");
   const [defaultLlmName, setDefaultLlmName] = useState("");
-  const [embeddingName, setEmbeddingName] = useState("");
   const [rerankName, setRerankName] = useState("");
   const [rerankEnabled, setRerankEnabled] = useState(false);
   const [rerankTopN, setRerankTopN] = useState(5);
@@ -346,7 +335,6 @@ export default function WorkspaceSettingsPage() {
       setDescription(config.description ?? "");
       setRuleSetName(config.rule_set ?? "");
       setDefaultLlmName(config.models?.default_llm ?? "");
-      setEmbeddingName(config.models?.embedding ?? "");
       setRerankName(config.models?.rerank ?? "");
       setRerankEnabled(config.rerank?.enabled ?? false);
       setRerankTopN(config.rerank?.top_n ?? 5);
@@ -390,7 +378,6 @@ export default function WorkspaceSettingsPage() {
       rule_set: ruleSetName,
       models: {
         default_llm: defaultLlmName,
-        embedding: embeddingName,
         rerank: rerankName,
       },
       rerank: {
@@ -414,7 +401,6 @@ export default function WorkspaceSettingsPage() {
 
   // Resolve name-based references to profiles for catalog hints
   const selectedDefaultLlm = llmProfiles.find((p) => p.name === defaultLlmName);
-  const selectedEmbedding = embeddingProfiles.find((p) => p.name === embeddingName);
 
   return (
     <div className={styles.page}>
@@ -459,17 +445,6 @@ export default function WorkspaceSettingsPage() {
               {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
-          <label className={styles.label}>
-            <span>
-              Embedding 向量化（用于知识库索引和检索）
-              <CatalogHint profile={selectedEmbedding} catalog={embCatalog} />
-            </span>
-            <select className={styles.select} value={embeddingName} onChange={(e) => setEmbeddingName(e.target.value)}>
-              <option value="">不指定</option>
-              {embeddingProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
-            </select>
-          </label>
-
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Rerank 重排序（可选）</div>
           <label className={styles.label}>
             Rerank 配置（留空则不使用 Rerank）

@@ -75,7 +75,6 @@ export interface WorkspaceConfig {
   rule_set: string; // rule_set name
   models: {
     default_llm: string;
-    embedding: string;
     rerank: string;
   };
   rerank: {

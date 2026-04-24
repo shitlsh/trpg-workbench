@@ -568,6 +568,12 @@ function LibraryDetailPanel({
   const [showSearchTest, setShowSearchTest] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const { data: embeddingProfiles = [] } = useQuery({
+    queryKey: ["embedding-profiles"],
+    queryFn: () => apiFetch<EmbeddingProfile[]>("/settings/embedding-profiles"),
+  });
+  const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>("");
+
   const { data: documents = [] } = useQuery({
     queryKey: ["knowledge", "documents", library.id],
     queryFn: () => apiFetch<KnowledgeDocument[]>(`/knowledge/libraries/${library.id}/documents`),
@@ -591,10 +597,15 @@ function LibraryDetailPanel({
 
   async function handleUpload(file: File) {
     setUploadError(null);
+    const profileId = selectedEmbeddingId || embeddingProfiles[0]?.id;
+    if (!profileId) {
+      setUploadError("请先在模型配置中添加 Embedding 模型");
+      return;
+    }
     const form = new FormData();
     form.append("file", file);
     const url = new URL(`${BACKEND_URL}/knowledge/libraries/${library.id}/documents`);
-    if (activeWorkspaceId) url.searchParams.set("workspace_id", activeWorkspaceId);
+    url.searchParams.set("embedding_profile_id", profileId);
     try {
       const res = await fetch(url.toString(), { method: "POST", body: form });
       if (!res.ok) {
@@ -647,6 +658,22 @@ function LibraryDetailPanel({
           </button>
         </div>
       </div>
+
+      {/* Embedding profile selector (show only if multiple profiles) */}
+      {embeddingProfiles.length > 1 && (
+        <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>Embedding 模型：</span>
+          <select
+            style={{ flex: 1, padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
+            value={selectedEmbeddingId || embeddingProfiles[0]?.id}
+            onChange={(e) => setSelectedEmbeddingId(e.target.value)}
+          >
+            {embeddingProfiles.map((p) => (
+              <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Upload area */}
       <div

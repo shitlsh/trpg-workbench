@@ -48,33 +48,6 @@ def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> LLMProfi
     return profile
 
 
-def get_embedding_for_ingest(workspace_id: str, db: Session) -> EmbeddingProfileORM:
-    """
-    Resolve the embedding profile to use for ingesting documents.
-    Uses workspace.embedding_profile_id.
-
-    Raises ModelNotConfiguredError if no embedding profile is configured.
-    """
-    workspace = db.get(WorkspaceORM, workspace_id)
-    if not workspace:
-        raise ModelNotConfiguredError(f"Workspace {workspace_id} not found")
-
-    if not workspace.embedding_profile_id:
-        raise ModelNotConfiguredError(
-            "No embedding profile configured for this workspace. "
-            "Please configure an embedding profile in workspace settings."
-        )
-
-    profile = db.get(EmbeddingProfileORM, workspace.embedding_profile_id)
-    if not profile:
-        raise ModelNotConfiguredError(
-            f"Embedding profile {workspace.embedding_profile_id} not found. "
-            "Please reconfigure the embedding profile in workspace settings."
-        )
-
-    return profile
-
-
 def get_embedding_for_query(library_id: str, db: Session) -> EmbeddingProfileORM:
     """
     Resolve the embedding profile to use for querying a knowledge library.

@@ -2,7 +2,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.storage.database import get_db
-from app.models.orm import EmbeddingProfileORM, WorkspaceORM, KnowledgeLibraryORM
+from app.models.orm import EmbeddingProfileORM, KnowledgeLibraryORM
 from app.models.schemas import (
     EmbeddingProfileSchema, EmbeddingProfileCreate, EmbeddingProfileUpdate, EmbeddingTestResult
 )
@@ -81,21 +81,13 @@ def delete_embedding_profile(profile_id: str, db: Session = Depends(get_db)):
     if not profile:
         raise HTTPException(status_code=404, detail="EmbeddingProfile not found")
 
-    # Check workspace references
-    ws_refs = db.query(WorkspaceORM).filter(
-        WorkspaceORM.embedding_profile_id == profile_id
-    ).all()
-
     # Check library snapshot references
     lib_refs = db.query(KnowledgeLibraryORM).filter(
         KnowledgeLibraryORM.embedding_profile_id == profile_id
     ).all()
 
-    if ws_refs or lib_refs:
-        referenced_by = (
-            [{"type": "workspace", "id": w.id, "name": w.name} for w in ws_refs] +
-            [{"type": "knowledge_library", "id": l.id, "name": l.name} for l in lib_refs]
-        )
+    if lib_refs:
+        referenced_by = [{"type": "knowledge_library", "id": l.id, "name": l.name} for l in lib_refs]
         raise HTTPException(
             status_code=409,
             detail={
