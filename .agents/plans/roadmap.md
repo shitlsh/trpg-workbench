@@ -63,6 +63,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
+| M19 | Agent 上下文控制与工具能力 | Agent 从固定流水线升级为拥有工具的自主协作者（tool-calling + SSE streaming + 多轮记忆 + @引用） | [m19-agent-context-control.md](m19-agent-context-control.md) |
 
 ---
 
