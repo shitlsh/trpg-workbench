@@ -35,7 +35,9 @@ const NAV_ITEMS = [
 const mdComponents: Components = {
   a: ({ href, children }) => {
     if (href?.startsWith("/")) {
-      return <Link to={href}>{children}</Link>;
+      // Help-to-help links replace history to avoid back-button stack pollution
+      const isHelpLink = href.startsWith("/help/");
+      return <Link to={href} replace={isHelpLink}>{children}</Link>;
     }
     return (
       <a href={href} target="_blank" rel="noopener noreferrer">
@@ -68,7 +70,7 @@ export default function HelpPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <button className={styles.back} onClick={() => navigate(-1)}>← 返回</button>
+        <button className={styles.back} onClick={() => navigate("/")}>← 返回</button>
         <span className={styles.title}>帮助文档 — {title}</span>
         <ThemeToggle />
       </header>
@@ -80,6 +82,7 @@ export default function HelpPage() {
             <Link
               key={item.id}
               to={`/help/${item.id}`}
+              replace
               className={
                 styles.sidebarItem +
                 (currentDoc === item.id ? " " + styles.sidebarItemActive : "")
