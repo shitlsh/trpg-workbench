@@ -29,18 +29,10 @@ class RuleSetUpdate(BaseModel):
 class WorkspaceSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
-    rule_set_id: str
     name: str
-    description: str | None
     workspace_path: str
-    default_llm_profile_id: str | None
-    rules_llm_profile_id: str | None
-    embedding_profile_id: str | None
-    rerank_profile_id: str | None
-    rerank_enabled: bool
-    rerank_top_n: int
-    rerank_top_k: int
-    rerank_apply_to_task_types: str | None  # JSON
+    last_opened_at: datetime
+    status: str  # ok / missing
     created_at: datetime
     updated_at: datetime
 
@@ -48,21 +40,17 @@ class WorkspaceSchema(BaseModel):
 class WorkspaceCreate(BaseModel):
     name: str
     description: str | None = None
-    rule_set_id: str
+    rule_set: str | None = None  # rule_set name for config.yaml
+    workspace_path: str | None = None  # if None, auto-create under workspaces root
+
+
+class WorkspaceOpen(BaseModel):
+    """Open an existing workspace directory."""
+    workspace_path: str
 
 
 class WorkspaceUpdate(BaseModel):
     name: str | None = None
-    description: str | None = None
-    rule_set_id: str | None = None
-    default_llm_profile_id: str | None = None
-    rules_llm_profile_id: str | None = None
-    embedding_profile_id: str | None = None
-    rerank_profile_id: str | None = None
-    rerank_enabled: bool | None = None
-    rerank_top_n: int | None = None
-    rerank_top_k: int | None = None
-    rerank_apply_to_task_types: str | None = None  # JSON list
 
 
 # ─── M6: LLM Profiles ─────────────────────────────────────────────────────────
@@ -251,11 +239,12 @@ class AssetSchema(BaseModel):
     type: str
     name: str
     slug: str
-    path: str
     status: str
     summary: str | None
+    file_path: str
+    file_hash: str | None
+    version: int
     metadata_json: str | None
-    latest_revision_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -265,17 +254,16 @@ class AssetRevisionSchema(BaseModel):
     id: str
     asset_id: str
     version: int
-    content_md: str
-    content_json: str
+    snapshot_path: str
     change_summary: str
     source_type: str
     created_at: datetime
 
 
 class AssetWithContentSchema(AssetSchema):
+    """Asset with file content loaded from disk."""
     content_md: str = ""
     content_json: str = "{}"
-    version: int = 0
 
 
 class AssetCreate(BaseModel):
@@ -302,18 +290,19 @@ class ChatSessionSchema(BaseModel):
     workspace_id: str
     agent_scope: str | None
     title: str | None
+    message_count: int = 0
     created_at: datetime
     updated_at: datetime
 
 
 class ChatMessageSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    """Chat message — loaded from JSONL file, not from DB."""
     id: str
     session_id: str
     role: str
     content: str
-    references_json: str | None
-    tool_calls_json: str | None
+    references_json: str | None = None
+    tool_calls_json: str | None = None
     created_at: datetime
 
 

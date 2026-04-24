@@ -1,18 +1,23 @@
-"""Asset CRUD + Revision API."""
+"""Asset CRUD + Revision API — file-first.
+
+Asset content lives in frontmatter Markdown files on disk.
+AssetORM in cache.db is a search/filter index only.
+"""
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
-from app.models.orm import AssetORM, WorkspaceORM, ImageGenerationJobORM
+from app.models.orm import AssetORM, WorkspaceORM, ImageGenerationJobORM, _uuid
 from app.models.schemas import (
     AssetSchema, AssetWithContentSchema, AssetRevisionSchema,
     AssetCreate, AssetUpdate,
 )
-from app.services.asset_service import (
-    create_asset, update_asset, get_asset_with_content, md_to_json_sync,
-)
+from app.services import asset_service
 from app.services.revision_service import list_revisions, rollback_to_revision
+from app.services.sync_service import incremental_sync
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/assets", tags=["assets"])
 asset_router = APIRouter(prefix="/assets", tags=["assets"])
@@ -32,6 +37,11 @@ def _get_asset(asset_id: str, db: Session) -> AssetORM:
     return asset
 
 
+def _resolve_file_path(ws: WorkspaceORM, asset: AssetORM) -> Path:
+    """Resolve absolute file path from workspace root + relative file_path."""
+    return Path(ws.workspace_path) / asset.file_path
+
+
 # ─── List assets ─────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[AssetSchema])
@@ -46,12 +56,13 @@ def list_assets(workspace_id: str, asset_type: str | None = None, db: Session = 
     return q.order_by(AssetORM.type, AssetORM.name).all()
 
 
-# ─── Create asset ─────────────────────────────────────────────────────────────
+# ─── Create asset ────────────────────────────────────────────────────────────
 
 @router.post("", response_model=AssetWithContentSchema)
 def create_asset_endpoint(workspace_id: str, body: AssetCreate, db: Session = Depends(get_db)):
     ws = _get_workspace(workspace_id, db)
-    # Check slug uniqueness within workspace
+
+    # Check slug uniqueness via DB index
     existing = db.query(AssetORM).filter(
         AssetORM.workspace_id == workspace_id,
         AssetORM.type == body.type,
@@ -60,60 +71,132 @@ def create_asset_endpoint(workspace_id: str, body: AssetCreate, db: Session = De
     if existing:
         raise HTTPException(status_code=409, detail=f"Slug '{body.slug}' already exists for type '{body.type}'")
 
-    asset = create_asset(
-        db=db,
-        workspace_id=workspace_id,
+    # Write file to disk
+    result = asset_service.create_asset(
         workspace_path=ws.workspace_path,
         asset_type=body.type,
         name=body.name,
         slug=body.slug,
         summary=body.summary,
     )
-    return get_asset_with_content(db, asset)
+
+    # Create DB index row
+    asset_row = AssetORM(
+        id=_uuid(),
+        workspace_id=workspace_id,
+        type=body.type,
+        name=body.name,
+        slug=body.slug,
+        status="draft",
+        summary=body.summary,
+        file_path=result["rel_path"],
+        file_hash=result["file_hash"],
+        version=1,
+    )
+    db.add(asset_row)
+    db.commit()
+    db.refresh(asset_row)
+
+    # Return with content
+    return _build_asset_with_content(ws, asset_row)
 
 
-# ─── Get single asset ─────────────────────────────────────────────────────────
+# ─── Get single asset (with content from disk) ───────────────────────────────
 
 @asset_router.get("/{asset_id}", response_model=AssetWithContentSchema)
 def get_asset(asset_id: str, db: Session = Depends(get_db)):
     asset = _get_asset(asset_id, db)
-    return get_asset_with_content(db, asset)
+    ws = db.get(WorkspaceORM, asset.workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return _build_asset_with_content(ws, asset)
 
 
-# ─── Update asset ─────────────────────────────────────────────────────────────
+def _build_asset_with_content(ws: WorkspaceORM, asset: AssetORM) -> dict:
+    """Read content from disk and merge with DB index data."""
+    file_path = _resolve_file_path(ws, asset)
+    content = asset_service.get_asset_with_content(ws.workspace_path, file_path)
+    if not content:
+        # File missing on disk — return index data with empty content
+        return {
+            "id": asset.id,
+            "workspace_id": asset.workspace_id,
+            "type": asset.type,
+            "name": asset.name,
+            "slug": asset.slug,
+            "status": asset.status,
+            "summary": asset.summary,
+            "file_path": asset.file_path,
+            "file_hash": asset.file_hash,
+            "version": asset.version,
+            "metadata_json": asset.metadata_json,
+            "created_at": asset.created_at,
+            "updated_at": asset.updated_at,
+            "content_md": "",
+            "content_json": "{}",
+        }
+
+    return {
+        "id": asset.id,
+        "workspace_id": asset.workspace_id,
+        "type": asset.type,
+        "name": content.get("name", asset.name),
+        "slug": content.get("slug", asset.slug),
+        "status": content.get("status", asset.status),
+        "summary": content.get("summary", asset.summary),
+        "file_path": asset.file_path,
+        "file_hash": content.get("file_hash", asset.file_hash),
+        "version": content.get("version", asset.version),
+        "metadata_json": asset.metadata_json,
+        "created_at": asset.created_at,
+        "updated_at": asset.updated_at,
+        "content_md": content.get("content_md", ""),
+        "content_json": content.get("content_json", "{}"),
+    }
+
+
+# ─── Update asset ────────────────────────────────────────────────────────────
 
 @asset_router.patch("/{asset_id}", response_model=AssetWithContentSchema)
 def patch_asset(asset_id: str, body: AssetUpdate, db: Session = Depends(get_db)):
     asset = _get_asset(asset_id, db)
     ws = db.get(WorkspaceORM, asset.workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
 
-    # If MD was updated and JSON was not provided, attempt MD→JSON sync
-    sync_warnings = []
-    effective_json = body.content_json
-    if body.content_md is not None and body.content_json is None:
-        from app.models.orm import AssetRevisionORM
-        latest = db.get(AssetRevisionORM, asset.latest_revision_id) if asset.latest_revision_id else None
-        existing_json = latest.content_json if latest else "{}"
-        effective_json, sync_warnings = md_to_json_sync(body.content_md, asset.type, existing_json)
+    file_path = _resolve_file_path(ws, asset)
 
-    updated = update_asset(
-        db=db,
-        asset=asset,
+    # Build meta updates from request
+    meta_updates: dict = {}
+    if body.name is not None:
+        meta_updates["name"] = body.name
+    if body.status is not None:
+        meta_updates["status"] = body.status
+    if body.summary is not None:
+        meta_updates["summary"] = body.summary
+
+    # Write to disk (file-first)
+    result = asset_service.update_asset(
         workspace_path=ws.workspace_path,
-        content_md=body.content_md,
-        content_json=effective_json,
+        file_path=file_path,
+        body=body.content_md,
+        meta_updates=meta_updates if meta_updates else None,
         change_summary=body.change_summary,
-        name=body.name,
-        status=body.status,
-        summary=body.summary,
     )
-    result = get_asset_with_content(db, updated)
-    if sync_warnings:
-        result["sync_warnings"] = sync_warnings
-    return result
+
+    # Update DB index
+    asset.name = result["metadata"].get("name", asset.name)
+    asset.status = result["metadata"].get("status", asset.status)
+    asset.summary = result["metadata"].get("summary", asset.summary)
+    asset.file_hash = result["file_hash"]
+    asset.version = result["metadata"].get("version", asset.version)
+    db.commit()
+    db.refresh(asset)
+
+    return _build_asset_with_content(ws, asset)
 
 
-# ─── Delete asset (soft) ─────────────────────────────────────────────────────
+# ─── Delete asset (soft delete — mark status) ────────────────────────────────
 
 @asset_router.delete("/{asset_id}", status_code=204)
 def delete_asset(asset_id: str, db: Session = Depends(get_db)):
@@ -122,28 +205,52 @@ def delete_asset(asset_id: str, db: Session = Depends(get_db)):
     db.commit()
 
 
-# ─── List revisions ──────────────────────────────────────────────────────────
+# ─── List revisions ─────────────────────────────────────────────────────────
 
-@asset_router.get("/{asset_id}/revisions", response_model=list[AssetRevisionSchema])
+@asset_router.get("/{asset_id}/revisions")
 def get_revisions(asset_id: str, db: Session = Depends(get_db)):
-    _get_asset(asset_id, db)
-    return list_revisions(db, asset_id)
+    asset = _get_asset(asset_id, db)
+    ws = db.get(WorkspaceORM, asset.workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return list_revisions(ws.workspace_path, asset.slug)
 
 
 # ─── Rollback ────────────────────────────────────────────────────────────────
 
-@asset_router.post("/{asset_id}/revisions/{revision_id}/rollback", response_model=AssetWithContentSchema)
-def rollback(asset_id: str, revision_id: str, db: Session = Depends(get_db)):
+@asset_router.post("/{asset_id}/revisions/{version}/rollback", response_model=AssetWithContentSchema)
+def rollback(asset_id: str, version: int, db: Session = Depends(get_db)):
     asset = _get_asset(asset_id, db)
     ws = db.get(WorkspaceORM, asset.workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    file_path = _resolve_file_path(ws, asset)
     try:
-        updated = rollback_to_revision(db, asset, revision_id, ws.workspace_path)
+        result = rollback_to_revision(ws.workspace_path, file_path, asset.slug, version)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return get_asset_with_content(db, updated)
+
+    # Update DB index
+    asset.file_hash = result["file_hash"]
+    asset.version = result["metadata"].get("version", asset.version)
+    db.commit()
+    db.refresh(asset)
+
+    return _build_asset_with_content(ws, asset)
 
 
-# ─── Image generation ─────────────────────────────────────────────────────────
+# ─── Diagnostics (file scanning issues) ─────────────────────────────────────
+
+@router.get("/diagnostics")
+def get_diagnostics(workspace_id: str, db: Session = Depends(get_db)):
+    """Return files with broken frontmatter or missing required fields."""
+    ws = _get_workspace(workspace_id, db)
+    _, diagnostics = asset_service.scan_asset_files(ws.workspace_path)
+    return {"diagnostics": diagnostics}
+
+
+# ─── Image generation (kept from previous — schema-only) ─────────────────────
 
 class GenerateImageRequest(BaseModel):
     provider: str = "dalle3"
@@ -167,7 +274,6 @@ async def start_generate_image(
     body: GenerateImageRequest,
     db: Session = Depends(get_db),
 ):
-    """Start an image generation workflow for the given asset."""
     asset = _get_asset(asset_id, db)
     from app.workflows.generate_image import run_generate_image
     wf = await run_generate_image(
@@ -193,7 +299,6 @@ async def confirm_generate_image(
     workflow_id: str,
     db: Session = Depends(get_db),
 ):
-    """Confirm/edit the prompt and actually run the image generation."""
     from app.models.orm import WorkflowStateORM
     from app.workflows.generate_image import resume_generate_image
     wf = db.get(WorkflowStateORM, workflow_id)
@@ -206,7 +311,6 @@ async def confirm_generate_image(
 
 @asset_router.get("/{asset_id}/image-jobs", response_model=list[ImageJobSchema])
 def list_image_jobs(asset_id: str, db: Session = Depends(get_db)):
-    """List all image generation jobs for an asset."""
     _get_asset(asset_id, db)
     jobs = (
         db.query(ImageGenerationJobORM)

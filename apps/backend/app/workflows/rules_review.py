@@ -8,7 +8,8 @@ from app.workflows.utils import (
     fail_workflow, get_workspace_context,
 )
 from app.agents.rules import run_rules_agent
-from app.models.orm import WorkflowStateORM, AssetORM, AssetRevisionORM
+from app.services import asset_service
+from app.models.orm import WorkflowStateORM, AssetORM, WorkspaceORM
 
 
 STEP_NAMES = [
@@ -50,14 +51,17 @@ async def run_rules_review(
     try:
         # ── Step 1: Load asset content ──────────────────────────────────────
         update_step(db, wf, 1, STEP_NAMES[1], "running")
+        ws = db.get(WorkspaceORM, workspace_id)
         asset_context_parts = []
         for aid in asset_ids:
             asset = db.get(AssetORM, aid)
-            if asset and asset.latest_revision_id:
-                rev = db.get(AssetRevisionORM, asset.latest_revision_id)
-                if rev:
+            if asset and ws:
+                from pathlib import Path
+                file_path = Path(ws.workspace_path) / asset.file_path
+                content = asset_service.get_asset_with_content(ws.workspace_path, file_path)
+                if content:
                     asset_context_parts.append(
-                        f"Asset [{asset.type}] {asset.name}:\n{rev.content_md[:800]}"
+                        f"Asset [{asset.type}] {asset.name}:\n{content.get('content_md', '')[:800]}"
                     )
         asset_context_str = "\n\n".join(asset_context_parts)
         update_step(db, wf, 1, STEP_NAMES[1], "completed",

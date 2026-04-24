@@ -1,32 +1,38 @@
-"""Revision history query and rollback."""
-from sqlalchemy.orm import Session
-from app.models.orm import AssetORM, AssetRevisionORM
-from app.services.asset_service import update_asset
+"""File-first revision history — snapshots stored in .trpg/revisions/{slug}/v{N}.md"""
+from pathlib import Path
+
+from app.services.asset_service import (
+    read_asset_file,
+    read_revision_snapshot,
+    list_revision_snapshots,
+    update_asset,
+)
 
 
-def list_revisions(db: Session, asset_id: str) -> list[AssetRevisionORM]:
-    return (
-        db.query(AssetRevisionORM)
-        .filter(AssetRevisionORM.asset_id == asset_id)
-        .order_by(AssetRevisionORM.version.desc())
-        .all()
-    )
+def list_revisions(workspace_path: str | Path, slug: str) -> list[dict]:
+    """List all revisions for an asset (from snapshot files)."""
+    return list_revision_snapshots(workspace_path, slug)
 
 
-def rollback_to_revision(db: Session, asset: AssetORM, revision_id: str, workspace_path: str) -> AssetORM:
-    """
-    Rollback = create a new revision with the content of `revision_id`.
+def rollback_to_revision(
+    workspace_path: str | Path,
+    file_path: Path,
+    slug: str,
+    target_version: int,
+) -> dict:
+    """Rollback = create a new revision with the content of target_version.
+
     History is never deleted.
     """
-    target = db.get(AssetRevisionORM, revision_id)
-    if not target or target.asset_id != asset.id:
-        raise ValueError(f"Revision {revision_id} not found for asset {asset.id}")
+    snapshot = read_revision_snapshot(workspace_path, slug, target_version)
+    if not snapshot:
+        raise ValueError(f"Revision v{target_version} not found for asset '{slug}'")
 
     return update_asset(
-        db=db,
-        asset=asset,
         workspace_path=workspace_path,
-        content_md=target.content_md,
-        content_json=target.content_json,
-        change_summary=f"回滚到版本 {target.version}",
+        file_path=file_path,
+        body=snapshot["body"],
+        meta_updates={k: v for k, v in snapshot["metadata"].items()
+                      if k not in ("version", "updated_at", "created_at")},
+        change_summary=f"回滚到版本 {target_version}",
     )

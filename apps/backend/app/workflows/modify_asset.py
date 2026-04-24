@@ -14,7 +14,8 @@ from app.agents.plot import run_plot_agent
 from app.agents.npc import run_npc_agent
 from app.agents.monster import run_monster_agent
 from app.agents.lore import run_lore_agent
-from app.models.orm import WorkflowStateORM, WorkspaceORM, AssetORM, AssetRevisionORM
+from app.services import asset_service
+from app.models.orm import WorkflowStateORM, WorkspaceORM, AssetORM, AssetRevisionORM, _uuid
 
 
 STEP_NAMES = [
@@ -102,18 +103,21 @@ async def run_modify_asset(
 
         # ── Step 3: Generate modifications ────────────────────────────────
         update_step(db, wf, 3, STEP_NAMES[3], "running")
+        ws_obj = db.get(WorkspaceORM, workspace_id)
         assets = []
         for aid in affected_asset_ids:
             asset = db.get(AssetORM, aid)
-            if asset and asset.latest_revision_id:
-                rev = db.get(AssetRevisionORM, asset.latest_revision_id)
+            if asset:
+                from pathlib import Path
+                file_path = Path(ws_obj.workspace_path) / asset.file_path
+                content = asset_service.get_asset_with_content(ws_obj.workspace_path, file_path)
                 assets.append({
                     "asset_id": asset.id,
                     "asset_name": asset.name,
                     "asset_type": asset.type,
                     "asset_slug": asset.slug,
-                    "current_content_md": rev.content_md if rev else "",
-                    "current_content_json": rev.content_json if rev else "{}",
+                    "current_content_md": content.get("content_md", "") if content else "",
+                    "current_content_json": content.get("content_json", "{}") if content else "{}",
                 })
 
         # Call appropriate agent based on asset type
@@ -271,18 +275,21 @@ async def resume_modify_asset(
 
         # ── Step 3: Generate modifications ────────────────────────────────
         update_step(db, wf, 3, STEP_NAMES[3], "running")
+        ws_obj = db.get(WorkspaceORM, workspace_id)
         assets = []
         for aid in affected_asset_ids:
             asset = db.get(AssetORM, aid)
-            if asset and asset.latest_revision_id:
-                rev = db.get(AssetRevisionORM, asset.latest_revision_id)
+            if asset:
+                from pathlib import Path as _Path
+                file_path = _Path(ws_obj.workspace_path) / asset.file_path
+                content = asset_service.get_asset_with_content(ws_obj.workspace_path, file_path)
                 assets.append({
                     "asset_id": asset.id,
                     "asset_name": asset.name,
                     "asset_type": asset.type,
                     "asset_slug": asset.slug,
-                    "current_content_md": rev.content_md if rev else "",
-                    "current_content_json": rev.content_json if rev else "{}",
+                    "current_content_md": content.get("content_md", "") if content else "",
+                    "current_content_json": content.get("content_json", "{}") if content else "{}",
                 })
 
         raw_assets_for_doc = []
@@ -366,7 +373,6 @@ async def apply_modify_asset_patches(
     db.commit()
 
     try:
-        from app.services.asset_service import update_asset
         ws = db.get(WorkspaceORM, wf.workspace_id)
         if not ws:
             fail_workflow(db, wf, f"Workspace {wf.workspace_id} not found")
@@ -381,13 +387,18 @@ async def apply_modify_asset_patches(
             asset = db.get(AssetORM, asset_id)
             if not asset:
                 continue
-            update_asset(
-                db, asset, ws.workspace_path,
-                content_md=patch.get("content_md"),
-                content_json=patch.get("content_json"),
+            from pathlib import Path as _Path
+            file_path = _Path(ws.workspace_path) / asset.file_path
+            result = asset_service.update_asset(
+                workspace_path=ws.workspace_path,
+                file_path=file_path,
+                body=patch.get("content_md"),
                 change_summary=patch.get("change_summary", "AI 修改"),
                 source_type="agent",
             )
+            asset.file_hash = result["file_hash"]
+            asset.version = result["metadata"].get("version", asset.version)
+            db.commit()
             saved += 1
 
         update_step(db, wf, 7, STEP_NAMES[7], "completed", summary=f"保存 {saved} 个资产")

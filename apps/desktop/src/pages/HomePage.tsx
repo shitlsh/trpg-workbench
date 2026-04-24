@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { BookMarked, Cpu, BarChart2 } from "lucide-react";
+import { BookMarked, Cpu, BarChart2, FolderOpen } from "lucide-react";
 import { apiFetch } from "../lib/api";
 import type {
   Workspace, RuleSet, CreateWorkspaceRequest,
@@ -18,7 +18,9 @@ export default function HomePage() {
   const [deleteTarget, setDeleteTarget] = useState<Workspace | null>(null);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [newRuleSetId, setNewRuleSetId] = useState("");
+  const [newRuleSet, setNewRuleSet] = useState("");
+  const [openPathInput, setOpenPathInput] = useState("");
+  const [showOpenForm, setShowOpenForm] = useState(false);
 
   const { data: workspaces = [], isLoading } = useQuery({
     queryKey: ["workspaces"],
@@ -31,20 +33,23 @@ export default function HomePage() {
   });
 
   // For the new-workspace modal: preview selected rule set's metadata
+  const selectedRs = ruleSets.find((rs) => rs.name === newRuleSet);
+  const selectedRsId = selectedRs?.id ?? "";
+
   const { data: selectedRsLibraries = [] } = useQuery({
-    queryKey: ["knowledge", "libraries", { rule_set_id: newRuleSetId }],
-    queryFn: () => apiFetch<KnowledgeLibrary[]>(`/knowledge/libraries?rule_set_id=${newRuleSetId}`),
-    enabled: !!newRuleSetId,
+    queryKey: ["knowledge", "libraries", { rule_set_id: selectedRsId }],
+    queryFn: () => apiFetch<KnowledgeLibrary[]>(`/knowledge/libraries?rule_set_id=${selectedRsId}`),
+    enabled: !!selectedRsId,
   });
 
   const { data: allProfiles = [] } = useQuery({
     queryKey: ["prompt-profiles"],
     queryFn: () => apiFetch<PromptProfile[]>("/prompt-profiles"),
-    enabled: !!newRuleSetId,
+    enabled: !!selectedRsId,
   });
 
-  const selectedRsPrompt = newRuleSetId
-    ? allProfiles.find((p) => p.rule_set_id === newRuleSetId) ?? null
+  const selectedRsPrompt = selectedRsId
+    ? allProfiles.find((p) => p.rule_set_id === selectedRsId) ?? null
     : null;
 
   const createMutation = useMutation({
@@ -55,7 +60,21 @@ export default function HomePage() {
       setShowNewForm(false);
       setNewName("");
       setNewDesc("");
-      setNewRuleSetId("");
+      setNewRuleSet("");
+    },
+  });
+
+  const openMutation = useMutation({
+    mutationFn: (workspace_path: string) =>
+      apiFetch<Workspace>("/workspaces/open", {
+        method: "POST",
+        body: JSON.stringify({ workspace_path }),
+      }),
+    onSuccess: (ws) => {
+      queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+      setShowOpenForm(false);
+      setOpenPathInput("");
+      navigate(`/workspace/${ws.id}`);
     },
   });
 
@@ -70,8 +89,18 @@ export default function HomePage() {
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newName.trim() || !newRuleSetId) return;
-    createMutation.mutate({ name: newName.trim(), description: newDesc.trim(), rule_set_id: newRuleSetId });
+    if (!newName.trim()) return;
+    createMutation.mutate({
+      name: newName.trim(),
+      description: newDesc.trim(),
+      rule_set: newRuleSet || undefined,
+    });
+  }
+
+  function handleOpen(e: React.FormEvent) {
+    e.preventDefault();
+    if (!openPathInput.trim()) return;
+    openMutation.mutate(openPathInput.trim());
   }
 
   return (
@@ -90,6 +119,10 @@ export default function HomePage() {
           <button className={styles.btnSecondary} onClick={() => navigate("/usage")}>
             <BarChart2 size={14} style={{ flexShrink: 0 }} />
             用量观测
+          </button>
+          <button className={styles.btnSecondary} onClick={() => setShowOpenForm(true)}>
+            <FolderOpen size={14} style={{ flexShrink: 0 }} />
+            打开已有
           </button>
           <button className={styles.btnPrimary} onClick={() => setShowNewForm(true)}>
             新建工作空间
@@ -121,41 +154,45 @@ export default function HomePage() {
         )}
 
         <div className={styles.grid}>
-          {workspaces.map((ws) => {
-            const rs = ruleSets.find((r) => r.id === ws.rule_set_id);
-            return (
-              <div key={ws.id} className={styles.card}>
-                <div className={styles.cardBody}>
-                  <h3 className={styles.cardTitle}>{ws.name}</h3>
-                  {ws.description && <p className={styles.cardDesc}>{ws.description}</p>}
-                  <span className={styles.tag}>{rs?.name ?? ws.rule_set_id}</span>
-                  <p className={styles.cardDate}>
-                    最后修改：{new Date(ws.updated_at).toLocaleString("zh-CN")}
-                  </p>
-                </div>
-                <div className={styles.cardActions}>
-                  <button
-                    className={styles.btnPrimary}
-                    onClick={() => navigate(`/workspace/${ws.id}`)}
-                  >
-                    打开
-                  </button>
-                  <button
-                    className={styles.btnSecondary}
-                    onClick={() => navigate(`/workspace/${ws.id}/settings`)}
-                  >
-                    设置
-                  </button>
-                  <button
-                    className={styles.btnDanger}
-                    onClick={() => setDeleteTarget(ws)}
-                  >
-                    删除
-                  </button>
-                </div>
+          {workspaces.map((ws) => (
+            <div key={ws.id} className={styles.card}>
+              <div className={styles.cardBody}>
+                <h3 className={styles.cardTitle}>{ws.name}</h3>
+                {ws.status === "missing" && (
+                  <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(224,82,82,0.15)", color: "#e05252", border: "1px solid rgba(224,82,82,0.3)" }}>
+                    目录不存在
+                  </span>
+                )}
+                <p className={styles.cardDate} style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace", wordBreak: "break-all" }}>
+                  {ws.workspace_path}
+                </p>
+                <p className={styles.cardDate}>
+                  最后打开：{new Date(ws.last_opened_at).toLocaleString("zh-CN")}
+                </p>
               </div>
-            );
-          })}
+              <div className={styles.cardActions}>
+                <button
+                  className={styles.btnPrimary}
+                  onClick={() => navigate(`/workspace/${ws.id}`)}
+                  disabled={ws.status === "missing"}
+                >
+                  打开
+                </button>
+                <button
+                  className={styles.btnSecondary}
+                  onClick={() => navigate(`/workspace/${ws.id}/settings`)}
+                >
+                  设置
+                </button>
+                <button
+                  className={styles.btnDanger}
+                  onClick={() => setDeleteTarget(ws)}
+                >
+                  移除
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </main>
 
@@ -186,20 +223,20 @@ export default function HomePage() {
                 />
               </label>
               <label className={styles.label}>
-                规则体系 *
+                规则体系
                 <select
                   className={styles.select}
-                  value={newRuleSetId}
-                  onChange={(e) => setNewRuleSetId(e.target.value)}
+                  value={newRuleSet}
+                  onChange={(e) => setNewRuleSet(e.target.value)}
                 >
-                  <option value="">请选择...</option>
+                  <option value="">不指定（稍后可在设置中选择）</option>
                   {ruleSets.map((rs) => (
-                    <option key={rs.id} value={rs.id}>{rs.name}</option>
+                    <option key={rs.id} value={rs.name}>{rs.name}</option>
                   ))}
                 </select>
               </label>
               {/* A1.5: Rule set preview */}
-              {newRuleSetId && (
+              {selectedRsId && (
                 <div style={{
                   padding: "10px 12px",
                   background: "rgba(124,106,247,0.06)",
@@ -211,10 +248,10 @@ export default function HomePage() {
                   gap: 16,
                 }}>
                   <span>
-                    📚 知识库：<strong style={{ color: "var(--text)" }}>{selectedRsLibraries.length} 个</strong>
+                    知识库：<strong style={{ color: "var(--text)" }}>{selectedRsLibraries.length} 个</strong>
                   </span>
                   <span>
-                    ✍️ 提示词：<strong style={{ color: "var(--text)" }}>
+                    提示词：<strong style={{ color: "var(--text)" }}>
                       {selectedRsPrompt ? selectedRsPrompt.name : "未指定"}
                     </strong>
                   </span>
@@ -227,7 +264,7 @@ export default function HomePage() {
                 <button
                   type="submit"
                   className={styles.btnPrimary}
-                  disabled={!newName.trim() || !newRuleSetId || createMutation.isPending}
+                  disabled={!newName.trim() || createMutation.isPending}
                 >
                   {createMutation.isPending ? "创建中..." : "创建"}
                 </button>
@@ -240,13 +277,55 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Open Existing Workspace Modal */}
+      {showOpenForm && (
+        <div className={styles.overlay} onClick={() => setShowOpenForm(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>打开已有工作空间</h2>
+            <form onSubmit={handleOpen} className={styles.form}>
+              <label className={styles.label}>
+                工作空间目录路径 *
+                <input
+                  className={styles.input}
+                  value={openPathInput}
+                  onChange={(e) => setOpenPathInput(e.target.value)}
+                  placeholder="例：/Users/you/my-trpg-module"
+                  autoFocus
+                />
+              </label>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -4 }}>
+                目录中需包含 .trpg/config.yaml 才能被识别为有效工作空间。
+              </p>
+              <div className={styles.formActions}>
+                <button type="button" className={styles.btnSecondary} onClick={() => setShowOpenForm(false)}>
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className={styles.btnPrimary}
+                  disabled={!openPathInput.trim() || openMutation.isPending}
+                >
+                  {openMutation.isPending ? "打开中..." : "打开"}
+                </button>
+              </div>
+              {openMutation.isError && (
+                <p className={styles.error}>{(openMutation.error as Error).message}</p>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirm Modal */}
       {deleteTarget && (
         <div className={styles.overlay} onClick={() => setDeleteTarget(null)}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h2 className={styles.modalTitle}>确认删除</h2>
+            <h2 className={styles.modalTitle}>确认移除</h2>
             <p className={styles.confirmText}>
-              确定要删除工作空间「<strong>{deleteTarget.name}</strong>」吗？此操作不可撤销。
+              确定要从列表中移除工作空间「<strong>{deleteTarget.name}</strong>」吗？
+            </p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+              磁盘上的文件不会被删除，之后可通过「打开已有」重新添加。
             </p>
             <div className={styles.formActions}>
               <button className={styles.btnSecondary} onClick={() => setDeleteTarget(null)}>
@@ -257,7 +336,7 @@ export default function HomePage() {
                 onClick={() => deleteMutation.mutate(deleteTarget.id)}
                 disabled={deleteMutation.isPending}
               >
-                {deleteMutation.isPending ? "删除中..." : "确认删除"}
+                {deleteMutation.isPending ? "移除中..." : "确认移除"}
               </button>
             </div>
           </div>

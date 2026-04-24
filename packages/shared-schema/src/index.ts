@@ -39,20 +39,16 @@ export interface UpdateRuleSetRequest {
 
 // ─── Workspace ────────────────────────────────────────────────────────────────
 
+/**
+ * Workspace registry entry (from global app.db).
+ * Config lives in .trpg/config.yaml — fetch via GET /workspaces/:id/config.
+ */
 export interface Workspace {
   id: string;
-  rule_set_id: string;
   name: string;
-  description: string | null;
   workspace_path: string;
-  default_llm_profile_id: string | null;
-  rules_llm_profile_id: string | null;
-  embedding_profile_id: string | null;
-  rerank_profile_id: string | null;
-  rerank_enabled: boolean;
-  rerank_top_n: number;
-  rerank_top_k: number;
-  rerank_apply_to_task_types: string | null; // JSON
+  last_opened_at: string;
+  status: string; // "ok" | "missing"
   created_at: string;
   updated_at: string;
 }
@@ -60,16 +56,39 @@ export interface Workspace {
 export interface CreateWorkspaceRequest {
   name: string;
   description?: string;
-  rule_set_id: string;
+  rule_set?: string; // rule_set name (written to config.yaml)
+  workspace_path?: string; // optional custom path
 }
 
 export interface UpdateWorkspaceRequest {
   name?: string;
-  description?: string;
-  rule_set_id?: string;
-  default_llm_profile_id?: string | null;
-  rules_llm_profile_id?: string | null;
-  embedding_profile_id?: string | null;
+}
+
+/**
+ * Workspace config from .trpg/config.yaml.
+ * Model references are by profile **name**, not UUID, for portability.
+ */
+export interface WorkspaceConfig {
+  name: string;
+  description: string;
+  created_at: string;
+  rule_set: string; // rule_set name
+  models: {
+    default_llm: string;
+    rules_llm: string;
+    embedding: string;
+    rerank: string;
+  };
+  rerank: {
+    enabled: boolean;
+    top_n: number;
+    top_k: number;
+  };
+  knowledge_libraries: string[];
+}
+
+export interface WorkspaceConfigResponse {
+  config: WorkspaceConfig;
 }
 
 // ─── M6: LLM Profiles ─────────────────────────────────────────────────────────

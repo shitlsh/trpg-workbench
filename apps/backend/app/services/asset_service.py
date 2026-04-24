@@ -1,28 +1,60 @@
-"""Asset CRUD + file system management + revision creation."""
+"""File-first asset CRUD — frontmatter Markdown is source of truth.
+
+Write path:  Agent/user edit → write .md file → update cache.db index
+Read path:   read .md file from disk → parse frontmatter
+"""
+import hashlib
 import json
-import re
+from datetime import datetime, timezone
 from pathlib import Path
-from sqlalchemy.orm import Session
+from typing import Any
 
-from app.models.orm import AssetORM, AssetRevisionORM
-from app.utils.paths import get_data_dir
+import frontmatter
 
-# ─── Asset type → directory mapping ──────────────────────────────────────────
+from app.utils.paths import (
+    asset_type_dir, asset_file_path, asset_revision_dir,
+)
 
-ASSET_TYPE_DIRS = {
-    "outline": "outline",
-    "stage": "stages",
-    "npc": "npcs",
-    "monster": "monsters",
-    "location": "locations",
-    "clue": "clues",
-    "branch": "branches",
-    "timeline": "timelines",
-    "map_brief": "map_briefs",
-    "lore_note": "lore_notes",
-}
 
-# ─── NPC template (Markdown with standard headings) ───────────────────────────
+# ─── Frontmatter helpers ────────────────────────────────────────────────────
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _file_hash(path: Path) -> str:
+    """SHA-256 hex digest of a file."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def build_frontmatter(
+    asset_type: str,
+    name: str,
+    slug: str,
+    status: str = "draft",
+    version: int = 1,
+    created_at: str | None = None,
+    updated_at: str | None = None,
+    extra: dict | None = None,
+) -> dict:
+    """Build the YAML frontmatter dict for an asset file."""
+    meta: dict[str, Any] = {
+        "type": asset_type,
+        "name": name,
+        "slug": slug,
+        "status": status,
+        "version": version,
+        "created_at": created_at or _now_iso(),
+        "updated_at": updated_at or _now_iso(),
+    }
+    if extra:
+        meta.update(extra)
+    return meta
+
+
+# ─── Templates ───────────────────────────────────────────────────────────────
+
 
 NPC_MD_TEMPLATE = """# {name}
 
@@ -51,229 +83,291 @@ GENERIC_MD_TEMPLATE = """# {name}
 
 """
 
-NPC_JSON_TEMPLATE = {
-    "name": "",
-    "appearance": "",
-    "background": "",
-    "motivation": "",
-    "relationship_to_players": "",
-    "notes": "",
-}
 
-GENERIC_JSON_TEMPLATE = {
-    "name": "",
-    "description": "",
-    "notes": "",
-}
-
-
-def _workspace_assets_dir(workspace_path: str) -> Path:
-    return Path(workspace_path) / "assets"
-
-
-def ensure_workspace_dirs(workspace_path: str) -> None:
-    """Create all asset subdirectories for a workspace."""
-    base = _workspace_assets_dir(workspace_path)
-    for subdir in ASSET_TYPE_DIRS.values():
-        (base / subdir).mkdir(parents=True, exist_ok=True)
-    (Path(workspace_path) / "revisions").mkdir(parents=True, exist_ok=True)
-    (Path(workspace_path) / "images").mkdir(parents=True, exist_ok=True)
-    (Path(workspace_path) / "logs").mkdir(parents=True, exist_ok=True)
-
-
-def _asset_file_prefix(asset_type: str, slug: str) -> str:
-    return f"{asset_type}-{slug}"
-
-
-def _get_template_md(asset_type: str, name: str) -> str:
+def _get_template_body(asset_type: str, name: str) -> str:
+    """Return the Markdown body (below frontmatter) for a new asset."""
     if asset_type == "npc":
         return NPC_MD_TEMPLATE.format(name=name)
     return GENERIC_MD_TEMPLATE.format(name=name)
 
 
-def _get_template_json(asset_type: str, name: str) -> str:
-    if asset_type == "npc":
-        data = {**NPC_JSON_TEMPLATE, "name": name}
-    else:
-        data = {**GENERIC_JSON_TEMPLATE, "name": name}
-    return json.dumps(data, ensure_ascii=False, indent=2)
+# ─── File I/O ────────────────────────────────────────────────────────────────
 
 
-def _write_asset_files(asset_dir: Path, prefix: str, content_md: str, content_json: str) -> None:
-    (asset_dir / f"{prefix}.md").write_text(content_md, encoding="utf-8")
-    (asset_dir / f"{prefix}.json").write_text(content_json, encoding="utf-8")
+def write_asset_file(
+    workspace_path: str | Path,
+    asset_type: str,
+    slug: str,
+    metadata: dict,
+    body: str,
+    target_path: Path | None = None,
+) -> Path:
+    """Write a frontmatter Markdown asset file.
 
-
-def create_asset(db: Session, workspace_id: str, workspace_path: str,
-                 asset_type: str, name: str, slug: str, summary: str | None = None) -> AssetORM:
-    """Create an asset, write initial files, and create revision 1."""
-    subdir = ASSET_TYPE_DIRS.get(asset_type, asset_type + "s")
-    asset_dir = _workspace_assets_dir(workspace_path) / subdir
-    asset_dir.mkdir(parents=True, exist_ok=True)
-
-    prefix = _asset_file_prefix(asset_type, slug)
-    rel_path = f"assets/{subdir}/{prefix}"
-
-    content_md = _get_template_md(asset_type, name)
-    content_json = _get_template_json(asset_type, name)
-
-    _write_asset_files(asset_dir, prefix, content_md, content_json)
-
-    asset = AssetORM(
-        workspace_id=workspace_id,
-        type=asset_type,
-        name=name,
-        slug=slug,
-        path=rel_path,
-        status="draft",
-        summary=summary,
-    )
-    db.add(asset)
-    db.flush()  # get id before creating revision
-
-    revision = AssetRevisionORM(
-        asset_id=asset.id,
-        version=1,
-        content_md=content_md,
-        content_json=content_json,
-        change_summary="初始创建",
-        source_type="user",
-    )
-    db.add(revision)
-    db.flush()
-
-    asset.latest_revision_id = revision.id
-    db.commit()
-    db.refresh(asset)
-    return asset
-
-
-def update_asset(db: Session, asset: AssetORM, workspace_path: str,
-                 content_md: str | None = None, content_json: str | None = None,
-                 change_summary: str | None = None,
-                 name: str | None = None, status: str | None = None,
-                 summary: str | None = None,
-                 source_type: str = "user") -> AssetORM:
-    """Update asset content + write files + append revision."""
-    # Get current content from latest revision
-    latest = None
-    if asset.latest_revision_id:
-        latest = db.get(AssetRevisionORM, asset.latest_revision_id)
-
-    current_md = latest.content_md if latest else ""
-    current_json = latest.content_json if latest else "{}"
-
-    new_md = content_md if content_md is not None else current_md
-    new_json = content_json if content_json is not None else current_json
-
-    if name:
-        asset.name = name
-    if status:
-        asset.status = status
-    if summary is not None:
-        asset.summary = summary
-
-    # Write files
-    subdir = ASSET_TYPE_DIRS.get(asset.type, asset.type + "s")
-    asset_dir = _workspace_assets_dir(workspace_path) / subdir
-    prefix = _asset_file_prefix(asset.type, asset.slug)
-    _write_asset_files(asset_dir, prefix, new_md, new_json)
-
-    # Count revisions for next version number
-    last_version = latest.version if latest else 0
-
-    revision = AssetRevisionORM(
-        asset_id=asset.id,
-        version=last_version + 1,
-        content_md=new_md,
-        content_json=new_json,
-        change_summary=change_summary or "用户手动编辑",
-        source_type=source_type,
-    )
-    db.add(revision)
-    db.flush()
-
-    asset.latest_revision_id = revision.id
-    db.commit()
-    db.refresh(asset)
-    return asset
-
-
-def get_asset_with_content(db: Session, asset: AssetORM) -> dict:
-    """Return asset dict merged with latest revision content."""
-    latest = None
-    if asset.latest_revision_id:
-        latest = db.get(AssetRevisionORM, asset.latest_revision_id)
-
-    result = {
-        "id": asset.id,
-        "workspace_id": asset.workspace_id,
-        "type": asset.type,
-        "name": asset.name,
-        "slug": asset.slug,
-        "path": asset.path,
-        "status": asset.status,
-        "summary": asset.summary,
-        "metadata_json": asset.metadata_json,
-        "latest_revision_id": asset.latest_revision_id,
-        "created_at": asset.created_at,
-        "updated_at": asset.updated_at,
-        "content_md": latest.content_md if latest else "",
-        "content_json": latest.content_json if latest else "{}",
-        "version": latest.version if latest else 0,
-    }
-    return result
-
-
-def md_to_json_sync(content_md: str, asset_type: str, existing_json: str) -> tuple[str, list[str]]:
+    If target_path is given, write there; otherwise use the convention path.
+    Returns the absolute path of the written file.
     """
-    Parse MD headings into JSON fields. Returns (new_json, warnings).
-    Unrecognised sections are collected into `notes`.
+    if target_path is None:
+        target_path = asset_file_path(workspace_path, asset_type, slug)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    post = frontmatter.Post(body, **metadata)
+    target_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+    return target_path
+
+
+def read_asset_file(filepath: Path) -> dict | None:
+    """Read and parse a frontmatter Markdown file.
+
+    Returns dict with keys: metadata (dict), body (str), file_path (Path), file_hash (str).
+    Returns None if the file cannot be parsed.
     """
+    if not filepath.exists():
+        return None
     try:
-        data = json.loads(existing_json)
+        post = frontmatter.load(str(filepath))
+        meta = dict(post.metadata)
+        if "type" not in meta:
+            return None
+        return {
+            "metadata": meta,
+            "body": post.content,
+            "file_path": filepath,
+            "file_hash": _file_hash(filepath),
+        }
     except Exception:
-        data = {}
+        return None
 
-    HEADING_MAP = {
-        "外貌描述": "appearance",
-        "背景故事": "background",
-        "动机": "motivation",
-        "与玩家的关系": "relationship_to_players",
-        "描述": "description",
-        "备注": "notes",
+
+def scan_asset_files(workspace_path: str | Path) -> tuple[list[dict], list[dict]]:
+    """Recursively scan workspace for .md files with frontmatter.
+
+    Returns (valid_assets, diagnostics).
+    - valid_assets: list of parsed asset dicts
+    - diagnostics: list of {file_path, error} for files with broken frontmatter
+    """
+    from app.utils.paths import is_reserved_dir
+
+    root = Path(workspace_path)
+    valid: list[dict] = []
+    diagnostics: list[dict] = []
+
+    for md_file in root.rglob("*.md"):
+        # Skip reserved directories
+        rel_parts = md_file.relative_to(root).parts
+        if any(is_reserved_dir(p) for p in rel_parts):
+            continue
+
+        try:
+            post = frontmatter.load(str(md_file))
+            meta = dict(post.metadata)
+        except Exception as e:
+            # Has frontmatter-like content but failed to parse
+            diagnostics.append({
+                "file_path": str(md_file.relative_to(root)),
+                "error": f"Frontmatter 解析失败: {e}",
+            })
+            continue
+
+        # No frontmatter at all → silent skip (user notes)
+        if not meta:
+            continue
+
+        # Has frontmatter but missing required fields
+        if "type" not in meta:
+            diagnostics.append({
+                "file_path": str(md_file.relative_to(root)),
+                "error": "缺少必填字段 'type'",
+            })
+            continue
+
+        if "name" not in meta:
+            diagnostics.append({
+                "file_path": str(md_file.relative_to(root)),
+                "error": "缺少必填字段 'name'",
+            })
+            continue
+
+        valid.append({
+            "metadata": meta,
+            "body": post.content,
+            "file_path": md_file,
+            "rel_path": str(md_file.relative_to(root)),
+            "file_hash": _file_hash(md_file),
+        })
+
+    return valid, diagnostics
+
+
+# ─── Create / Update / Read (high-level) ─────────────────────────────────────
+
+
+def create_asset(
+    workspace_path: str | Path,
+    asset_type: str,
+    name: str,
+    slug: str,
+    summary: str | None = None,
+    body: str | None = None,
+    extra_meta: dict | None = None,
+) -> dict:
+    """Create a new asset file and return parsed asset dict.
+
+    Returns: {metadata, body, file_path, rel_path, file_hash}
+    """
+    ws = Path(workspace_path)
+    meta = build_frontmatter(asset_type, name, slug, extra=extra_meta)
+    if summary:
+        meta["summary"] = summary
+
+    content = body if body is not None else _get_template_body(asset_type, name)
+    filepath = write_asset_file(ws, asset_type, slug, meta, content)
+
+    # Create initial revision snapshot
+    _save_revision_snapshot(ws, slug, 1, meta, content)
+
+    return {
+        "metadata": meta,
+        "body": content,
+        "file_path": filepath,
+        "rel_path": str(filepath.relative_to(ws)),
+        "file_hash": _file_hash(filepath),
     }
 
-    sections: dict[str, str] = {}
-    current_heading = None
-    lines = content_md.splitlines()
-    buf = []
 
-    for line in lines:
-        m = re.match(r"^##\s+(.+)", line)
-        if m:
-            if current_heading is not None:
-                sections[current_heading] = "\n".join(buf).strip()
-            current_heading = m.group(1).strip()
-            buf = []
-        else:
-            buf.append(line)
-    if current_heading is not None:
-        sections[current_heading] = "\n".join(buf).strip()
+def update_asset(
+    workspace_path: str | Path,
+    file_path: Path,
+    body: str | None = None,
+    meta_updates: dict | None = None,
+    change_summary: str | None = None,
+    source_type: str = "user",
+) -> dict:
+    """Update an existing asset file (re-write with updated frontmatter/body).
 
-    warnings = []
-    unmapped = []
-    for heading, text in sections.items():
-        field = HEADING_MAP.get(heading)
-        if field:
-            data[field] = text
-        else:
-            unmapped.append(f"## {heading}\n{text}")
+    Returns: {metadata, body, file_path, rel_path, file_hash, revision_version}
+    """
+    ws = Path(workspace_path)
+    parsed = read_asset_file(file_path)
+    if not parsed:
+        raise FileNotFoundError(f"Asset file not found: {file_path}")
 
-    if unmapped:
-        data["notes"] = (data.get("notes") or "") + "\n\n" + "\n\n".join(unmapped)
-        warnings.append("部分内容无法同步到 JSON，建议在 JSON 视图补充：" + ", ".join(
-            [h for h in sections if h not in HEADING_MAP]
-        ))
+    meta = parsed["metadata"]
+    new_body = body if body is not None else parsed["body"]
 
-    return json.dumps(data, ensure_ascii=False, indent=2), warnings
+    if meta_updates:
+        meta.update(meta_updates)
+
+    # Bump version
+    old_version = meta.get("version", 1)
+    new_version = old_version + 1
+    meta["version"] = new_version
+    meta["updated_at"] = _now_iso()
+
+    write_asset_file(ws, meta["type"], meta["slug"], meta, new_body, target_path=file_path)
+
+    # Save revision snapshot
+    _save_revision_snapshot(
+        ws, meta["slug"], new_version, meta, new_body,
+        change_summary=change_summary, source_type=source_type,
+    )
+
+    return {
+        "metadata": meta,
+        "body": new_body,
+        "file_path": file_path,
+        "rel_path": str(file_path.relative_to(ws)),
+        "file_hash": _file_hash(file_path),
+        "revision_version": new_version,
+    }
+
+
+def get_asset_with_content(workspace_path: str | Path, file_path: Path) -> dict | None:
+    """Read asset from disk and return API-friendly dict."""
+    ws = Path(workspace_path)
+    parsed = read_asset_file(file_path)
+    if not parsed:
+        return None
+    meta = parsed["metadata"]
+
+    # Build a JSON representation from frontmatter for backward compat
+    json_data = {k: v for k, v in meta.items()
+                 if k not in ("type", "slug", "version", "created_at", "updated_at", "status")}
+
+    return {
+        "type": meta.get("type", ""),
+        "name": meta.get("name", ""),
+        "slug": meta.get("slug", ""),
+        "status": meta.get("status", "draft"),
+        "summary": meta.get("summary"),
+        "version": meta.get("version", 1),
+        "file_path": str(parsed["file_path"].relative_to(ws)),
+        "file_hash": parsed["file_hash"],
+        "content_md": parsed["body"],
+        "content_json": json.dumps(json_data, ensure_ascii=False, indent=2),
+        "metadata_json": meta.get("metadata_json"),
+        "created_at": meta.get("created_at", ""),
+        "updated_at": meta.get("updated_at", ""),
+    }
+
+
+# ─── Revision snapshots ─────────────────────────────────────────────────────
+
+
+def _save_revision_snapshot(
+    workspace_path: Path,
+    slug: str,
+    version: int,
+    metadata: dict,
+    body: str,
+    change_summary: str | None = None,
+    source_type: str = "user",
+) -> Path:
+    """Copy current asset content to .trpg/revisions/{slug}/v{N}.md"""
+    rev_dir = asset_revision_dir(workspace_path, slug)
+    rev_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_path = rev_dir / f"v{version}.md"
+
+    # Add revision metadata to the snapshot
+    rev_meta = {**metadata, "_change_summary": change_summary or "用户手动编辑", "_source_type": source_type}
+    post = frontmatter.Post(body, **rev_meta)
+    snapshot_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+    return snapshot_path
+
+
+def list_revision_snapshots(workspace_path: str | Path, slug: str) -> list[dict]:
+    """List all revision snapshots for an asset, newest first."""
+    rev_dir = asset_revision_dir(workspace_path, slug)
+    if not rev_dir.exists():
+        return []
+    snapshots = []
+    for f in sorted(rev_dir.glob("v*.md"), reverse=True):
+        try:
+            version = int(f.stem[1:])  # "v3" → 3
+            post = frontmatter.load(str(f))
+            meta = dict(post.metadata)
+            snapshots.append({
+                "version": version,
+                "snapshot_path": str(f.relative_to(Path(workspace_path) / ".trpg")),
+                "change_summary": meta.pop("_change_summary", ""),
+                "source_type": meta.pop("_source_type", "user"),
+                "created_at": meta.get("updated_at", ""),
+            })
+        except Exception:
+            continue
+    return snapshots
+
+
+def read_revision_snapshot(workspace_path: str | Path, slug: str, version: int) -> dict | None:
+    """Read a specific revision snapshot."""
+    snapshot_path = asset_revision_dir(workspace_path, slug) / f"v{version}.md"
+    if not snapshot_path.exists():
+        return None
+    try:
+        post = frontmatter.load(str(snapshot_path))
+        meta = dict(post.metadata)
+        meta.pop("_change_summary", None)
+        meta.pop("_source_type", None)
+        return {"metadata": meta, "body": post.content}
+    except Exception:
+        return None

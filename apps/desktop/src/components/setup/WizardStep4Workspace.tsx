@@ -10,7 +10,7 @@ interface Props {
 
 export function WizardStep4Workspace({ onComplete, onSkip }: Props) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<CreateWorkspaceRequest>({ name: "", description: "", rule_set_id: "" });
+  const [form, setForm] = useState<CreateWorkspaceRequest>({ name: "", description: "" });
 
   const { data: ruleSets = [] } = useQuery<RuleSet[]>({
     queryKey: ["rule-sets"],
@@ -54,9 +54,9 @@ export function WizardStep4Workspace({ onComplete, onSkip }: Props) {
               暂无规则集，请先在「规则集」页面创建
             </div>
           ) : (
-            <select style={inputStyle} value={form.rule_set_id} onChange={(e) => setForm({ ...form, rule_set_id: e.target.value })}>
+            <select style={inputStyle} value={form.rule_set ?? ""} onChange={(e) => setForm({ ...form, rule_set: e.target.value })}>
               <option value="">请选择规则集...</option>
-              {ruleSets.map((rs) => <option key={rs.id} value={rs.id}>{rs.name}</option>)}
+              {ruleSets.map((rs) => <option key={rs.id} value={rs.name}>{rs.name}</option>)}
             </select>
           )}
         </label>
@@ -65,7 +65,7 @@ export function WizardStep4Workspace({ onComplete, onSkip }: Props) {
         )}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
           <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后创建</button>
-          <button type="submit" style={btnPrimaryStyle} disabled={!form.name || !form.rule_set_id || createMutation.isPending}>
+          <button type="submit" style={btnPrimaryStyle} disabled={!form.name || !form.rule_set || createMutation.isPending}>
             {createMutation.isPending ? "创建中..." : "创建并继续"}
           </button>
         </div>

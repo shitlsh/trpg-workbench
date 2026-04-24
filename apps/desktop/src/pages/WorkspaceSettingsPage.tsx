@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { Library, Plus, X, Zap, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
-import { apiFetch, BACKEND_URL } from "../lib/api";
+import { Library, Plus, X, Zap, ChevronDown, ChevronRight, Trash2, FolderOpen } from "lucide-react";
+import { apiFetch } from "../lib/api";
 import type {
   Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry,
   EmbeddingCatalogEntry, RerankProfile, WorkspaceLibraryBinding,
-  CreateBindingRequest, KnowledgeLibrary,
+  CreateBindingRequest, KnowledgeLibrary, WorkspaceConfigResponse,
   WorkspaceSkillMeta, WorkspaceSkill,
   CreateWorkspaceSkillRequest, UpdateWorkspaceSkillRequest,
 } from "@trpg-workbench/shared-schema";
@@ -259,7 +259,7 @@ function SkillsSection({ workspaceId }: { workspaceId: string }) {
 
 // ─── Extra Libraries Section ───────────────────────────────────────────────────
 
-function ExtraLibrariesSection({ workspaceId, ruleSetId }: { workspaceId: string; ruleSetId: string }) {
+function ExtraLibrariesSection({ workspaceId, ruleSetName }: { workspaceId: string; ruleSetName: string }) {
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
 
@@ -267,6 +267,14 @@ function ExtraLibrariesSection({ workspaceId, ruleSetId }: { workspaceId: string
     queryKey: ["knowledge", "libraries"],
     queryFn: () => apiFetch<KnowledgeLibrary[]>("/knowledge/libraries"),
   });
+
+  // Find rule set by name to get its libraries
+  const { data: ruleSets = [] } = useQuery({
+    queryKey: ["rule-sets"],
+    queryFn: () => apiFetch<RuleSet[]>("/rule-sets"),
+  });
+  const ruleSet = ruleSets.find((rs) => rs.name === ruleSetName || rs.slug === ruleSetName);
+  const ruleSetId = ruleSet?.id ?? "";
 
   const { data: rsLibraries = [] } = useQuery({
     queryKey: ["knowledge", "libraries", { rule_set_id: ruleSetId }],
@@ -418,14 +426,21 @@ export default function WorkspaceSettingsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [exporting, setExporting] = useState(false);
-  const [includeReview, setIncludeReview] = useState(false);
 
+  // Workspace registry (id, name, path)
   const { data: workspace } = useQuery({
     queryKey: ["workspace", id],
     queryFn: () => apiFetch<Workspace>(`/workspaces/${id}`),
     enabled: !!id,
   });
+
+  // Workspace config from .trpg/config.yaml
+  const { data: configResp } = useQuery({
+    queryKey: ["workspace", id, "config"],
+    queryFn: () => apiFetch<WorkspaceConfigResponse>(`/workspaces/${id}/config`),
+    enabled: !!id,
+  });
+  const config = configResp?.config;
 
   const { data: ruleSets = [] } = useQuery({
     queryKey: ["rule-sets"],
@@ -457,45 +472,53 @@ export default function WorkspaceSettingsPage() {
     queryFn: () => apiFetch<EmbeddingCatalogEntry[]>("/settings/model-catalog/embedding"),
   });
 
+  // Form state — populated from config
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [ruleSetId, setRuleSetId] = useState("");
-  const [defaultLlmId, setDefaultLlmId] = useState("");
-  const [rulesLlmId, setRulesLlmId] = useState("");
-  const [embeddingId, setEmbeddingId] = useState("");
-  const [rerankProfileId, setRerankProfileId] = useState<string>("");
+  const [ruleSetName, setRuleSetName] = useState("");
+  const [defaultLlmName, setDefaultLlmName] = useState("");
+  const [rulesLlmName, setRulesLlmName] = useState("");
+  const [embeddingName, setEmbeddingName] = useState("");
+  const [rerankName, setRerankName] = useState("");
   const [rerankEnabled, setRerankEnabled] = useState(false);
   const [rerankTopN, setRerankTopN] = useState(5);
   const [rerankTopK, setRerankTopK] = useState(20);
-  const [rerankTaskTypes, setRerankTaskTypes] = useState<string[]>(["rules_review"]);
 
-  // Populate form fields once workspace data is available
+  // Populate form from config
   useEffect(() => {
-    if (workspace) {
-      setName(workspace.name);
-      setDescription(workspace.description ?? "");
-      setRuleSetId(workspace.rule_set_id);
-      setDefaultLlmId(workspace.default_llm_profile_id ?? "");
-      setRulesLlmId(workspace.rules_llm_profile_id ?? "");
-      setEmbeddingId(workspace.embedding_profile_id ?? "");
-      setRerankProfileId(workspace.rerank_profile_id ?? "");
-      setRerankEnabled(workspace.rerank_enabled ?? false);
-      setRerankTopN(workspace.rerank_top_n ?? 5);
-      setRerankTopK(workspace.rerank_top_k ?? 20);
-      setRerankTaskTypes(() => {
-        try {
-          const raw = workspace.rerank_apply_to_task_types;
-          if (!raw) return ["rules_review"];
-          const parsed = JSON.parse(raw);
-          return Array.isArray(parsed) ? parsed : ["rules_review"];
-        } catch { return ["rules_review"]; }
-      });
+    if (config) {
+      setName(config.name ?? "");
+      setDescription(config.description ?? "");
+      setRuleSetName(config.rule_set ?? "");
+      setDefaultLlmName(config.models?.default_llm ?? "");
+      setRulesLlmName(config.models?.rules_llm ?? "");
+      setEmbeddingName(config.models?.embedding ?? "");
+      setRerankName(config.models?.rerank ?? "");
+      setRerankEnabled(config.rerank?.enabled ?? false);
+      setRerankTopN(config.rerank?.top_n ?? 5);
+      setRerankTopK(config.rerank?.top_k ?? 20);
     }
-  }, [workspace?.id]); // only re-init when workspace ID changes, not on every field update
+  }, [config?.name, id]); // re-init when workspace changes
 
-  const updateMutation = useMutation({
-    mutationFn: (body: Partial<Workspace>) =>
-      apiFetch<Workspace>(`/workspaces/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  // Save config via PATCH /workspaces/:id/config
+  const configMutation = useMutation({
+    mutationFn: (updates: Record<string, unknown>) =>
+      apiFetch<WorkspaceConfigResponse>(`/workspaces/${id}/config`, {
+        method: "PATCH",
+        body: JSON.stringify({ updates }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspace", id, "config"] });
+    },
+  });
+
+  // Also update the registry name if changed
+  const nameMutation = useMutation({
+    mutationFn: (newName: string) =>
+      apiFetch<Workspace>(`/workspaces/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: newName }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workspace", id] });
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
@@ -504,41 +527,42 @@ export default function WorkspaceSettingsPage() {
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    updateMutation.mutate({
-      name: name.trim(),
-      description: description.trim(),
-      rule_set_id: ruleSetId,
-      default_llm_profile_id: defaultLlmId || null,
-      rules_llm_profile_id: rulesLlmId || null,
-      embedding_profile_id: embeddingId || null,
-      rerank_profile_id: rerankProfileId || null,
-      rerank_enabled: rerankEnabled,
-      rerank_top_n: rerankTopN,
-      rerank_top_k: rerankTopK,
-      rerank_apply_to_task_types: JSON.stringify(rerankTaskTypes),
-    });
-  }
+    const trimmedName = name.trim();
 
-  async function handleExport() {
-    setExporting(true);
-    try {
-      const url = `${BACKEND_URL}/workspaces/${id}/export?include_review=${includeReview}`;
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${workspace?.name ?? "workspace"}_export.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } finally {
-      setExporting(false);
+    // Update config.yaml
+    configMutation.mutate({
+      name: trimmedName,
+      description: description.trim(),
+      rule_set: ruleSetName,
+      models: {
+        default_llm: defaultLlmName,
+        rules_llm: rulesLlmName,
+        embedding: embeddingName,
+        rerank: rerankName,
+      },
+      rerank: {
+        enabled: rerankEnabled,
+        top_n: rerankTopN,
+        top_k: rerankTopK,
+      },
+    });
+
+    // Sync registry name if changed
+    if (workspace && trimmedName !== workspace.name) {
+      nameMutation.mutate(trimmedName);
     }
   }
 
-  if (!workspace) return <div className={styles.loading}>加载中...</div>;
+  const isSaving = configMutation.isPending || nameMutation.isPending;
+  const isSaved = configMutation.isSuccess;
+  const saveError = configMutation.error || nameMutation.error;
 
-  const selectedDefaultLlm = llmProfiles.find((p) => p.id === defaultLlmId);
-  const selectedRulesLlm = llmProfiles.find((p) => p.id === rulesLlmId);
-  const selectedEmbedding = embeddingProfiles.find((p) => p.id === embeddingId);
+  if (!workspace || !config) return <div className={styles.loading}>加载中...</div>;
+
+  // Resolve name-based references to profiles for catalog hints
+  const selectedDefaultLlm = llmProfiles.find((p) => p.name === defaultLlmName);
+  const selectedRulesLlm = llmProfiles.find((p) => p.name === rulesLlmName);
+  const selectedEmbedding = embeddingProfiles.find((p) => p.name === embeddingName);
 
   return (
     <div className={styles.page}>
@@ -558,25 +582,29 @@ export default function WorkspaceSettingsPage() {
             <textarea className={styles.textarea} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </label>
           <label className={styles.label}>
-            规则体系 *
-            <select className={styles.select} value={ruleSetId} onChange={(e) => setRuleSetId(e.target.value)}>
-              {ruleSets.map((rs) => <option key={rs.id} value={rs.id}>{rs.name}</option>)}
+            规则体系
+            <select className={styles.select} value={ruleSetName} onChange={(e) => setRuleSetName(e.target.value)}>
+              <option value="">未指定</option>
+              {ruleSets.map((rs) => <option key={rs.id} value={rs.name}>{rs.name}</option>)}
             </select>
           </label>
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>模型路由</div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -4, marginBottom: 8 }}>
+            模型引用按名称存储，可跨设备移植。选择下拉中的配置名即可。
+          </p>
           <label className={styles.label}>
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
               默认 LLM（用于创建模组、修改资产等所有 AI 任务）
-              {!defaultLlmId && (
+              {!defaultLlmName && (
                 <span title="未指定 LLM 时，所有 AI 功能将无法运行" style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(230,160,30,0.15)", color: "#d4a020", border: "1px solid rgba(230,160,30,0.3)", cursor: "default" }}>
-                  ⚠ 未指定
+                  未指定
                 </span>
               )}
               <CatalogHint profile={selectedDefaultLlm} catalog={llmCatalog} />
             </span>
-            <select className={styles.select} value={defaultLlmId} onChange={(e) => setDefaultLlmId(e.target.value)}>
+            <select className={styles.select} value={defaultLlmName} onChange={(e) => setDefaultLlmName(e.target.value)}>
               <option value="">不指定</option>
-              {llmProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
+              {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
           <label className={styles.label}>
@@ -584,9 +612,9 @@ export default function WorkspaceSettingsPage() {
               规则审查 LLM（留空则使用默认 LLM）
               <CatalogHint profile={selectedRulesLlm} catalog={llmCatalog} />
             </span>
-            <select className={styles.select} value={rulesLlmId} onChange={(e) => setRulesLlmId(e.target.value)}>
+            <select className={styles.select} value={rulesLlmName} onChange={(e) => setRulesLlmName(e.target.value)}>
               <option value="">使用默认 LLM</option>
-              {llmProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
+              {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
           <label className={styles.label}>
@@ -594,21 +622,21 @@ export default function WorkspaceSettingsPage() {
               Embedding 向量化（用于知识库索引和检索）
               <CatalogHint profile={selectedEmbedding} catalog={embCatalog} />
             </span>
-            <select className={styles.select} value={embeddingId} onChange={(e) => setEmbeddingId(e.target.value)}>
+            <select className={styles.select} value={embeddingName} onChange={(e) => setEmbeddingName(e.target.value)}>
               <option value="">不指定</option>
-              {embeddingProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>)}
+              {embeddingProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
 
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Rerank 重排序（可选）</div>
           <label className={styles.label}>
             Rerank 配置（留空则不使用 Rerank）
-            <select className={styles.select} value={rerankProfileId} onChange={(e) => setRerankProfileId(e.target.value)}>
+            <select className={styles.select} value={rerankName} onChange={(e) => setRerankName(e.target.value)}>
               <option value="">不使用 Rerank</option>
-              {rerankProfiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.model})</option>)}
+              {rerankProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model})</option>)}
             </select>
           </label>
-          {rerankProfileId && (
+          {rerankName && (
             <>
               <label className={styles.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <input type="checkbox" checked={rerankEnabled} onChange={(e) => setRerankEnabled(e.target.checked)} />
@@ -627,32 +655,14 @@ export default function WorkspaceSettingsPage() {
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -8 }}>
                 先检索 top_k 个候选，Rerank 后保留 top_n 个。top_n 须小于等于 top_k。
               </p>
-              <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 13, marginBottom: 6 }}>应用任务类型：</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                  {(["rules_review", "plot_creation", "npc_creation", "monster_creation", "lore_creation", "consistency_check"] as const).map((t) => (
-                    <label key={t} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={rerankTaskTypes.includes(t)}
-                        onChange={(e) => {
-                          if (e.target.checked) setRerankTaskTypes((prev) => [...prev, t]);
-                          else setRerankTaskTypes((prev) => prev.filter((x) => x !== t));
-                        }}
-                      />
-                      {t}
-                    </label>
-                  ))}
-                </div>
-              </div>
             </>
           )}
           <div className={styles.actions}>
-            <button type="submit" className={styles.btnPrimary} disabled={!name.trim() || !ruleSetId || updateMutation.isPending}>
-              {updateMutation.isPending ? "保存中..." : "保存"}
+            <button type="submit" className={styles.btnPrimary} disabled={!name.trim() || isSaving}>
+              {isSaving ? "保存中..." : "保存"}
             </button>
-            {updateMutation.isSuccess && <span className={styles.saved}>已保存</span>}
-            {updateMutation.isError && <span className={styles.error}>{(updateMutation.error as Error).message}</span>}
+            {isSaved && <span className={styles.saved}>已保存</span>}
+            {saveError && <span className={styles.error}>{(saveError as Error).message}</span>}
           </div>
         </form>
 
@@ -660,28 +670,25 @@ export default function WorkspaceSettingsPage() {
         <SkillsSection workspaceId={id!} />
 
         {/* Extra Knowledge Libraries section */}
-        <ExtraLibrariesSection workspaceId={id!} ruleSetId={ruleSetId} />
+        <ExtraLibrariesSection workspaceId={id!} ruleSetName={ruleSetName} />
 
-        {/* Export section */}
+        {/* Workspace directory section (replaces export) */}
         <div style={{
           marginTop: 32, padding: 20,
           border: "1px solid var(--border, #333)", borderRadius: 8,
         }}>
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>导出文档包</div>
-          <div style={{ fontSize: 13, color: "var(--text-muted, #888)", marginBottom: 12 }}>
-            将所有"定稿"状态的资产导出为 Markdown 文件 zip 包。
+          <div style={{ fontWeight: 600, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <FolderOpen size={15} /> 工作空间目录
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 12, cursor: "pointer" }}>
-            <input type="checkbox" checked={includeReview} onChange={(e) => setIncludeReview(e.target.checked)} />
-            同时包含"审查中"状态的资产
-          </label>
-          <button
-            onClick={handleExport}
-            disabled={exporting}
-            className={styles.btnPrimary}
-          >
-            {exporting ? "准备导出..." : "导出 ZIP"}
-          </button>
+          <div style={{ fontSize: 13, color: "var(--text-muted, #888)", marginBottom: 12 }}>
+            工作空间即文件夹 — 所有资产和配置直接存储在磁盘上，可直接复制、备份或用其他工具编辑。
+          </div>
+          <div style={{
+            padding: "8px 12px", background: "var(--bg)", border: "1px solid var(--border)",
+            borderRadius: 6, fontSize: 12, fontFamily: "monospace", wordBreak: "break-all",
+          }}>
+            {workspace.workspace_path}
+          </div>
         </div>
       </main>
     </div>

@@ -111,8 +111,8 @@ function RevisionSidebar({ tab }: { tab: EditorTab }) {
   });
 
   const rollbackMutation = useMutation({
-    mutationFn: async (revId: string) => {
-      return apiFetch<AssetWithContent>(`/assets/${tab.assetId}/revisions/${revId}/rollback`, {
+    mutationFn: async (version: number) => {
+      return apiFetch<AssetWithContent>(`/assets/${tab.assetId}/revisions/${version}/rollback`, {
         method: "POST",
       });
     },
@@ -147,7 +147,7 @@ function RevisionSidebar({ tab }: { tab: EditorTab }) {
           <div style={{ fontSize: 12, marginTop: 2, color: "var(--text)" }}>{rev.change_summary}</div>
           <button
             onClick={() => {
-              if (confirm(`回滚到版本 ${rev.version}？`)) rollbackMutation.mutate(rev.id);
+              if (confirm(`回滚到版本 ${rev.version}？`)) rollbackMutation.mutate(rev.version);
             }}
             style={{
               marginTop: 6, fontSize: 11, display: "flex", alignItems: "center", gap: 4,

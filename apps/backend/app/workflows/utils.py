@@ -11,7 +11,7 @@ except ImportError:
     _HAS_FRONTMATTER = False
 
 from app.models.orm import (
-    WorkflowStateORM, WorkspaceORM, AssetORM,
+    WorkflowStateORM, WorkspaceORM, AssetORM, RuleSetORM,
     KnowledgeLibraryORM, WorkspaceLibraryBindingORM,
     PromptProfileORM, CustomAssetTypeConfigORM,
 )
@@ -92,9 +92,26 @@ def pause_for_clarification(db: Session, wf: WorkflowStateORM, clarification_que
 
 
 def get_workspace_context(db: Session, workspace_id: str) -> dict:
+    from app.services.workspace_service import read_config
+
     ws = db.get(WorkspaceORM, workspace_id)
     if not ws:
         return {}
+
+    # Read config.yaml for rule_set name, model bindings, etc.
+    config = read_config(ws.workspace_path)
+
+    # Resolve rule_set name → id
+    rule_set_name = config.get("rule_set", "")
+    rule_set_id = None
+    if rule_set_name:
+        rs = db.query(RuleSetORM).filter(RuleSetORM.slug == rule_set_name).first()
+        if not rs:
+            rs = db.query(RuleSetORM).filter(RuleSetORM.name == rule_set_name).first()
+        if rs:
+            rule_set_id = rs.id
+
+    # Assets from DB index
     assets = db.query(AssetORM).filter(
         AssetORM.workspace_id == workspace_id,
         AssetORM.status != "deleted",
@@ -102,16 +119,16 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
 
     # style_prompt: from the PromptProfile bound to the workspace's rule set
     style_prompt = None
-    if ws.rule_set_id:
-        pp = db.query(PromptProfileORM).filter_by(rule_set_id=ws.rule_set_id).first()
+    if rule_set_id:
+        pp = db.query(PromptProfileORM).filter_by(rule_set_id=rule_set_id).first()
         if pp:
             style_prompt = pp.system_prompt
 
     # library_ids: rule set libraries (via FK) + workspace extra bindings
     rs_libs = [
         lib.id
-        for lib in db.query(KnowledgeLibraryORM).filter_by(rule_set_id=ws.rule_set_id).all()
-    ] if ws.rule_set_id else []
+        for lib in db.query(KnowledgeLibraryORM).filter_by(rule_set_id=rule_set_id).all()
+    ] if rule_set_id else []
     ws_libs = [
         b.library_id
         for b in db.query(WorkspaceLibraryBindingORM).filter_by(
@@ -122,12 +139,12 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
 
     # M16: custom asset types registered for this rule set
     custom_asset_types = []
-    if ws.rule_set_id:
+    if rule_set_id:
         custom_asset_types = [
             {"type_key": c.type_key, "label": c.label, "icon": c.icon}
             for c in (
                 db.query(CustomAssetTypeConfigORM)
-                .filter_by(rule_set_id=ws.rule_set_id)
+                .filter_by(rule_set_id=rule_set_id)
                 .order_by(CustomAssetTypeConfigORM.sort_order, CustomAssetTypeConfigORM.created_at)
                 .all()
             )
@@ -136,7 +153,8 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
     return {
         "workspace_name": ws.name,
         "workspace_path": ws.workspace_path,
-        "rule_set": ws.rule_set_id,
+        "rule_set": rule_set_name,
+        "rule_set_id": rule_set_id,
         "style_prompt": style_prompt,
         "library_ids": library_ids,
         "existing_assets": [
@@ -144,6 +162,7 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
             for a in assets
         ],
         "custom_asset_types": custom_asset_types,
+        "config": config,
         "skills": [
             {"name": s["name"], "description": s["description"], "agent_types": s["agent_types"]}
             for s in load_workspace_skills(ws.workspace_path)

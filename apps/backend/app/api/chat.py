@@ -1,14 +1,20 @@
-"""Chat session + message API."""
+"""Chat session + message API — file-first.
+
+Messages stored in .trpg/chat/{session-id}.jsonl.
+ChatSessionORM in cache.db is an index only.
+"""
 import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
-from app.models.orm import ChatSessionORM, ChatMessageORM, WorkspaceORM, AssetORM
+from app.models.orm import ChatSessionORM, WorkspaceORM
 from app.models.schemas import (
     ChatSessionSchema, ChatMessageSchema,
     ChatSessionCreate, SendMessageRequest,
 )
+from app.services import chat_service
 from app.agents.director import run_director
 from app.workflows.utils import get_workspace_context
 
@@ -20,7 +26,22 @@ def create_session(body: ChatSessionCreate, db: Session = Depends(get_db)):
     ws = db.get(WorkspaceORM, body.workspace_id)
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    session = ChatSessionORM(**body.model_dump())
+
+    # Create session metadata (file created on first message)
+    meta = chat_service.create_session(
+        workspace_path=ws.workspace_path,
+        workspace_id=body.workspace_id,
+        agent_scope=body.agent_scope,
+        title=body.title,
+    )
+
+    # Create DB index row
+    session = ChatSessionORM(
+        id=meta["id"],
+        workspace_id=body.workspace_id,
+        agent_scope=body.agent_scope,
+        title=body.title,
+    )
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -37,32 +58,39 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
 
 @router.get("/sessions/{session_id}/messages", response_model=list[ChatMessageSchema])
 def get_messages(session_id: str, db: Session = Depends(get_db)):
-    return (
-        db.query(ChatMessageORM)
-        .filter(ChatMessageORM.session_id == session_id)
-        .order_by(ChatMessageORM.created_at)
-        .all()
-    )
+    """Read messages from JSONL file on disk."""
+    session = db.get(ChatSessionORM, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    ws = db.get(WorkspaceORM, session.workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    return chat_service.read_messages(ws.workspace_path, session_id)
 
 
 @router.post("/sessions/{session_id}/messages", response_model=dict, status_code=201)
 async def send_message(session_id: str, body: SendMessageRequest, db: Session = Depends(get_db)):
-    """
-    Send a user message and get Director response.
+    """Send a user message and get Director response.
+
     Returns: {user_message, assistant_message, change_plan, workflow_id, skill_created}
     """
     session = db.get(ChatSessionORM, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Save user message
-    user_msg = ChatMessageORM(
+    ws = db.get(WorkspaceORM, body.workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Save user message to JSONL
+    user_msg = chat_service.append_message(
+        workspace_path=ws.workspace_path,
         session_id=session_id,
         role="user",
         content=body.content,
     )
-    db.add(user_msg)
-    db.commit()
 
     # Run Director Agent
     try:
@@ -80,7 +108,7 @@ async def send_message(session_id: str, body: SendMessageRequest, db: Session = 
 
     skill_created = None
 
-    # Handle create_skill workflow inline (no background task needed)
+    # Handle create_skill workflow inline
     if change_plan.get("workflow") == "create_skill":
         try:
             skill_created = await _execute_create_skill(
@@ -98,7 +126,7 @@ async def send_message(session_id: str, body: SendMessageRequest, db: Session = 
                     ),
                 }
         except HTTPException:
-            raise  # Propagate HTTP errors (e.g. 422 ModelNotConfigured) as-is
+            raise
         except Exception as e:
             change_plan = {
                 **change_plan,
@@ -106,20 +134,25 @@ async def send_message(session_id: str, body: SendMessageRequest, db: Session = 
             }
 
     assistant_content = change_plan.get("change_plan", "")
-    assistant_msg = ChatMessageORM(
+
+    # Save assistant message to JSONL
+    assistant_msg = chat_service.append_message(
+        workspace_path=ws.workspace_path,
         session_id=session_id,
         role="assistant",
         content=assistant_content,
         tool_calls_json=json.dumps(change_plan, ensure_ascii=False),
     )
-    db.add(assistant_msg)
+
+    # Update session index
+    session.message_count = (session.message_count or 0) + 2
+    if not session.title and body.content:
+        session.title = body.content[:100]
     db.commit()
-    db.refresh(user_msg)
-    db.refresh(assistant_msg)
 
     return {
-        "user_message": ChatMessageSchema.model_validate(user_msg),
-        "assistant_message": ChatMessageSchema.model_validate(assistant_msg),
+        "user_message": user_msg,
+        "assistant_message": assistant_msg,
         "change_plan": change_plan,
         "workflow_id": None,
         "skill_created": skill_created,
@@ -138,16 +171,13 @@ async def _execute_create_skill(
     from app.api.workspace_skills import (
         _skills_dir, _name_to_slug, _unique_slug, _write_skill, WorkspaceSkill,
     )
-    from app.models.orm import WorkspaceORM
 
     ws = db.get(WorkspaceORM, workspace_id)
     if not ws:
         raise ValueError("Workspace not found")
 
-    # Resolve LLM model
     model = _resolve_model(workspace_id, "create_module", db)
 
-    # RAG retrieval (optional — may return None if no libraries bound)
     knowledge_context: list[dict] = []
     try:
         retriever = await _build_knowledge_retriever(workspace_id, "create_module", db)
@@ -159,12 +189,10 @@ async def _execute_create_skill(
                 if hasattr(c, "content")
             ]
     except Exception:
-        pass  # Proceed without knowledge context if retrieval fails
+        pass
 
-    # Run Skill Agent
     result = run_skill_agent(user_intent, knowledge_context, ws_ctx, model=model)
 
-    # Write skill file
     skills_dir = _skills_dir(ws.workspace_path)
     base_slug = _name_to_slug(result["name"])
     slug = _unique_slug(skills_dir, base_slug)

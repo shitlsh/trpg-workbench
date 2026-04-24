@@ -15,8 +15,8 @@ from app.agents.monster import run_monster_agent
 from app.agents.lore import run_lore_agent
 from app.agents.consistency import run_consistency_agent
 from app.agents.document import run_document_agent
-from app.services.asset_service import create_asset, update_asset, get_asset_with_content
-from app.models.orm import WorkflowStateORM, WorkspaceORM, AssetORM
+from app.services import asset_service
+from app.models.orm import WorkflowStateORM, WorkspaceORM, AssetORM, _uuid
 
 
 STEP_NAMES = [
@@ -283,7 +283,7 @@ async def resume_create_module(
         update_step(db, wf, 11, STEP_NAMES[11], "completed",
                     summary=f"格式化 {len(patches)} 个资产")
 
-        # ── Step 12: Persist assets ─────────────────────────────────────────
+        # ── Step 12: Persist assets (file-first) ──────────────────────────
         update_step(db, wf, 12, STEP_NAMES[12], "running")
         ws = db.get(WorkspaceORM, workspace_id)
         created_count = 0
@@ -293,7 +293,6 @@ async def resume_create_module(
                 slug = patch.get("asset_slug", "unknown")
                 name = patch.get("asset_name", slug)
                 content_md = patch.get("content_md", "")
-                content_json = patch.get("content_json", "{}")
                 summary_text = patch.get("change_summary", "由 AI 创建")
 
                 existing = db.query(AssetORM).filter(
@@ -303,15 +302,38 @@ async def resume_create_module(
                 ).first()
 
                 if existing:
-                    update_asset(db, existing, ws.workspace_path,
-                                 content_md=content_md, content_json=content_json,
-                                 change_summary=summary_text, source_type="agent")
+                    from pathlib import Path
+                    file_path = Path(ws.workspace_path) / existing.file_path
+                    result = asset_service.update_asset(
+                        workspace_path=ws.workspace_path,
+                        file_path=file_path,
+                        body=content_md,
+                        change_summary=summary_text,
+                        source_type="agent",
+                    )
+                    existing.file_hash = result["file_hash"]
+                    existing.version = result["metadata"].get("version", existing.version)
+                    db.commit()
                 else:
-                    new_asset = create_asset(db, workspace_id, ws.workspace_path,
-                                             asset_type, name, slug)
-                    update_asset(db, new_asset, ws.workspace_path,
-                                 content_md=content_md, content_json=content_json,
-                                 change_summary=summary_text, source_type="agent")
+                    result = asset_service.create_asset(
+                        workspace_path=ws.workspace_path,
+                        asset_type=asset_type,
+                        name=name,
+                        slug=slug,
+                        body=content_md,
+                    )
+                    row = AssetORM(
+                        id=_uuid(),
+                        workspace_id=workspace_id,
+                        type=asset_type,
+                        name=name,
+                        slug=slug,
+                        file_path=result["rel_path"],
+                        file_hash=result["file_hash"],
+                        version=1,
+                    )
+                    db.add(row)
+                    db.commit()
                 created_count += 1
             except Exception:
                 continue

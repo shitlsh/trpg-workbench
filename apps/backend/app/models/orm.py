@@ -24,30 +24,24 @@ class RuleSetORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
-    workspaces: Mapped[list["WorkspaceORM"]] = relationship("WorkspaceORM", back_populates="rule_set")
     libraries: Mapped[list["KnowledgeLibraryORM"]] = relationship("KnowledgeLibraryORM", back_populates="rule_set", cascade="all, delete-orphan")
 
 
 class WorkspaceORM(Base):
+    """Workspace registry entry in global app.db.
+
+    Most configuration now lives in .trpg/config.yaml (file-first).
+    This table is just a pointer: id + name + path + last_opened_at.
+    """
     __tablename__ = "workspaces"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    rule_set_id: Mapped[str] = mapped_column(String(36), ForeignKey("rule_sets.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    workspace_path: Mapped[str] = mapped_column(Text, nullable=False)
-    default_llm_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    rules_llm_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    embedding_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    rerank_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    rerank_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    rerank_top_n: Mapped[int] = mapped_column(Integer, default=20)
-    rerank_top_k: Mapped[int] = mapped_column(Integer, default=5)
-    rerank_apply_to_task_types: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list
+    workspace_path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    last_opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    status: Mapped[str] = mapped_column(String(20), default="ok")  # ok / missing
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
-
-    rule_set: Mapped["RuleSetORM"] = relationship("RuleSetORM", back_populates="workspaces")
 
 
 # ─── M6: Model Profiles ───────────────────────────────────────────────────────
@@ -140,7 +134,7 @@ class WorkspaceLibraryBindingORM(Base):
     __tablename__ = "workspace_library_bindings"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
     library_id: Mapped[str] = mapped_column(String(36), ForeignKey("knowledge_libraries.id"), nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=0)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -168,18 +162,24 @@ class IngestTaskORM(Base):
 # ─── M3: Assets ───────────────────────────────────────────────────────────────
 
 class AssetORM(Base):
+    """Asset index entry in workspace cache.db.
+
+    Content lives in the filesystem (frontmatter Markdown).
+    This table is a search/filter index only.
+    """
     __tablename__ = "assets"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(200), nullable=False)
-    path: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="draft")
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)  # relative to workspace root
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 hex
+    version: Mapped[int] = mapped_column(Integer, default=1)
     metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    latest_revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -191,13 +191,13 @@ class AssetORM(Base):
 
 
 class AssetRevisionORM(Base):
+    """Revision index entry. Actual content lives in .trpg/revisions/{slug}/v{N}.md"""
     __tablename__ = "asset_revisions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    content_md: Mapped[str] = mapped_column(Text, default="")
-    content_json: Mapped[str] = mapped_column(Text, default="{}")
+    snapshot_path: Mapped[str] = mapped_column(Text, nullable=False)  # relative to workspace .trpg/
     change_summary: Mapped[str] = mapped_column(String(500), default="用户手动编辑")
     source_type: Mapped[str] = mapped_column(String(20), default="user")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -208,32 +208,19 @@ class AssetRevisionORM(Base):
 # ─── M4: Chat & Workflow ──────────────────────────────────────────────────────
 
 class ChatSessionORM(Base):
+    """Chat session index in workspace cache.db. Messages stored in .trpg/chat/{id}.jsonl."""
     __tablename__ = "chat_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
     agent_scope: Mapped[str | None] = mapped_column(String(100), nullable=True)
     title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
-    messages: Mapped[list["ChatMessageORM"]] = relationship(
-        "ChatMessageORM", back_populates="session", cascade="all, delete-orphan"
-    )
 
-
-class ChatMessageORM(Base):
-    __tablename__ = "chat_messages"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_sessions.id"), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), nullable=False)  # user/assistant/system
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    references_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    tool_calls_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-
-    session: Mapped["ChatSessionORM"] = relationship("ChatSessionORM", back_populates="messages")
+# ChatMessageORM removed — messages now stored in .trpg/chat/{session-id}.jsonl
 
 
 # ─── M5: Image Generation ─────────────────────────────────────────────────────
@@ -242,8 +229,8 @@ class ImageGenerationJobORM(Base):
     __tablename__ = "image_generation_jobs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
-    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id"), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    asset_id: Mapped[str] = mapped_column(String(36), nullable=False)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     provider: Mapped[str] = mapped_column(String(50), default="dalle3")
     status: Mapped[str] = mapped_column(String(30), default="pending")  # pending/running/completed/failed
@@ -275,7 +262,7 @@ class WorkflowStateORM(Base):
     __tablename__ = "workflow_states"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="pending")
     current_step: Mapped[int] = mapped_column(Integer, default=0)

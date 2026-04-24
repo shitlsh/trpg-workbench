@@ -5,7 +5,7 @@ import type {
   ChatSession, ChatMessage, WorkflowState,
   ChangePlan, ConsistencyReport, PatchProposal,
   LLMProfile, ModelCatalogEntry, ClarificationQuestion, RulesSuggestion,
-  AssetWithContent,
+  AssetWithContent, WorkspaceConfigResponse,
 } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
 import { useEditorStore } from "@/stores/editorStore";
@@ -280,20 +280,21 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const [clarificationWorkflowId, setClarificationWorkflowId] = useState<string | null>(null);
   const [isSubmittingClarification, setIsSubmittingClarification] = useState(false);
 
-  // Load workspace to check model configuration
-  const { data: workspace } = useQuery({
-    queryKey: ["workspace", workspaceId],
-    queryFn: () => apiFetch<{ default_llm_profile_id: string | null }>(`/workspaces/${workspaceId}`),
+  // Load workspace config to check model configuration
+  const { data: configResp } = useQuery({
+    queryKey: ["workspace", workspaceId, "config"],
+    queryFn: () => apiFetch<WorkspaceConfigResponse>(`/workspaces/${workspaceId}/config`),
     enabled: !!workspaceId,
   });
+  const defaultLlmName = configResp?.config?.models?.default_llm ?? "";
 
   // Load LLM profile and catalog to get context_window for badge
   const { data: llmProfiles = [] } = useQuery({
     queryKey: ["llm-profiles"],
     queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
-    enabled: !!workspace?.default_llm_profile_id,
+    enabled: !!defaultLlmName,
   });
-  const activeProfile = llmProfiles.find((p) => p.id === workspace?.default_llm_profile_id);
+  const activeProfile = llmProfiles.find((p) => p.name === defaultLlmName);
 
   const { data: catalogEntry } = useQuery({
     queryKey: ["model-catalog-entry", activeProfile?.provider_type, activeProfile?.model_name],
@@ -392,7 +393,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     const content = input.trim();
     if (!content) return;
     // Pre-flight check: warn if no LLM configured
-    if (workspace && !workspace.default_llm_profile_id) {
+    if (configResp && !defaultLlmName) {
       setModelWarning("未配置默认 LLM。请前往工作空间设置 → 模型路由完成配置后再发送。");
       return;
     }

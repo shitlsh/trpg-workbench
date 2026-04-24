@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { Workspace } from "@trpg-workbench/shared-schema";
+import type { Workspace, RuleSet, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
 import { ThreePanelLayout } from "@/components/editor/ThreePanelLayout";
 import { AssetTree } from "@/components/editor/AssetTree";
 import { EditorCenter } from "@/components/editor/EditorCenter";
@@ -17,6 +17,20 @@ export function WorkspacePage() {
     queryFn: () => apiFetch<Workspace>(`/workspaces/${id}`),
     enabled: !!id,
   });
+
+  const { data: configResp } = useQuery({
+    queryKey: ["workspace", id, "config"],
+    queryFn: () => apiFetch<WorkspaceConfigResponse>(`/workspaces/${id}/config`),
+    enabled: !!id,
+  });
+
+  const { data: ruleSets = [] } = useQuery({
+    queryKey: ["rule-sets"],
+    queryFn: () => apiFetch<RuleSet[]>("/rule-sets"),
+  });
+
+  const config = configResp?.config;
+  const ruleSet = ruleSets.find((rs) => rs.name === config?.rule_set || rs.slug === config?.rule_set);
 
   if (isLoading) {
     return (
@@ -53,7 +67,9 @@ export function WorkspacePage() {
         </button>
         <span style={{ color: "var(--border)" }}>|</span>
         <span style={{ fontWeight: 700, fontSize: 14 }}>{workspace.name}</span>
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{workspace.description}</span>
+        {config?.description && (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{config.description}</span>
+        )}
       </div>
 
       {/* Three panel layout */}
@@ -65,7 +81,7 @@ export function WorkspacePage() {
             </div>
           }
           center={<EditorCenter />}
-          right={<AssetTree workspaceId={workspace.id} ruleSetId={workspace.rule_set_id} />}
+          right={<AssetTree workspaceId={workspace.id} ruleSetId={ruleSet?.id} />}
         />
       </div>
     </div>
