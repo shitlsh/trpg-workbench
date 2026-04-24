@@ -300,6 +300,7 @@ def create_asset(type: str, name: str, content_md: str) -> dict:
 - [ ] **A6.4**：删除 `WorkflowProgress.tsx` 及其引用
 - [ ] **A6.5**：`agents/director.py` — system prompt 重写为 tool-calling 风格（删除 clarification/planning 两阶段 prompt）
 - [ ] **A6.6**：子 Agent prompt 内化 — 将 npc.py/plot.py/monster.py/lore.py 的专业 prompt 提取到 tools.py 的对应工具函数中
+- [ ] **A6.7**：清理图片生成残留 — 删除 `workflows/generate_image.py`（A6.1 已覆盖）；删除 `api/assets.py` 中 3 个图片生成端点（`start_generate_image`/`confirm_generate_image`/`image-jobs`）；删除 `models/orm.py` 中 `ImageGenerationJobORM`；删除 `shared-schema` 中 `ImageBrief`/`ImageGenerationJob` 类型；删除 `AssetMetaPanel.tsx` 中 `ImageSection` 组件；清理 `lore.py` 和 `prompts/lore/system.txt` 中 `image_brief` 相关指令；清理 Director prompt 中 `image_gen` intent 和 `generate_image` workflow 引用
 
 ### A7：@资产引用
 
