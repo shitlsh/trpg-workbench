@@ -423,7 +423,7 @@ export default function WorkspaceSettingsPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <button className={styles.back} onClick={() => navigate("/")}>← 返回</button>
+        <button className={styles.back} onClick={() => navigate(`/workspace/${id}`)}>← 返回</button>
         <h1 className={styles.title}>工作空间设置</h1>
         <HelpButton doc="getting-started" />
       </header>

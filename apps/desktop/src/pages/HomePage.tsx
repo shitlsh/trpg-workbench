@@ -197,12 +197,6 @@ export default function HomePage() {
                   打开
                 </button>
                 <button
-                  className={styles.btnSecondary}
-                  onClick={() => navigate(`/workspace/${ws.id}/settings`)}
-                >
-                  设置
-                </button>
-                <button
                   className={styles.btnDanger}
                   onClick={() => setDeleteTarget(ws)}
                 >
