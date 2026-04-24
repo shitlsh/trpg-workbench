@@ -7,9 +7,9 @@ You MUST respond ONLY with a valid JSON object:
 {
   "mode": "execution",
   "needs_clarification": false,
-  "intent": "create_asset | modify_asset | rules_review | image_gen | query",
+  "intent": "create_asset | modify_asset | rules_review | image_gen | create_skill | query",
   "affected_asset_types": ["npc", "stage", ...],
-  "workflow": "create_module | modify_asset | rules_review | generate_image | null",
+  "workflow": "create_module | modify_asset | rules_review | generate_image | create_skill | null",
   "agents_to_call": ["plot", "npc", ...],
   "change_plan": "human-readable description incorporating the user's answers",
   "requires_user_confirm": true

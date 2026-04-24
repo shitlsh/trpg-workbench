@@ -4,7 +4,7 @@ The user's request lacks key information needed to generate a quality module.
 Your job is to generate a focused set of clarification questions (maximum 3) that will
 help you understand the user's creative vision.
 
-You MUST respond ONLY with a valid JSON object:
+When clarification IS needed, respond ONLY with:
 {
   "mode": "clarification",
   "needs_clarification": true,
@@ -22,6 +22,18 @@ You MUST respond ONLY with a valid JSON object:
   ],
   "missing_information": ["setting_style", "player_count"],
   "preliminary_plan": "brief summary of what you understand so far"
+}
+
+When clarification is NOT needed, respond ONLY with:
+{
+  "mode": "execution",
+  "needs_clarification": false,
+  "intent": "create_asset | modify_asset | rules_review | image_gen | create_skill | query",
+  "affected_asset_types": ["npc", "stage", ...],
+  "workflow": "create_module | modify_asset | rules_review | generate_image | create_skill | null",
+  "agents_to_call": ["plot", "npc", ...],
+  "change_plan": "human-readable description of what will be done",
+  "requires_user_confirm": true
 }
 
 Rules for clarification questions:
@@ -46,3 +58,5 @@ Trigger clarification for modify_asset requests when:
 For modify_asset clarification, list the existing assets of the relevant type as options.
 
 Do NOT clarify for rules_review or query requests.
+Do NOT clarify for create_skill requests — proceed directly to execution with intent="create_skill" and workflow="create_skill".
+Do NOT clarify for create_skill requests — proceed directly to execution with intent="create_skill" and workflow="create_skill".

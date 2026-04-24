@@ -52,6 +52,24 @@ enabled: true
 
 ### A 类：当前实现（本 milestone 必须完成）
 
+**A6：Chat 对话创建 Skill（AI 辅助生成）**
+
+用户可以在 Chat 中用自然语言请求「帮我根据知识库内容创建一个 Skill」。Director 识别
+`create_skill` 意图后，`chat.py` 在同一请求中：
+1. 使用 `_build_knowledge_retriever` 检索相关知识库内容
+2. 调用 `run_skill_agent(user_intent, knowledge_context, workspace_context, model)` 生成 Skill 内容
+3. 调用 `workspace_skills.py` 的内部写入逻辑将 skill 落盘
+4. 返回创建的 skill slug + name，并附在 assistant 消息中
+
+新增文件：
+- `apps/backend/app/prompts/skill/system.txt` — Skill Agent system prompt
+- `apps/backend/app/agents/skill_agent.py` — 调用 LLM 生成 skill JSON
+
+修改文件：
+- `apps/backend/app/api/chat.py` — 处理 `create_skill` workflow，调用 skill_agent + 写文件
+- `apps/backend/app/prompts/director/clarification.txt` — 加入 `create_skill` 不触发澄清规则
+- `apps/backend/app/prompts/director/planning.txt` — 加入 `create_skill` intent/workflow 枚举
+
 **A1：后端 — Skill 文件存储与 CRUD API**
 
 Skill 文件保存在：
@@ -295,8 +313,17 @@ def inject_skills(skills: list[dict], task_prompt: str) -> str:
 
 ### A5：帮助文档
 
-- [ ] **A5.1**：`apps/desktop/src/help/skills.md` — 编写 Skill 帮助文章，含 frontmatter 格式说明和 CoC NPC 示例
-- [ ] **A5.2**：注册到 HelpPage 文章索引
+- [x] **A5.1**：`apps/desktop/src/help/skills.md` — 编写 Skill 帮助文章，含 frontmatter 格式说明和 CoC NPC 示例
+- [x] **A5.2**：注册到 HelpPage 文章索引
+
+### A6：Chat 对话创建 Skill
+
+- [x] **A6.1**：`apps/backend/app/prompts/director/clarification.txt` — 加入 `create_skill` intent/workflow 定义和不触发澄清规则
+- [x] **A6.2**：`apps/backend/app/prompts/director/planning.txt` — 加入 `create_skill` intent/workflow 枚举
+- [ ] **A6.3**：`apps/backend/app/prompts/skill/system.txt` — Skill Agent system prompt
+- [ ] **A6.4**：`apps/backend/app/agents/skill_agent.py` — 实现 `run_skill_agent()`
+- [ ] **A6.5**：`apps/backend/app/api/chat.py` — 处理 `create_skill` workflow，调用 skill_agent + 写文件，返回 slug + name
+- [ ] **A6.6**：`apps/desktop/src/help/skills.md` — 新增「通过对话创建 Skill」章节
 
 ---
 
@@ -309,6 +336,7 @@ def inject_skills(skills: list[dict], task_prompt: str) -> str:
 5. `agent_types` 为空的 skill 对所有创作型 Agent 生效
 6. skill 文件在 `workspace-data/{workspace_id}/skills/` 目录中以 `.md` 文件形式存在，可手动打开查看内容
 7. TypeScript 编译无错误，`WorkspaceSkill` 类型正确导出
+8. **A6**：用户在 Chat 中说「帮我创建一个 CoC NPC 创作框架的 Skill」，系统自动生成并写入 skills 目录，返回的 assistant 消息包含 skill slug 和名称
 
 ---
 
