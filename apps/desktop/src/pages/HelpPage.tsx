@@ -4,14 +4,15 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThemeToggle } from "../components/ThemeToggle";
 import styles from "./HelpPage.module.css";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 
-// Open external URLs in the system browser (Tauri v2 does not auto-handle target=_blank)
+// Open external URLs in the system browser.
+// Tauri v2: window.open() opens a new webview, NOT the system browser.
+// Must use tauri-plugin-shell's open(). Falls back to window.open only in web mode.
 async function openExternal(url: string) {
   try {
-    const { open } = await import("@tauri-apps/plugin-shell");
-    await open(url);
+    await shellOpen(url);
   } catch {
-    // Fallback for web / non-Tauri environments
     window.open(url, "_blank", "noopener,noreferrer");
   }
 }
