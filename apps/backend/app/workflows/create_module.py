@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.workflows.utils import (
     create_workflow, update_step, complete_workflow,
     fail_workflow, pause_workflow, pause_for_clarification, get_workspace_context,
+    get_skills_for_agent, inject_skills,
 )
 from app.agents.director import run_director
 from app.agents.rules import run_rules_agent
@@ -159,6 +160,7 @@ async def resume_create_module(
 
     premise = change_plan.get("change_plan", user_intent)
     full_prefix = style_prefix + answers_prefix
+    ws_path = ws_ctx.get("workspace_path", "")
     wf.status = "running"
     db.commit()
 
@@ -186,13 +188,14 @@ async def resume_create_module(
 
         # ── Step 4: Plot Agent – outline ────────────────────────────────────
         update_step(db, wf, 4, STEP_NAMES[4], "running")
-        outline = run_plot_agent(full_prefix + premise, "outline", knowledge_context, ws_ctx, model=model)
+        plot_premise = inject_skills(get_skills_for_agent(ws_path, "plot"), premise)
+        outline = run_plot_agent(full_prefix + plot_premise, "outline", knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 4, STEP_NAMES[4], "completed",
                     summary=outline.get("title", "大纲生成完成"))
 
         # ── Step 5: Plot Agent – stages ─────────────────────────────────────
         update_step(db, wf, 5, STEP_NAMES[5], "running")
-        stages_result = run_plot_agent(full_prefix + premise, "stages", knowledge_context, ws_ctx, model=model)
+        stages_result = run_plot_agent(full_prefix + plot_premise, "stages", knowledge_context, ws_ctx, model=model)
         stages = stages_result.get("stages", [])
         update_step(db, wf, 5, STEP_NAMES[5], "completed",
                     summary=f"生成 {len(stages)} 个场景")
@@ -200,22 +203,25 @@ async def resume_create_module(
         # ── Step 6: NPC Agent ───────────────────────────────────────────────
         update_step(db, wf, 6, STEP_NAMES[6], "running")
         stage_summaries = [s.get("description", s.get("name", "")) for s in stages]
-        npcs = run_npc_agent(full_prefix + premise, stage_summaries, 3, knowledge_context, ws_ctx, model=model)
+        npc_premise = inject_skills(get_skills_for_agent(ws_path, "npc"), premise)
+        npcs = run_npc_agent(full_prefix + npc_premise, stage_summaries, 3, knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 6, STEP_NAMES[6], "completed",
                     summary=f"生成 {len(npcs)} 个 NPC")
 
         # ── Step 7: Monster Agent ───────────────────────────────────────────
         update_step(db, wf, 7, STEP_NAMES[7], "running")
         monster_hints = change_plan.get("monster_hints", [])
-        monsters = run_monster_agent(full_prefix + premise, monster_hints, knowledge_context, ws_ctx, model=model)
+        monster_premise = inject_skills(get_skills_for_agent(ws_path, "monster"), premise)
+        monsters = run_monster_agent(full_prefix + monster_premise, monster_hints, knowledge_context, ws_ctx, model=model)
         update_step(db, wf, 7, STEP_NAMES[7], "completed",
                     summary=f"生成 {len(monsters)} 个怪物/实体")
 
         # ── Step 8: Lore Agent – locations & lore notes ────────────────────
         update_step(db, wf, 8, STEP_NAMES[8], "running")
         location_hints = [s.get("name", "") for s in stages[:3]]
+        lore_premise = inject_skills(get_skills_for_agent(ws_path, "lore"), premise)
         lore_result = run_lore_agent(
-            full_prefix + premise, location_hints, knowledge_context, ws_ctx,
+            full_prefix + lore_premise, location_hints, knowledge_context, ws_ctx,
             location_count=max(2, len(stages[:3])),
             lore_note_count=2,
             model=model,
@@ -227,7 +233,7 @@ async def resume_create_module(
 
         # ── Step 9: Clue chain ──────────────────────────────────────────────
         update_step(db, wf, 9, STEP_NAMES[9], "running")
-        clues_result = run_plot_agent(full_prefix + premise, "clues", knowledge_context, ws_ctx, model=model)
+        clues_result = run_plot_agent(full_prefix + plot_premise, "clues", knowledge_context, ws_ctx, model=model)
         clues = clues_result.get("clues", [])
         update_step(db, wf, 9, STEP_NAMES[9], "completed",
                     summary=f"生成 {len(clues)} 条线索")

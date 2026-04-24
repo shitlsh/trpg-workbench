@@ -16,6 +16,7 @@ from app.api.knowledge_preview import router as knowledge_preview_router
 from app.api.model_catalog import router as model_catalog_router
 from app.api.usage import router as usage_router
 from app.api.custom_asset_type_configs import router as custom_asset_type_configs_router
+from app.api.workspace_skills import router as workspace_skills_router
 from app.storage.database import init_db, get_db
 from app.storage.seed import seed_default_data
 from app.services.catalog_service import load_static_catalog
@@ -64,3 +65,4 @@ app.include_router(agent_tools_router)
 app.include_router(prompt_profiles_router)
 app.include_router(logs_router)
 app.include_router(custom_asset_type_configs_router)
+app.include_router(workspace_skills_router)

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.workflows.utils import (
     create_workflow, update_step, complete_workflow,
     fail_workflow, pause_workflow, pause_for_clarification, get_workspace_context,
+    get_skills_for_agent, inject_skills,
 )
 from app.agents.director import run_director
 from app.agents.consistency import run_consistency_agent
@@ -51,6 +52,7 @@ async def run_modify_asset(
 
     try:
         ws_ctx = get_workspace_context(db, workspace_id)
+        ws_path = ws_ctx.get("workspace_path", "")
 
         # Build style prefix from workspace's rule set PromptProfile
         style_prefix = ""
@@ -118,20 +120,25 @@ async def run_modify_asset(
         raw_assets_for_doc = []
         for asset_ctx in assets:
             asset_type = asset_ctx["asset_type"]
+            base_prompt = style_prefix + user_intent
             if asset_type == "npc":
-                raw = run_npc_agent(style_prefix + user_intent, [], 1, knowledge_context, ws_ctx, model=model)
+                task = inject_skills(get_skills_for_agent(ws_path, "npc"), base_prompt)
+                raw = run_npc_agent(task, [], 1, knowledge_context, ws_ctx, model=model)
                 raw_content = raw[0] if raw else {}
             elif asset_type == "monster":
-                raw = run_monster_agent(style_prefix + user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx, model=model)
+                task = inject_skills(get_skills_for_agent(ws_path, "monster"), base_prompt)
+                raw = run_monster_agent(task, [asset_ctx["asset_name"]], knowledge_context, ws_ctx, model=model)
                 raw_content = raw[0] if raw else {}
             elif asset_type in ("location", "lore_note"):
-                raw = run_lore_agent(style_prefix + user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx,
+                task = inject_skills(get_skills_for_agent(ws_path, "lore"), base_prompt)
+                raw = run_lore_agent(task, [asset_ctx["asset_name"]], knowledge_context, ws_ctx,
                                      location_count=1, lore_note_count=1, model=model)
                 locs = raw.get("locations", [])
                 lnotes = raw.get("lore_notes", [])
                 raw_content = locs[0] if locs and asset_type == "location" else (lnotes[0] if lnotes else {})
             else:
-                raw = run_plot_agent(style_prefix + user_intent, "outline", knowledge_context, ws_ctx, model=model)
+                task = inject_skills(get_skills_for_agent(ws_path, "plot"), base_prompt)
+                raw = run_plot_agent(task, "outline", knowledge_context, ws_ctx, model=model)
                 raw_content = raw
             raw_assets_for_doc.append({
                 "asset_id": asset_ctx["asset_id"],
@@ -217,6 +224,7 @@ async def resume_modify_asset(
                         break
 
     ws_ctx = get_workspace_context(db, workspace_id)
+    ws_path = ws_ctx.get("workspace_path", "")
     style_prefix = ""
     if ws_ctx.get("style_prompt"):
         style_prefix = f"[创作风格约束]\n{ws_ctx['style_prompt']}\n\n"
@@ -280,20 +288,25 @@ async def resume_modify_asset(
         raw_assets_for_doc = []
         for asset_ctx in assets:
             asset_type = asset_ctx["asset_type"]
+            base_prompt = full_prefix + user_intent
             if asset_type == "npc":
-                raw = run_npc_agent(full_prefix + user_intent, [], 1, knowledge_context, ws_ctx, model=model)
+                task = inject_skills(get_skills_for_agent(ws_path, "npc"), base_prompt)
+                raw = run_npc_agent(task, [], 1, knowledge_context, ws_ctx, model=model)
                 raw_content = raw[0] if raw else {}
             elif asset_type == "monster":
-                raw = run_monster_agent(full_prefix + user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx, model=model)
+                task = inject_skills(get_skills_for_agent(ws_path, "monster"), base_prompt)
+                raw = run_monster_agent(task, [asset_ctx["asset_name"]], knowledge_context, ws_ctx, model=model)
                 raw_content = raw[0] if raw else {}
             elif asset_type in ("location", "lore_note"):
-                raw = run_lore_agent(full_prefix + user_intent, [asset_ctx["asset_name"]], knowledge_context, ws_ctx,
+                task = inject_skills(get_skills_for_agent(ws_path, "lore"), base_prompt)
+                raw = run_lore_agent(task, [asset_ctx["asset_name"]], knowledge_context, ws_ctx,
                                      location_count=1, lore_note_count=1, model=model)
                 locs = raw.get("locations", [])
                 lnotes = raw.get("lore_notes", [])
                 raw_content = locs[0] if locs and asset_type == "location" else (lnotes[0] if lnotes else {})
             else:
-                raw = run_plot_agent(full_prefix + user_intent, "outline", knowledge_context, ws_ctx, model=model)
+                task = inject_skills(get_skills_for_agent(ws_path, "plot"), base_prompt)
+                raw = run_plot_agent(task, "outline", knowledge_context, ws_ctx, model=model)
                 raw_content = raw
             raw_assets_for_doc.append({
                 "asset_id": asset_ctx["asset_id"],

@@ -1,15 +1,261 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { Library, Plus, X } from "lucide-react";
+import { Library, Plus, X, Zap, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { apiFetch, BACKEND_URL } from "../lib/api";
 import type {
   Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry,
   EmbeddingCatalogEntry, RerankProfile, WorkspaceLibraryBinding,
   CreateBindingRequest, KnowledgeLibrary,
+  WorkspaceSkillMeta, WorkspaceSkill,
+  CreateWorkspaceSkillRequest, UpdateWorkspaceSkillRequest,
 } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
 import { HelpButton } from "../components/HelpButton";
+
+// ─── Skills Section ────────────────────────────────────────────────────────────
+
+const AGENT_TYPE_OPTIONS = [
+  { value: "npc", label: "NPC" },
+  { value: "monster", label: "怪物/实体" },
+  { value: "plot", label: "剧情大纲" },
+  { value: "lore", label: "世界观/地点" },
+  { value: "rules", label: "规则" },
+];
+
+function SkillForm({
+  initial,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  initial?: WorkspaceSkill;
+  onSave: (data: CreateWorkspaceSkillRequest) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [agentTypes, setAgentTypes] = useState<string[]>(initial?.agent_types ?? []);
+  const [body, setBody] = useState(initial?.body ?? "");
+  const [enabled, setEnabled] = useState(initial?.enabled ?? true);
+
+  function toggleType(v: string) {
+    setAgentTypes((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 16, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-surface)" }}>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+        名称 *
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className={styles.input}
+          placeholder="CoC NPC 框架"
+        />
+      </label>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+        描述
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className={styles.input}
+          placeholder="一句话说明这个 Skill 的作用"
+        />
+      </label>
+      <div style={{ fontSize: 13 }}>
+        适用 Agent 类型（留空 = 所有创作型 Agent）
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
+          {AGENT_TYPE_OPTIONS.map(({ value, label }) => (
+            <label key={value} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={agentTypes.includes(value)}
+                onChange={() => toggleType(value)}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </div>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+        Skill 内容（Markdown）
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          className={styles.textarea}
+          rows={8}
+          style={{ fontFamily: "monospace", fontSize: 12 }}
+          placeholder={"在创作 NPC 时，必须包含以下维度：\n- 职业（1920s 社会角色）\n- 神话接触程度：无 / 轻微 / 深度"}
+        />
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        启用此 Skill
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          className={styles.btnPrimary}
+          disabled={!name.trim() || saving}
+          onClick={() => onSave({ name: name.trim(), description, agent_types: agentTypes, body, enabled })}
+        >
+          {saving ? "保存中..." : "保存"}
+        </button>
+        <button
+          onClick={onCancel}
+          style={{ fontSize: 13, padding: "6px 14px", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text)" }}
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SkillsSection({ workspaceId }: { workspaceId: string }) {
+  const queryClient = useQueryClient();
+  const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const qKey = ["workspace", workspaceId, "skills"];
+
+  const { data: skills = [], isLoading } = useQuery({
+    queryKey: qKey,
+    queryFn: () => apiFetch<WorkspaceSkillMeta[]>(`/workspaces/${workspaceId}/skills`),
+  });
+
+  const { data: skillDetail } = useQuery({
+    queryKey: [...qKey, editingSlug],
+    queryFn: () => apiFetch<WorkspaceSkill>(`/workspaces/${workspaceId}/skills/${editingSlug}`),
+    enabled: !!editingSlug,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (body: CreateWorkspaceSkillRequest) =>
+      apiFetch<WorkspaceSkill>(`/workspaces/${workspaceId}/skills`, { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qKey }); setShowNew(false); },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ slug, data }: { slug: string; data: UpdateWorkspaceSkillRequest }) =>
+      apiFetch<WorkspaceSkill>(`/workspaces/${workspaceId}/skills/${slug}`, { method: "PUT", body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qKey }); setEditingSlug(null); },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ slug, enabled }: { slug: string; enabled: boolean }) =>
+      apiFetch<WorkspaceSkill>(`/workspaces/${workspaceId}/skills/${slug}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qKey }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch(`/workspaces/${workspaceId}/skills/${slug}`, { method: "DELETE" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qKey }); setConfirmDelete(null); },
+  });
+
+  return (
+    <div style={{ marginTop: 32, padding: 20, border: "1px solid var(--border)", borderRadius: 8 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+        <Zap size={15} /> Skill
+      </div>
+      <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, marginTop: 2 }}>
+        Skill 为 Agent 提供持久化的创作框架指令，在 Workflow 执行时自动注入。
+      </p>
+
+      {isLoading && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>加载中...</p>}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        {skills.map((s) => (
+          <div key={s.slug} style={{ border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--bg)", cursor: "pointer" }}
+              onClick={() => setExpandedSlug(expandedSlug === s.slug ? null : s.slug)}
+            >
+              {expandedSlug === s.slug ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{s.name}</span>
+              {s.agent_types.length > 0 && (
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.agent_types.join(", ")}</span>
+              )}
+              <input
+                type="checkbox"
+                checked={s.enabled}
+                title={s.enabled ? "点击禁用" : "点击启用"}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => toggleMutation.mutate({ slug: s.slug, enabled: e.target.checked })}
+              />
+            </div>
+            {expandedSlug === s.slug && (
+              <div style={{ padding: "10px 12px", background: "var(--bg-surface)", borderTop: "1px solid var(--border)" }}>
+                {s.description && <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>{s.description}</p>}
+                {editingSlug === s.slug ? (
+                  skillDetail ? (
+                    <SkillForm
+                      initial={skillDetail}
+                      onSave={(data) => updateMutation.mutate({ slug: s.slug, data })}
+                      onCancel={() => setEditingSlug(null)}
+                      saving={updateMutation.isPending}
+                    />
+                  ) : <p style={{ fontSize: 12 }}>加载中...</p>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => setEditingSlug(s.slug)}
+                      style={{ fontSize: 12, padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer", color: "var(--text)" }}
+                    >
+                      编辑
+                    </button>
+                    {confirmDelete === s.slug ? (
+                      <>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)", alignSelf: "center" }}>确认删除？</span>
+                        <button
+                          onClick={() => deleteMutation.mutate(s.slug)}
+                          style={{ fontSize: 12, padding: "4px 10px", background: "var(--danger, #e53e3e)", border: "none", borderRadius: 5, cursor: "pointer", color: "#fff" }}
+                        >删除</button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          style={{ fontSize: 12, padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer", color: "var(--text)" }}
+                        >取消</button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(s.slug)}
+                        style={{ fontSize: 12, padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
+                      >
+                        <Trash2 size={11} /> 删除
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+        {skills.length === 0 && !isLoading && (
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>暂无 Skill。点击下方按钮添加第一个 Skill。</p>
+        )}
+      </div>
+
+      {showNew ? (
+        <SkillForm
+          onSave={(data) => createMutation.mutate(data)}
+          onCancel={() => setShowNew(false)}
+          saving={createMutation.isPending}
+        />
+      ) : (
+        <button
+          onClick={() => setShowNew(true)}
+          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, padding: "6px 12px", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text)" }}
+        >
+          <Plus size={13} /> 添加 Skill
+        </button>
+      )}
+    </div>
+  );
+}
 
 // ─── Extra Libraries Section ───────────────────────────────────────────────────
 
@@ -409,6 +655,9 @@ export default function WorkspaceSettingsPage() {
             {updateMutation.isError && <span className={styles.error}>{(updateMutation.error as Error).message}</span>}
           </div>
         </form>
+
+        {/* Skills section */}
+        <SkillsSection workspaceId={id!} />
 
         {/* Extra Knowledge Libraries section */}
         <ExtraLibrariesSection workspaceId={id!} ruleSetId={ruleSetId} />

@@ -784,3 +784,33 @@ export interface SearchTestResponse {
   warnings: string[];
   error: string | null;
 }
+
+// ─── Workspace Skill (M17) ───────────────────────────────────────────────────
+
+export interface WorkspaceSkillMeta {
+  slug: string;
+  name: string;
+  description: string;
+  agent_types: string[]; // empty = applies to all creative agents
+  enabled: boolean;
+}
+
+export interface WorkspaceSkill extends WorkspaceSkillMeta {
+  body: string; // Markdown body (everything after frontmatter)
+}
+
+export interface CreateWorkspaceSkillRequest {
+  name: string;
+  description?: string;
+  agent_types?: string[];
+  body?: string;
+  enabled?: boolean;
+}
+
+export interface UpdateWorkspaceSkillRequest {
+  name?: string;
+  description?: string;
+  agent_types?: string[];
+  body?: string;
+  enabled?: boolean;
+}

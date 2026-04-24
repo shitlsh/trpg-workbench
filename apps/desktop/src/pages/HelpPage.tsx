@@ -23,6 +23,7 @@ import modelSetup from "../help/model-setup.md?raw";
 import knowledgeImport from "../help/knowledge-import.md?raw";
 import startCreating from "../help/start-creating.md?raw";
 import ruleSetManagement from "../help/rule-set-management.md?raw";
+import skillsHelp from "../help/skills.md?raw";
 
 // ── Docs registry ─────────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ const DOCS: Record<string, { title: string; content: string }> = {
   "knowledge-import":   { title: "知识库导入指南", content: knowledgeImport },
   "rule-set-management":{ title: "规则集管理",     content: ruleSetManagement },
   "start-creating":     { title: "开始创作",       content: startCreating },
+  "skills":             { title: "Skill 使用指南", content: skillsHelp },
 };
 
 const NAV_ITEMS = [
@@ -40,6 +42,7 @@ const NAV_ITEMS = [
   { id: "knowledge-import",    label: "知识库导入" },
   { id: "rule-set-management", label: "规则集管理" },
   { id: "start-creating",      label: "开始创作" },
+  { id: "skills",              label: "Skill" },
 ];
 
 // ── Custom renderers for in-app navigation ──────────────────────────────────
