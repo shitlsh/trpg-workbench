@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { BookMarked, Cpu, BarChart2, FolderOpen } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { apiFetch } from "../lib/api";
 import type {
   Workspace, RuleSet, CreateWorkspaceRequest,
@@ -21,6 +22,7 @@ export default function HomePage() {
   const [newRuleSet, setNewRuleSet] = useState("");
   const [openPathInput, setOpenPathInput] = useState("");
   const [showOpenForm, setShowOpenForm] = useState(false);
+  const [newWorkspacePath, setNewWorkspacePath] = useState("");
 
   const { data: workspaces = [], isLoading } = useQuery({
     queryKey: ["workspaces"],
@@ -61,6 +63,7 @@ export default function HomePage() {
       setNewName("");
       setNewDesc("");
       setNewRuleSet("");
+      setNewWorkspacePath("");
     },
   });
 
@@ -94,6 +97,7 @@ export default function HomePage() {
       name: newName.trim(),
       description: newDesc.trim(),
       rule_set: newRuleSet || undefined,
+      workspace_path: newWorkspacePath || undefined,
     });
   }
 
@@ -101,6 +105,20 @@ export default function HomePage() {
     e.preventDefault();
     if (!openPathInput.trim()) return;
     openMutation.mutate(openPathInput.trim());
+  }
+
+  async function handleOpenBrowse() {
+    const selected = await openDialog({ directory: true, title: "选择工作空间目录" });
+    if (selected) {
+      openMutation.mutate(selected);
+    }
+  }
+
+  async function handleBrowseNewPath() {
+    const selected = await openDialog({ directory: true, title: "选择工作空间存储位置" });
+    if (selected) {
+      setNewWorkspacePath(selected);
+    }
   }
 
   return (
@@ -120,7 +138,7 @@ export default function HomePage() {
             <BarChart2 size={14} style={{ flexShrink: 0 }} />
             用量观测
           </button>
-          <button className={styles.btnSecondary} onClick={() => setShowOpenForm(true)}>
+          <button className={styles.btnSecondary} onClick={handleOpenBrowse}>
             <FolderOpen size={14} style={{ flexShrink: 0 }} />
             打开已有
           </button>
@@ -257,6 +275,26 @@ export default function HomePage() {
                   </span>
                 </div>
               )}
+              <label className={styles.label}>
+                存储位置
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    className={styles.input}
+                    value={newWorkspacePath}
+                    onChange={(e) => setNewWorkspacePath(e.target.value)}
+                    placeholder="留空则使用默认位置"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    onClick={handleBrowseNewPath}
+                    style={{ whiteSpace: "nowrap" }}
+                  >
+                    浏览…
+                  </button>
+                </div>
+              </label>
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={() => setShowNewForm(false)}>
                   取消
@@ -285,13 +323,27 @@ export default function HomePage() {
             <form onSubmit={handleOpen} className={styles.form}>
               <label className={styles.label}>
                 工作空间目录路径 *
-                <input
-                  className={styles.input}
-                  value={openPathInput}
-                  onChange={(e) => setOpenPathInput(e.target.value)}
-                  placeholder="例：/Users/you/my-trpg-module"
-                  autoFocus
-                />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    className={styles.input}
+                    value={openPathInput}
+                    onChange={(e) => setOpenPathInput(e.target.value)}
+                    placeholder="例：/Users/you/my-trpg-module"
+                    autoFocus
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    onClick={async () => {
+                      const selected = await openDialog({ directory: true, title: "选择工作空间目录" });
+                      if (selected) setOpenPathInput(selected);
+                    }}
+                    style={{ whiteSpace: "nowrap" }}
+                  >
+                    浏览…
+                  </button>
+                </div>
               </label>
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -4 }}>
                 目录中需包含 .trpg/config.yaml 才能被识别为有效工作空间。
