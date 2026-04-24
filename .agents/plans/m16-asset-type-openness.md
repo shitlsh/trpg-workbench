@@ -1,22 +1,20 @@
-# M16：AssetType 开放化与跨系统资产树兼容
+# M16：AssetType 开放化与自定义类型注册
 
-**前置条件**：无强依赖（纯 TypeScript 类型放宽 + 前端降级展示，不依赖后端新功能）。
+**前置条件**：无强依赖（独立功能，可与 M17 并行）。
 
-**目标**：将 `AssetType` 从封闭枚举改为开放字符串类型，使资产树对任意 type 值具备基本展示能力，为后续多系统支持打基础。
+**目标**：将 `AssetType` 从封闭枚举改为开放字符串，并允许用户在 RuleSet 中注册自定义资产类型（名称、标签、图标），使 trpg-workbench 对 CoC 以外的系统具备基本可用性。
 
 ---
 
 ## 背景与动机
 
-当前 `AssetType` 是 TypeScript 联合类型枚举（10 种固定值），前端所有 icon 映射、筛选逻辑均假设 type 值在这 10 种内。然而：
+当前 `AssetType` 是 10 种固定值的 TypeScript 联合类型。分析表明：
 
-1. 后端 `schemas.py` 中 `type` 字段本已是 `str`，数据库层无 constraint
-2. `asset_service.py` 的 `ASSET_TYPE_DIRS` 已有 `asset_type + "s"` 降级策略
-3. 真正阻止跨系统使用的只是 TypeScript 类型层和前端 icon 映射层
+- **CoC 覆盖率 ~85%**，D&D 5e ~50%，The One Ring ~60%，Delta Green ~80%
+- 用户使用 D&D 或 TOR 工作区时，`spell`、`item`、`handout` 等核心概念无对应类型，只能用语义错误的 `lore_note` 勉强填充
+- 后端 `schemas.py` 的 `type` 字段本已是 `str`，数据库无 constraint，文件服务有 fallback；**真正的障碍只在 TypeScript 类型层、前端展示层，以及缺乏注册机制**
 
-用户若想在 D&D 工作区中使用 `spell` 类型资产（通过 API 创建），前端会出现类型错误或 icon 渲染崩溃。本 milestone 修复这个问题。
-
-来源：`docs/benchmark-reviews/accepted/2026-04-24_asset-type-coverage-across-trpg-systems.md`（Phase A）
+来源：`docs/benchmark-reviews/accepted/2026-04-24_asset-type-coverage-across-trpg-systems.md`
 
 ---
 
@@ -24,91 +22,179 @@
 
 ### A 类：当前实现（本 milestone 必须完成）
 
-**A1：TypeScript AssetType 改为开放字符串 + 保留内置常量**
-
-方案：
-- `packages/shared-schema/src/index.ts`：`AssetType` 改为 `type AssetType = string`
-- 同文件新增：`export const BUILTIN_ASSET_TYPES = ["outline", "stage", "npc", "monster", "location", "clue", "branch", "timeline", "map_brief", "lore_note"] as const`
-- 前端所有使用 `AssetType` 做 `===` 判断的地方改为从 `BUILTIN_ASSET_TYPES` 检查
-
-**A2：前端资产树 / icon 映射降级处理**
-
-方案：
-- 找到前端 icon 映射函数（通常是 `switch(asset.type)` 或 `Record<AssetType, Icon>`）
-- 将 `default` / fallback 改为返回通用图标（如 `FileText` 或现有的通用资产图标）
-- 资产名称旁的 type badge 对非内置类型展示原始 type 字符串（不做翻译/映射）
-
-**A3：前端资产树筛选器兼容**
-
-方案：
-- 资产树的 type 筛选器目前只列出 `BUILTIN_ASSET_TYPES`；行为保持不变
-- 若工作区中存在非内置类型的资产，筛选器底部追加"其他类型"分组，或列出实际存在的非内置类型值
-- 不要求精美 UI，能正确筛选即可
-
-### B 类：后续扩展（规划为扩展，不强制当前实现）
-
-- **B1：RuleSet 级别自定义 AssetType 注册表**：用户可为某个 RuleSet 注册新类型名称、图标、字段模板，Agent prompt 通过 `workspace_context` 注入有效类型列表。进入 M17 或更晚。
-- **B2：扩充内置 AssetType 枚举**（`spell`/`item`/`handout` 等）：等用户明确反馈需要，且 B1 机制上线后评估是否仍有必要。
-
-### C 类：明确不承诺
-
-- 不修改后端任何 Python 文件（后端已天然支持任意 type）
-- 不为非内置类型自动生成 Agent prompt 的格式化规则（Document Agent 只处理内置类型）
-- 不引入数据库迁移
-
----
-
-## 文件结构
-
-### 修改文件
-
-```
-packages/shared-schema/src/index.ts
-  ← AssetType 改为 string，新增 BUILTIN_ASSET_TYPES 常量
-
-apps/desktop/src/components/
-  ← 找到 asset type → icon 映射，增加 fallback 处理
-
-apps/desktop/src/pages/ 或 components/
-  ← 资产树筛选器，兼容非内置类型分组展示
-```
-
----
-
-## 关键设计约束
-
-### 类型兼容性
+**A1：TypeScript AssetType 开放化**
 
 ```typescript
-// Before
-export type AssetType = "outline" | "stage" | "npc" | ...;
+// packages/shared-schema/src/index.ts
+export type AssetType = string;  // 原联合类型改为 string
 
-// After
-export type AssetType = string;
 export const BUILTIN_ASSET_TYPES = [
   "outline", "stage", "npc", "monster", "location",
   "clue", "branch", "timeline", "map_brief", "lore_note"
 ] as const;
 export type BuiltinAssetType = typeof BUILTIN_ASSET_TYPES[number];
 
-// 工具函数（可选，按需添加）
 export function isBuiltinAssetType(t: string): t is BuiltinAssetType {
   return (BUILTIN_ASSET_TYPES as readonly string[]).includes(t);
 }
-```
 
-### Icon 映射降级
+// 新增自定义类型配置接口
+export interface CustomAssetTypeConfig {
+  id: string;
+  rule_set_id: string;
+  type_key: string;    // 存入数据库的 type 值，如 "spell"
+  label: string;       // 展示名称，如 "法术"
+  icon: string;        // emoji 或图标 key，如 "✨"
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
 
-```typescript
-function getAssetIcon(type: string): IconComponent {
-  const iconMap: Record<BuiltinAssetType, IconComponent> = {
-    npc: UserIcon,
-    monster: SkullIcon,
-    // ... 其余内置类型
-  };
-  return iconMap[type as BuiltinAssetType] ?? FileTextIcon; // fallback
+export interface CreateCustomAssetTypeRequest {
+  type_key: string;
+  label: string;
+  icon: string;
+  sort_order?: number;
+}
+
+export interface UpdateCustomAssetTypeRequest {
+  label?: string;
+  icon?: string;
+  sort_order?: number;
 }
 ```
+
+**A2：后端 — custom_asset_type_configs 表与 CRUD API**
+
+数据库（`CREATE TABLE IF NOT EXISTS`，无迁移文件）：
+```sql
+CREATE TABLE IF NOT EXISTS custom_asset_type_configs (
+  id TEXT PRIMARY KEY,
+  rule_set_id TEXT NOT NULL,
+  type_key TEXT NOT NULL,   -- 存入 assets.type 的值
+  label TEXT NOT NULL,      -- 展示名称
+  icon TEXT NOT NULL,       -- emoji 或图标标识
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT,
+  updated_at TEXT,
+  FOREIGN KEY (rule_set_id) REFERENCES rule_sets(id),
+  UNIQUE (rule_set_id, type_key)
+);
+```
+
+API（挂载在 `/rule-sets/{rule_set_id}/asset-type-configs`）：
+- `GET` — 列出该 RuleSet 的所有自定义类型
+- `POST` — 创建（type_key 不可与内置类型重名）
+- `PATCH /{config_id}` — 更新 label / icon / sort_order
+- `DELETE /{config_id}` — 删除
+
+**A3：workspace_context 注入自定义类型列表**
+
+在 `get_workspace_context()` 中追加 `custom_asset_types` 字段：
+
+```python
+# apps/backend/app/workflows/utils.py
+custom_types = []
+if ws.rule_set_id:
+    custom_types = [
+        {"type_key": c.type_key, "label": c.label, "icon": c.icon}
+        for c in db.query(CustomAssetTypeConfigORM)
+                   .filter_by(rule_set_id=ws.rule_set_id)
+                   .order_by(CustomAssetTypeConfigORM.sort_order)
+                   .all()
+    ]
+
+return {
+    ...
+    "custom_asset_types": custom_types,  # 新增
+}
+```
+
+Director 的 planning prompt 中追加说明：当 `custom_asset_types` 非空时，这些类型也是有效的 `affected_asset_types` 选项。
+
+**A4：前端 — 资产树兼容非内置类型**
+
+- 资产 icon 映射函数：对非内置类型，先查 `CustomAssetTypeConfig`（从 API 获取），有匹配的用其 `icon` 字段；否则用通用 fallback icon
+- type badge/label：内置类型用现有中文翻译，自定义类型用 `label` 字段，未注册的类型直接展示 `type_key` 原始字符串
+- 资产树筛选器：内置类型分组不变；自定义类型追加在下方；完全未注册的类型归入"其他"分组
+
+**A5：前端 — RuleSet 设置页新增类型管理 UI**
+
+在 RuleSetPage（或规则集设置）中新增"资产类型"标签页：
+- 列表展示该 RuleSet 已注册的自定义类型（type_key + label + icon + 排序）
+- 每条：icon 输入（纯文本，用户输入 emoji）+ 标签名 + type_key（创建后只读）+ 删除按钮
+- "添加类型"按钮 + 简单表单
+- 校验：type_key 不可与内置类型重名，提示明确
+
+**A6：前端 — 资产新建 / 类型选择器**
+
+资产新建对话框的 type 下拉：
+- 上半部分：内置类型（现有列表）
+- 下半部分：当前 RuleSet 的自定义类型（来自 API）
+- 两部分用分割线隔开
+
+### B 类：后续扩展（规划为扩展，不强制当前实现）
+
+- **B1：create_module Workflow 自动生成自定义类型资产**：当前 create_module 落盘逻辑（`create_module.py` 第 255-272 行）把类型硬编码在 patch 列表中。让 Workflow 自动感知并生成自定义类型资产需要重构这段逻辑——Director 输出的 `affected_asset_types` 中包含自定义类型时，Workflow 用通用 Document Agent 路由处理。**推迟原因**：需要重构 Workflow 落盘结构，风险较高，1.0 阶段用户可以手动创建自定义类型资产，已足够使用。
+- **B2：自定义类型的字段模板**：用户可为某个类型定义默认字段结构（JSON schema），Document Agent 格式化时参考。依赖 B1 落地后评估。
+
+### C 类：明确不承诺
+
+- 不扩充内置 `BUILTIN_ASSET_TYPES` 枚举（`spell`/`item` 等不进内置列表，用户通过注册表添加）
+- 不为 `create_module` Workflow 提供自定义类型自动生成（B1）
+- type_key 创建后不可修改（已有资产引用该 type 值，改了会导致孤儿资产）
+- 不提供 RuleSet 级内置类型包（由 B1 完成后再考虑）
+
+---
+
+## 文件结构
+
+### 新增文件
+
+```
+apps/backend/app/api/custom_asset_type_configs.py   ← CRUD API
+```
+
+### 修改文件
+
+```
+apps/backend/app/models/orm.py                      ← 追加 CustomAssetTypeConfigORM
+apps/backend/app/models/schemas.py                  ← 追加相关 Pydantic schema
+apps/backend/app/storage/database.py                ← 追加建表语句
+apps/backend/app/main.py                            ← 注册 router
+apps/backend/app/workflows/utils.py                 ← get_workspace_context() 追加 custom_asset_types
+apps/backend/app/prompts/director/planning.txt      ← 追加对 custom_asset_types 的说明
+packages/shared-schema/src/index.ts                 ← AssetType 开放化 + CustomAssetTypeConfig 类型
+apps/desktop/src/                                   ← 资产树 icon/label 兼容、筛选器、新建对话框
+apps/desktop/src/pages/RuleSetPage.tsx (或同等)     ← 类型管理 UI 标签页
+```
+
+---
+
+## 关键设计约束
+
+### type_key 唯一性校验
+
+创建时后端校验：
+```python
+# type_key 不可与 BUILTIN_ASSET_TYPES 重名
+BUILTIN = {"outline","stage","npc","monster","location","clue","branch","timeline","map_brief","lore_note"}
+if body.type_key in BUILTIN:
+    raise HTTPException(400, f"'{body.type_key}' 是内置类型，不可注册为自定义类型")
+```
+
+### Director 感知注入格式
+
+`planning.txt` 追加段落（仅在 `custom_asset_types` 非空时有效）：
+```
+当前工作区的自定义资产类型（可在 affected_asset_types 中使用）：
+{custom_asset_types_block}
+```
+`workspace_context` 中的 `custom_asset_types` 由 Workflow 层在构造 Director prompt 时动态注入。
+
+### 前端类型配置缓存
+
+自定义类型配置按 rule_set_id 缓存（TanStack Query），在资产树渲染时不每次重新请求。
 
 ---
 
@@ -116,27 +202,48 @@ function getAssetIcon(type: string): IconComponent {
 
 ### A1：TypeScript 类型放宽
 
-- [ ] **A1.1**：`packages/shared-schema/src/index.ts` — 将 `AssetType` 改为 `string`，新增 `BUILTIN_ASSET_TYPES` 常量和 `BuiltinAssetType` 类型别名
-- [ ] **A1.2**：前端中使用了 `AssetType` 做穷举判断的地方（如 `switch` 或 Record key）— 改用 `BuiltinAssetType` 或 `isBuiltinAssetType()` 守卫
+- [ ] **A1.1**：`packages/shared-schema/src/index.ts` — `AssetType` 改为 `string`，新增 `BUILTIN_ASSET_TYPES`、`BuiltinAssetType`、`isBuiltinAssetType()`、`CustomAssetTypeConfig` 及请求类型
+- [ ] **A1.2**：前端使用了 `AssetType` 做穷举的地方 — 改用 `BuiltinAssetType` 或 `isBuiltinAssetType()` 守卫
 
-### A2：Icon 映射降级
+### A2：后端数据库与 API
 
-- [ ] **A2.1**：找到资产 icon 映射函数 — 确认 fallback 分支存在，对非内置 type 返回通用 icon
-- [ ] **A2.2**：资产树中 type badge/label 展示 — 非内置类型展示原始字符串，不报错/不空白
+- [ ] **A2.1**：`database.py` — 追加 `custom_asset_type_configs` 建表语句
+- [ ] **A2.2**：`orm.py` — 追加 `CustomAssetTypeConfigORM`
+- [ ] **A2.3**：`schemas.py` — 追加 `CustomAssetTypeConfigSchema`、`Create`、`Update`
+- [ ] **A2.4**：`api/custom_asset_type_configs.py` — GET / POST / PATCH / DELETE 端点，含 type_key 内置名冲突校验
+- [ ] **A2.5**：`main.py` — 注册 router，前缀 `/rule-sets/{rule_set_id}/asset-type-configs`
 
-### A3：资产树筛选器
+### A3：workspace_context 注入
 
-- [ ] **A3.1**：资产树 type 筛选器 — 检查是否硬编码了内置类型列表；若有，改为从实际数据动态生成，确保非内置类型资产可被筛选到
+- [ ] **A3.1**：`workflows/utils.py` `get_workspace_context()` — 追加 `custom_asset_types` 字段
+- [ ] **A3.2**：`prompts/director/planning.txt` — 追加 custom_asset_types 的使用说明
+
+### A4：前端资产树兼容
+
+- [ ] **A4.1**：资产 icon/label 映射函数 — 优先查自定义类型配置，未注册类型 fallback 通用 icon + 原始 type_key 字符串
+- [ ] **A4.2**：资产树筛选器 — 自定义类型追加在内置类型分组后，完全未注册类型归入"其他"
+
+### A5：前端 RuleSet 类型管理 UI
+
+- [ ] **A5.1**：RuleSetPage（或规则集设置页）— 新增"资产类型"标签页，展示当前 RuleSet 的自定义类型列表
+- [ ] **A5.2**：每条类型的显示组件：icon（emoji 输入）+ label + type_key（只读）+ 删除
+- [ ] **A5.3**："添加类型"按钮与新建表单，含 type_key 冲突提示
+
+### A6：前端资产新建对话框
+
+- [ ] **A6.1**：资产新建 type 选择器 — 分组展示内置类型 + 自定义类型（分割线分隔）
 
 ---
 
 ## 验收标准
 
-1. 通过 API 直接创建一个 `type = "spell"` 的资产后，前端资产树能正确显示该资产（通用 icon + "spell" label），不报 TypeScript 错误，不渲染崩溃
-2. 资产树筛选器能筛选出 `type = "spell"` 的资产（归入通用分组或直接列出）
-3. 原有 10 种内置类型的 icon、label、筛选行为与修改前完全一致
-4. `packages/shared-schema/src/index.ts` 中 `BUILTIN_ASSET_TYPES` 导出正常，前端可 import 使用
-5. 后端无任何修改，后端测试（若有）全部通过
+1. 在 D&D RuleSet 的类型管理页注册 `type_key="spell", label="法术", icon="✨"` 后，在该 RuleSet 的工作区新建资产时可以选择"法术"类型
+2. 创建 `type="spell"` 的资产后，资产树展示 ✨ 图标和"法术"标签（不是通用 fallback）
+3. 资产树筛选器可以单独筛选"法术"类型资产
+4. 尝试注册 `type_key="npc"` 等内置类型时，后端返回 400 错误，前端提示明确
+5. 不存在自定义类型的工作区，所有现有功能与修改前完全一致
+6. `workspace_context["custom_asset_types"]` 正确包含当前 RuleSet 的自定义类型列表
+7. TypeScript 编译无错误，原有 10 种内置类型的展示行为不变
 
 ---
 
@@ -144,15 +251,16 @@ function getAssetIcon(type: string): IconComponent {
 
 ```
 M15（知识库归属规则集）
-  └── M16（AssetType 开放化）← 本 milestone
-        └── M17+（B1：RuleSet 级自定义 AssetType 注册表，待规划）
+  ├── M16（AssetType 开放化与自定义类型注册）← 本 milestone
+  │     └── M18+（B1：create_module 自动生成自定义类型资产）
+  └── M17（用户自定义 Agent Skill）← 可并行
 ```
 
 ---
 
 ## 非目标
 
-- 不为非内置类型提供 Agent 创作支持（Document Agent 格式化仍只处理内置类型）
-- 不引入 RuleSet 级 AssetType 注册表（B1，留给后续 milestone）
-- 不修改后端 Python 代码（后端已支持）
-- 不扩充内置类型列表（不加 `spell`/`item` 等）
+- 不修改 `create_module` Workflow 的 patch 列表生成逻辑（B1，推迟）
+- 不扩充内置类型枚举（正确方式是用户自行注册）
+- type_key 创建后不可修改（数据完整性保护）
+- 不提供类型字段模板（B2，推迟）
