@@ -10,6 +10,7 @@ import type {
   CatalogRefreshRequest, CatalogRefreshResult,
   RerankProfile, CreateRerankProfileRequest, UpdateRerankProfileRequest,
   RerankProviderType, RerankTestResult,
+  ProbeModelsResponse,
 } from "@trpg-workbench/shared-schema";
 import styles from "./SettingsPage.module.css";
 import { HelpButton } from "../components/HelpButton";
@@ -39,7 +40,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 const EMPTY_LLM: CreateLLMProfileRequest = {
-  name: "", provider_type: "openai", model_name: "",
+  name: "", provider_type: "openai",
   base_url: "", api_key: "", temperature: 0.7, max_tokens: 4096,
   supports_json_mode: true, supports_tools: true, timeout_seconds: 60,
 };
@@ -51,7 +52,6 @@ const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
 
 const GEMINI_PRESET: Partial<CreateLLMProfileRequest> = {
   provider_type: "google",
-  model_name: "gemini-2.0-flash",
   base_url: "",
   supports_json_mode: true,
   supports_tools: true,
@@ -106,7 +106,7 @@ function LLMSection() {
   function openEdit(p: LLMProfile) {
     setEditTarget(p);
     setForm({
-      name: p.name, provider_type: p.provider_type as LLMProviderType, model_name: p.model_name,
+      name: p.name, provider_type: p.provider_type as LLMProviderType,
       base_url: p.base_url ?? "", api_key: "", temperature: p.temperature, max_tokens: p.max_tokens,
       supports_json_mode: p.supports_json_mode, supports_tools: p.supports_tools,
       timeout_seconds: p.timeout_seconds,
@@ -126,24 +126,15 @@ function LLMSection() {
     if (!form.base_url) return;
     setFetchingModels(true); setFetchModelsError(null);
     try {
-      const result = await apiFetch<CatalogRefreshResult>("/settings/model-catalog/refresh", {
-        method: "POST",
-        body: JSON.stringify({
-          provider_type: "openai_compatible",
-          base_url: form.base_url,
-          api_key: form.api_key || null,
-        } satisfies CatalogRefreshRequest),
-      });
+      const params = new URLSearchParams({ base_url: form.base_url });
+      if (form.api_key) params.set("api_key", form.api_key);
+      const result = await apiFetch<ProbeModelsResponse>(
+        `/settings/model-catalog/probe-models?${params.toString()}`
+      );
       if (result.error) {
         setFetchModelsError(result.error);
       } else {
-        // Fetch the catalog entries we just populated
-        const entries = await apiFetch<ModelCatalogEntry[]>("/settings/model-catalog?provider_type=openai_compatible");
-        const names = entries.map((e) => e.model_name);
-        setFetchedModels(names);
-        if (names.length > 0 && !form.model_name) {
-          setForm((f) => ({ ...f, model_name: names[0] }));
-        }
+        setFetchedModels(result.models);
       }
     } catch (e) {
       setFetchModelsError((e as Error).message);
@@ -199,7 +190,6 @@ function LLMSection() {
             <div className={styles.itemInfo}>
               <span className={styles.itemName}>{p.name}</span>
               <span className={styles.tag}>{PROVIDER_LABELS[p.provider_type] ?? p.provider_type}</span>
-              <span className={styles.itemModel}>{p.model_name}</span>
               {p.has_api_key && <span style={{ fontSize: 11, color: "#52c97e" }}>● Key 已配置</span>}
             </div>
             <div className={styles.itemActions}>
@@ -238,20 +228,6 @@ function LLMSection() {
                 <select className={styles.select} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as LLMProviderType)}>
                   {LLM_PROVIDERS.map((p) => <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>)}
                 </select>
-              </label>
-              <label className={styles.label}>
-                模型名称 *
-                {form.provider_type === "openai_compatible" && fetchedModels.length > 0 ? (
-                  <select
-                    className={styles.select}
-                    value={form.model_name}
-                    onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-                  >
-                    {fetchedModels.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                ) : (
-                  <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：gemini-2.0-flash" />
-                )}
               </label>
               {showBaseUrl && (
                 <label className={styles.label}>
@@ -315,7 +291,7 @@ function LLMSection() {
                     {testing ? "测试中..." : "测试连接"}
                   </button>
                 )}
-                <button type="submit" className={styles.btnPrimary} disabled={isPending || !form.name || !form.model_name}>
+                <button type="submit" className={styles.btnPrimary} disabled={isPending || !form.name}>
                   {isPending ? "保存中..." : "保存"}
                 </button>
               </div>
@@ -399,18 +375,19 @@ function EmbeddingSection() {
     if (!form.base_url) return;
     setFetchingModels(true); setFetchModelsError(null);
     try {
-      // Directly probe the OpenAI-compatible /v1/models endpoint from the frontend,
-      // bypassing the backend catalog (which only stores LLM entries).
-      const baseUrl = form.base_url.replace(/\/+$/, "");
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (form.api_key) headers["Authorization"] = `Bearer ${form.api_key}`;
-      const resp = await fetch(`${baseUrl}/v1/models`, { headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json() as { data?: { id: string }[] };
-      const names = (data.data ?? []).map((m) => m.id).filter(Boolean);
-      setFetchedModels(names);
-      if (names.length > 0 && !form.model_name) {
-        setForm((f) => ({ ...f, model_name: names[0] }));
+      const params = new URLSearchParams({ base_url: form.base_url });
+      if (form.api_key) params.set("api_key", form.api_key);
+      const result = await apiFetch<ProbeModelsResponse>(
+        `/settings/model-catalog/probe-models?${params.toString()}`
+      );
+      if (result.error) {
+        setFetchModelsError(result.error);
+      } else {
+        const names = result.models;
+        setFetchedModels(names);
+        if (names.length > 0 && !form.model_name) {
+          setForm((f) => ({ ...f, model_name: names[0] }));
+        }
       }
     } catch (e) {
       setFetchModelsError((e as Error).message);

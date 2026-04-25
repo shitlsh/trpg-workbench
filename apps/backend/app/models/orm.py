@@ -30,7 +30,7 @@ class WorkspaceORM(Base):
     """Workspace registry entry in global app.db.
 
     Most configuration now lives in .trpg/config.yaml (file-first).
-    This table is just a pointer: id + name + path + last_opened_at.
+    Model routing fields are synced here from config.yaml for fast lookup.
     """
     __tablename__ = "workspaces"
 
@@ -41,6 +41,13 @@ class WorkspaceORM(Base):
     status: Mapped[str] = mapped_column(String(20), default="ok")  # ok / missing
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    # Model routing — synced from config.yaml on every PATCH /config
+    default_llm_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    default_llm_model_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    rerank_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    rerank_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    rerank_apply_to_task_types: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list
 
 
 # ─── M6: Model Profiles ───────────────────────────────────────────────────────
@@ -53,7 +60,6 @@ class LLMProfileORM(Base):
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False)  # openai/anthropic/google/openrouter/openai_compatible
     base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
     max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
     supports_json_mode: Mapped[bool] = mapped_column(Boolean, nullable=False)

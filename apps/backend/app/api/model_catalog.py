@@ -1,5 +1,6 @@
-"""Model catalog API: CRUD + refresh endpoint."""
+"""Model catalog API: CRUD + refresh + probe endpoint."""
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.storage.database import get_db
@@ -14,6 +15,41 @@ from app.models.schemas import (
 from app.services.catalog_service import refresh_catalog_from_provider
 
 router = APIRouter(prefix="/settings/model-catalog", tags=["model-catalog"])
+
+
+class ProbeModelsResponse(BaseModel):
+    models: list[str]
+    error: str | None = None
+
+
+@router.get("/probe-models", response_model=ProbeModelsResponse)
+def probe_models(
+    base_url: str = Query(..., description="Base URL of the OpenAI-compatible endpoint"),
+    api_key: str = Query("", description="API key (optional)"),
+):
+    """
+    Probe an OpenAI-compatible endpoint server-side to avoid CORS preflight from WebView.
+    Returns the list of model IDs from GET {base_url}/v1/models (or {base_url}/models).
+    """
+    import httpx
+
+    base = base_url.rstrip("/")
+    # Try /v1/models first, fall back to /models (Ollama uses /v1/models when used with OpenAI compat)
+    url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        resp = httpx.get(url, headers=headers, timeout=5.0)
+        resp.raise_for_status()
+        data = resp.json()
+        models = [m["id"] for m in data.get("data", []) if m.get("id")]
+        return ProbeModelsResponse(models=models)
+    except httpx.HTTPStatusError as e:
+        return ProbeModelsResponse(models=[], error=f"HTTP {e.response.status_code}")
+    except Exception as e:
+        return ProbeModelsResponse(models=[], error=str(e))
 
 
 @router.get("", response_model=list[ModelCatalogEntrySchema])

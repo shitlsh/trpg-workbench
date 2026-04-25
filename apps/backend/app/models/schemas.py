@@ -58,7 +58,6 @@ class LLMProfileSchema(BaseModel):
     name: str
     provider_type: str
     base_url: str | None
-    model_name: str
     temperature: float
     max_tokens: int
     supports_json_mode: bool
@@ -72,7 +71,6 @@ class LLMProfileSchema(BaseModel):
 class LLMProfileCreate(BaseModel):
     name: str
     provider_type: str
-    model_name: str
     base_url: str | None = None
     api_key: str | None = None
     temperature: float = 0.7
@@ -85,7 +83,6 @@ class LLMProfileCreate(BaseModel):
 class LLMProfileUpdate(BaseModel):
     name: str | None = None
     provider_type: str | None = None
-    model_name: str | None = None
     base_url: str | None = None
     api_key: str | None = None
     clear_api_key: bool = False
@@ -317,6 +314,7 @@ class SendMessageRequest(BaseModel):
     content: str
     workspace_id: str
     referenced_asset_ids: list[str] = []
+    model: str | None = None  # optional per-message model override
 
 
 class ApplyPatchRequest(BaseModel):
@@ -360,6 +358,7 @@ class PromptProfileUpdate(BaseModel):
 class GeneratePromptRequest(BaseModel):
     rule_set_id: str
     llm_profile_id: str
+    model_name: str
 
 
 class GeneratePromptResponse(BaseModel):

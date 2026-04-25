@@ -160,8 +160,11 @@ async def send_message(
 
     # Resolve model
     try:
-        profile = get_llm_for_task(body.workspace_id, "chat", db)
-        model = model_from_profile(profile)
+        profile, model_name = get_llm_for_task(body.workspace_id, "chat", db)
+        # Allow per-message model override (e.g. from AgentPanel model switcher)
+        if body.model:
+            model_name = body.model
+        model = model_from_profile(profile, model_name)
     except ModelNotConfiguredError as e:
         async def _err_stream():
             yield _sse("error", {"message": str(e)})

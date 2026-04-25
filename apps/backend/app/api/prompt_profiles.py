@@ -32,7 +32,7 @@ def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get_db)):
         from app.agents.model_adapter import model_from_profile
         from agno.agent import Agent
 
-        model = model_from_profile(llm_profile)
+        model = model_from_profile(llm_profile, body.model_name)
 
         rs_desc = rule_set.description or "无"
 

@@ -4,11 +4,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Plus, Zap, ChevronDown, ChevronRight, Trash2, FolderOpen } from "lucide-react";
 import { apiFetch } from "../lib/api";
 import type {
-  Workspace, RuleSet, LLMProfile, EmbeddingProfile, ModelCatalogEntry,
+  Workspace, RuleSet, LLMProfile, ModelCatalogEntry,
   EmbeddingCatalogEntry, RerankProfile,
   WorkspaceConfigResponse,
   WorkspaceSkillMeta, WorkspaceSkill,
   CreateWorkspaceSkillRequest, UpdateWorkspaceSkillRequest,
+  ProbeModelsResponse,
 } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
 import { HelpButton } from "../components/HelpButton";
@@ -257,9 +258,9 @@ function SkillsSection({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function CatalogHint({ profile, catalog }: { profile: LLMProfile | EmbeddingProfile | undefined; catalog: (ModelCatalogEntry | EmbeddingCatalogEntry)[] }) {
-  if (!profile) return null;
-  const entry = catalog.find((e) => e.model_name === profile.model_name);
+function CatalogHint({ modelName, catalog }: { modelName: string | undefined; catalog: (ModelCatalogEntry | EmbeddingCatalogEntry)[] }) {
+  if (!modelName) return null;
+  const entry = catalog.find((e) => e.model_name === modelName);
   if (!entry) return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>（无 catalog 数据）</span>;
   const parts: string[] = [];
   if ("context_window" in entry && entry.context_window) {
@@ -323,10 +324,14 @@ export default function WorkspaceSettingsPage() {
   const [description, setDescription] = useState("");
   const [ruleSetName, setRuleSetName] = useState("");
   const [defaultLlmName, setDefaultLlmName] = useState("");
+  const [defaultLlmModel, setDefaultLlmModel] = useState("");
   const [rerankName, setRerankName] = useState("");
   const [rerankEnabled, setRerankEnabled] = useState(false);
   const [rerankTopN, setRerankTopN] = useState(5);
   const [rerankTopK, setRerankTopK] = useState(20);
+  const [probedModels, setProbedModels] = useState<string[]>([]);
+  const [probingModels, setProbingModels] = useState(false);
+  const [probeError, setProbeError] = useState<string | null>(null);
 
   // Populate form from config
   useEffect(() => {
@@ -335,10 +340,13 @@ export default function WorkspaceSettingsPage() {
       setDescription(config.description ?? "");
       setRuleSetName(config.rule_set ?? "");
       setDefaultLlmName(config.models?.default_llm ?? "");
+      setDefaultLlmModel(config.models?.default_llm_model ?? "");
       setRerankName(config.models?.rerank ?? "");
       setRerankEnabled(config.rerank?.enabled ?? false);
       setRerankTopN(config.rerank?.top_n ?? 5);
       setRerankTopK(config.rerank?.top_k ?? 20);
+      setProbedModels([]);
+      setProbeError(null);
     }
   }, [config?.name, id]); // re-init when workspace changes
 
@@ -378,6 +386,7 @@ export default function WorkspaceSettingsPage() {
       rule_set: ruleSetName,
       models: {
         default_llm: defaultLlmName,
+        default_llm_model: defaultLlmModel,
         rerank: rerankName,
       },
       rerank: {
@@ -399,8 +408,28 @@ export default function WorkspaceSettingsPage() {
 
   if (!workspace || !config) return <div className={styles.loading}>加载中...</div>;
 
-  // Resolve name-based references to profiles for catalog hints
-  const selectedDefaultLlm = llmProfiles.find((p) => p.name === defaultLlmName);
+  // Resolve the selected LLM profile for probing
+  const selectedLlmProfile = llmProfiles.find((p) => p.name === defaultLlmName);
+
+  async function handleProbeModels() {
+    if (!selectedLlmProfile?.base_url) return;
+    setProbingModels(true); setProbeError(null);
+    try {
+      const params = new URLSearchParams({ base_url: selectedLlmProfile.base_url });
+      const result = await apiFetch<ProbeModelsResponse>(
+        `/settings/model-catalog/probe-models?${params.toString()}`
+      );
+      if (result.error) {
+        setProbeError(result.error);
+      } else {
+        setProbedModels(result.models);
+      }
+    } catch (e) {
+      setProbeError((e as Error).message);
+    } finally {
+      setProbingModels(false);
+    }
+  }
 
   return (
     <div className={styles.page}>
@@ -438,13 +467,51 @@ export default function WorkspaceSettingsPage() {
                   未指定
                 </span>
               )}
-              <CatalogHint profile={selectedDefaultLlm} catalog={llmCatalog} />
+              <CatalogHint modelName={defaultLlmModel || undefined} catalog={llmCatalog} />
             </span>
-            <select className={styles.select} value={defaultLlmName} onChange={(e) => setDefaultLlmName(e.target.value)}>
+            <select className={styles.select} value={defaultLlmName} onChange={(e) => { setDefaultLlmName(e.target.value); setProbedModels([]); setProbeError(null); setDefaultLlmModel(""); }}>
               <option value="">不指定</option>
-              {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
+              {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.provider_type})</option>)}
             </select>
           </label>
+          {defaultLlmName && (
+            <div style={{ marginLeft: 0, marginTop: -4, marginBottom: 8 }}>
+              <div style={{ fontSize: 13, marginBottom: 4, fontWeight: 500, color: "var(--text-muted)" }}>模型名称</div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {probedModels.length > 0 ? (
+                  <select
+                    className={styles.select}
+                    style={{ flex: 1 }}
+                    value={defaultLlmModel}
+                    onChange={(e) => setDefaultLlmModel(e.target.value)}
+                  >
+                    <option value="">选择模型...</option>
+                    {probedModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    className={styles.input}
+                    style={{ flex: 1 }}
+                    value={defaultLlmModel}
+                    onChange={(e) => setDefaultLlmModel(e.target.value)}
+                    placeholder="例：gemini-2.0-flash"
+                  />
+                )}
+                {selectedLlmProfile?.base_url && (
+                  <button
+                    type="button"
+                    onClick={handleProbeModels}
+                    disabled={probingModels}
+                    style={{ whiteSpace: "nowrap", fontSize: 12, padding: "5px 10px", borderRadius: 5, background: "transparent", border: "1px solid var(--border)", cursor: "pointer", color: "var(--text)" }}
+                  >
+                    {probingModels ? "获取中..." : "获取模型列表"}
+                  </button>
+                )}
+              </div>
+              {probeError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>{probeError}</span>}
+              {probedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ {probedModels.length} 个模型</span>}
+            </div>
+          )}
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Rerank 重排序（可选）</div>
           <label className={styles.label}>
             Rerank 配置（留空则不使用 Rerank）

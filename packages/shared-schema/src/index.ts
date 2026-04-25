@@ -72,6 +72,7 @@ export interface WorkspaceConfig {
   rule_set: string; // rule_set name
   models: {
     default_llm: string;
+    default_llm_model: string;
     rerank: string;
   };
   rerank: {
@@ -96,7 +97,6 @@ export interface LLMProfile {
   name: string;
   provider_type: LLMProviderType;
   base_url: string | null;
-  model_name: string;
   temperature: number;
   max_tokens: number;
   supports_json_mode: boolean;
@@ -110,7 +110,6 @@ export interface LLMProfile {
 export interface CreateLLMProfileRequest {
   name: string;
   provider_type: LLMProviderType;
-  model_name: string;
   base_url?: string;
   api_key?: string;
   temperature?: number;
@@ -123,7 +122,6 @@ export interface CreateLLMProfileRequest {
 export interface UpdateLLMProfileRequest {
   name?: string;
   provider_type?: LLMProviderType;
-  model_name?: string;
   base_url?: string;
   api_key?: string;
   clear_api_key?: boolean;
@@ -802,6 +800,13 @@ export interface SearchTestResponse {
   results: SearchTestResult[];
   reranked: boolean;
   warnings: string[];
+  error: string | null;
+}
+
+// ─── Model Catalog Probe ─────────────────────────────────────────────────────
+
+export interface ProbeModelsResponse {
+  models: string[];
   error: string | null;
 }
 

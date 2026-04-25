@@ -1,5 +1,5 @@
 import time
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.storage.database import get_db
 from app.models.orm import LLMProfileORM, WorkspaceORM
@@ -101,14 +101,14 @@ def delete_llm_profile(profile_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{profile_id}/test", response_model=LLMTestResult)
-def test_llm_profile(profile_id: str, db: Session = Depends(get_db)):
+def test_llm_profile(profile_id: str, model_name: str = Query(..., description="Model name to test"), db: Session = Depends(get_db)):
     profile = db.get(LLMProfileORM, profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="LLMProfile not found")
 
     try:
         from app.agents.model_adapter import model_from_profile
-        model = model_from_profile(profile)
+        model = model_from_profile(profile, model_name)
         start = time.monotonic()
         # Use agno model to do a simple completion
         from agno.agent import Agent

@@ -190,6 +190,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     enabled: !!workspaceId,
   });
   const defaultLlmName = configResp?.config?.models?.default_llm ?? "";
+  const defaultLlmModel = configResp?.config?.models?.default_llm_model ?? "";
   const trustMode = configResp?.config?.trust_mode === true;
 
   // Trust mode toggle mutation
@@ -210,12 +211,12 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const activeProfile = llmProfiles.find((p) => p.name === (sessionModel || defaultLlmName));
 
   const { data: catalogEntry } = useQuery({
-    queryKey: ["model-catalog-entry", activeProfile?.provider_type, activeProfile?.model_name],
+    queryKey: ["model-catalog-entry", activeProfile?.provider_type, defaultLlmModel],
     queryFn: () =>
       apiFetch<ModelCatalogEntry[]>(
         `/settings/model-catalog?provider_type=${activeProfile!.provider_type}`
-      ).then((entries) => entries.find((e) => e.model_name === activeProfile!.model_name) ?? null),
-    enabled: !!activeProfile,
+      ).then((entries) => entries.find((e) => e.model_name === defaultLlmModel) ?? null),
+    enabled: !!activeProfile && !!defaultLlmModel,
   });
 
   // Logs

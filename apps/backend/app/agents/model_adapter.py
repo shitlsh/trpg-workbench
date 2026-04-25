@@ -20,15 +20,17 @@ def _decrypt_key(profile) -> str | None:
     return None
 
 
-def model_from_profile(profile) -> Any:
+def model_from_profile(profile, model_name: str) -> Any:
     """
-    Given a LLMProfileORM instance, return the appropriate Agno model object.
+    Given a LLMProfileORM instance and an explicit model_name, return the Agno model object.
+
+    model_name must be provided explicitly — it is no longer stored on the profile.
+    Resolve order: SendMessageRequest.model → workspace.default_llm_model_name.
 
     Supported provider_type values:
       openai, anthropic, google, openrouter, openai_compatible
     """
     provider = profile.provider_type
-    model_name = profile.model_name
     base_url = profile.base_url or None
     api_key = _decrypt_key(profile)
 

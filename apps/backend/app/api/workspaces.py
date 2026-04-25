@@ -168,6 +168,40 @@ class ConfigUpdateRequest(BaseModel):
 def patch_config(workspace_id: str, body: ConfigUpdateRequest, db: Session = Depends(get_db)):
     ws = _get_ws(workspace_id, db)
     merged = update_config(ws.workspace_path, body.updates)
+
+    # Sync model routing fields to WorkspaceORM so model_routing.py can read them fast.
+    models_update = body.updates.get("models", {})
+    if models_update:
+        from app.models.orm import LLMProfileORM, RerankProfileORM
+
+        # LLM profile: resolve by name → ID
+        if "default_llm" in models_update:
+            profile_name = models_update["default_llm"]
+            if profile_name:
+                profile = db.query(LLMProfileORM).filter(LLMProfileORM.name == profile_name).first()
+                ws.default_llm_profile_id = profile.id if profile else None
+            else:
+                ws.default_llm_profile_id = None
+
+        # LLM model name (stored separately from the profile)
+        if "default_llm_model" in models_update:
+            ws.default_llm_model_name = models_update["default_llm_model"] or None
+
+        # Rerank profile: resolve by name → ID
+        if "rerank" in models_update:
+            rerank_name = models_update["rerank"]
+            if rerank_name:
+                rp = db.query(RerankProfileORM).filter(RerankProfileORM.name == rerank_name).first()
+                ws.rerank_profile_id = rp.id if rp else None
+            else:
+                ws.rerank_profile_id = None
+
+    rerank_update = body.updates.get("rerank", {})
+    if rerank_update:
+        if "enabled" in rerank_update:
+            ws.rerank_enabled = bool(rerank_update["enabled"])
+
+    db.commit()
     return {"config": merged}
 
 

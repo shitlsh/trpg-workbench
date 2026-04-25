@@ -75,7 +75,7 @@ def get_usage_summary(
     for r in records:
         profile = get_profile(r.llm_profile_id)
         pt = profile.provider_type if profile else "unknown"
-        mn = profile.model_name if profile else "unknown"
+        mn = "unknown"  # model_name no longer stored on profile
         if provider_type and pt != provider_type:
             continue
         enriched.append((r, pt, mn))
@@ -142,7 +142,7 @@ def get_recent_records(
     for r in records:
         profile = db.get(LLMProfileORM, r.llm_profile_id)
         pt = profile.provider_type if profile else "unknown"
-        mn = profile.model_name if profile else "unknown"
+        mn = "unknown"  # model_name no longer stored on profile
         inp_price, out_price = _get_pricing(db, pt, mn)
         cost = _estimate_cost(r.prompt_tokens, r.completion_tokens, inp_price, out_price)
         # task_type field in ORM is used as workflow_source too; split if needed

@@ -19,19 +19,21 @@ class LibraryNotIndexedError(Exception):
         self.message = f"Library {library_id} has not been indexed yet"
 
 
-def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> LLMProfileORM:
+def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> tuple[LLMProfileORM, str]:
     """
-    Resolve the LLM profile to use for a given task.
-    All task types use workspace.default_llm_profile_id.
+    Resolve the LLM profile and model name to use for a given task.
+    Returns (profile, model_name).
 
-    Raises ModelNotConfiguredError if no profile is configured.
+    profile   — LLMProfileORM with provider credentials
+    model_name — resolved from workspace.default_llm_model_name
+
+    Raises ModelNotConfiguredError if no profile or model is configured.
     """
     workspace = db.get(WorkspaceORM, workspace_id)
     if not workspace:
         raise ModelNotConfiguredError(f"Workspace {workspace_id} not found")
 
     profile_id = workspace.default_llm_profile_id
-
     if not profile_id:
         raise ModelNotConfiguredError(
             "No LLM profile configured for this workspace. "
@@ -45,7 +47,14 @@ def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> LLMProfi
             "Please reconfigure the LLM profile in workspace settings."
         )
 
-    return profile
+    model_name = workspace.default_llm_model_name
+    if not model_name:
+        raise ModelNotConfiguredError(
+            "No default model configured for this workspace. "
+            "Please select a model in workspace settings."
+        )
+
+    return profile, model_name
 
 
 def get_embedding_for_query(library_id: str, db: Session) -> EmbeddingProfileORM:
