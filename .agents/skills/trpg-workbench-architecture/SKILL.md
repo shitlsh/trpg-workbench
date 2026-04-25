@@ -161,24 +161,82 @@ summary: 镇长，表面亲和，实则掩盖旧案
 - **KnowledgeLibrary 归属某个 RuleSet**（一对多，通过 `KnowledgeLibrary.rule_set_id` 外键）；在规则集管理页内创建和管理，不是全局独立资产
 - **WorkspaceLibraryBinding 是工作空间级扩充**，用于为单个工作空间追加规则集之外的知识库；工作空间实际可用的知识库 = 规则集归属的库 + 工作空间额外绑定的库
 
-### `WorkflowState` 关键字段（M12 新增，shared-schema 定义）
+### M19 SSE 通信协议（Agent 流式响应）
+
+M19 起，Agent 响应通过 SSE（Server-Sent Events）流式推送，**废弃 Workflow REST 轮询模式**。
+
+```
+POST /workspaces/{id}/chat
+  → StreamingResponse(text/event-stream)
+  → yield SSE events: text_delta | tool_call | tool_result | patch_proposal | done | error
+
+POST /workspaces/{id}/chat/confirm   body: {session_id, proposal_id}
+POST /workspaces/{id}/chat/reject    body: {session_id, proposal_id}
+```
+
+前端消费方式（封装在 `AgentPanel.tsx`，不用 TanStack Query）：
+```typescript
+const res = await fetch(url, { method: "POST", body: JSON.stringify(payload), signal })
+const reader = res.body!.getReader()
+// 解析 SSE 行，dispatch 到对应 UI 状态
+```
+
+### M19 关键类型（shared-schema 定义）
 
 ```typescript
-interface WorkflowStepResult {
-  step_id: string
-  label: string
-  status: "pending" | "running" | "completed" | "failed" | "skipped"
-  detail?: string | null   // M12：citations JSON 字符串或自由文本，供前端展示 CitationsPanel
-  error?: string | null
+// SSE 事件
+type SSEEvent =
+  | { type: "text_delta"; content: string }
+  | { type: "tool_call"; tool_name: string; args: Record<string, unknown>; call_id: string }
+  | { type: "tool_result"; call_id: string; result: unknown; is_error: boolean }
+  | { type: "patch_proposal"; proposal: PatchProposal }
+  | { type: "done"; session_id: string; message_id: string }
+  | { type: "error"; message: string; code?: string }
+
+// 写操作 Proposal（需用户确认）
+interface PatchProposal {
+  id: string                            // "pp_<uuid>"
+  operation: "create" | "update"
+  asset_type: string
+  asset_name: string
+  slug: string
+  content_preview: string              // 完整资产内容（frontmatter + body）
+  diff_summary: string                 // 人类可读的变更摘要
 }
 
-interface WorkflowState {
-  workflow_id: string
-  status: "idle" | "running" | "completed" | "failed"
-  steps: WorkflowStepResult[]
-  director_intent?: string | null  // M12：Director 的规划意图，供前端展示"AI 正在做什么"
+// 消息发送 Request
+interface SendMessageRequest {
+  message: string
+  session_id?: string
+  model?: string
+  referenced_asset_ids?: string[]     // M19：@mention 的资产 ID
 }
 ```
+
+**约束**：前后端通过 `packages/shared-schema/` 共享此类型定义，不允许前后端各自单独定义接口类型。
+
+---
+
+### `workspace_context` 结构（Agent 运行时传入）
+
+```python
+{
+    "workspace_name": str,
+    "rule_set": str,            # rule_set 名称（如 "coc-7e"），从 config.yaml 读取
+    "style_prompt": str | None, # 规则集 PromptProfile 的 system_prompt，供 Agent 注入风格约束
+    "library_ids": list[str],   # 合并后的知识库 ID 列表（规则集绑定 + 工作空间额外绑定，已去重）
+    "existing_assets": [
+        {
+            "type": str,
+            "name": str,
+            "slug": str,
+            "summary": str | None,  # M19 新增：资产摘要，供 Director 快速了解现有内容
+        }
+    ],
+}
+```
+
+Agent 使用 `style_prompt` 时，应将其作为 Director system prompt 的一部分注入，**不得替换通过 `load_prompt()` 加载的 prompt**。
 
 **约束**：
 - `detail` 写入时机：知识库检索步骤完成后，由 Workflow 的 `update_step(detail=...)` 写入，空检索时写 `None`，不写 `"[]"`
@@ -281,8 +339,7 @@ trpg-workbench/
       app/
         api/                     # HTTP 路由层
         services/                # 业务服务层
-        agents/                  # Agno Agent 定义
-        workflows/               # Agno Workflow 定义
+        agents/                  # Agno Agent 定义（director.py + tools.py）
         knowledge/               # PDF 处理与检索
         storage/                 # SQLite + 文件操作
         models/                  # 数据模型定义（Pydantic）
