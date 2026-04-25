@@ -94,14 +94,15 @@ async def run_director_stream(
                         "data": {
                             "id": tool.tool_call_id or "",
                             "name": tool.tool_name or "",
-                            "arguments": "",
+                            "arguments": json.dumps(tool.tool_args or {}, ensure_ascii=False),
                         },
                     }
 
             # Tool call completed (result)
             elif event_type == "ToolCallCompleted":
                 tool = getattr(chunk, "tool", None)
-                raw_content = str(getattr(chunk, "content", "") or "")
+                # tool.result holds the actual return value of the tool function
+                raw_content = str(getattr(tool, "result", None) or getattr(chunk, "content", "") or "")
                 if tool:
                     try:
                         payload = json.loads(raw_content)
@@ -114,8 +115,8 @@ async def run_director_stream(
                         "event": "tool_call_result",
                         "data": {
                             "id": tool.tool_call_id or "",
-                            "success": True,
-                            "summary": raw_content[:200],
+                            "success": not tool.tool_call_error,
+                            "summary": raw_content[:500],
                         },
                     }
 

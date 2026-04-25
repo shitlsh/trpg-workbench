@@ -106,6 +106,71 @@ function ConsistencyReportView({ report }: { report: ConsistencyReport }) {
   );
 }
 
+function KnowledgeResultView({ raw, args }: { raw: string; args: Record<string, unknown> }) {
+  let results: Array<{ content?: string; document_name?: string; page_from?: number; page_to?: number }> = [];
+  let message = "";
+  try {
+    const data = JSON.parse(raw);
+    results = data.results ?? [];
+    message = data.message ?? "";
+  } catch {}
+
+  return (
+    <div>
+      {args.query && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
+          <span style={{ fontWeight: 600 }}>查询：</span>{args.query as string}
+        </div>
+      )}
+      {message && <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>{message}</div>}
+      {results.length === 0 && !message && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>无匹配结果</div>
+      )}
+      {results.map((r, i) => (
+        <div key={i} style={{
+          marginBottom: 6, padding: "4px 6px",
+          background: "var(--bg)", borderRadius: 3,
+          border: "1px solid var(--border)",
+          fontSize: 10,
+        }}>
+          <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>
+            {r.document_name} · p{r.page_from}{r.page_to && r.page_to !== r.page_from ? `–${r.page_to}` : ""}
+          </div>
+          <div style={{ color: "var(--text)", lineHeight: 1.4 }}>{(r.content ?? "").slice(0, 150)}{(r.content?.length ?? 0) > 150 ? "…" : ""}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Build a short inline description of args for display in the card header
+function argsSummary(name: string, args: Record<string, unknown>): string | null {
+  if (name === "search_knowledge" || name === "consult_rules") {
+    const q = args.query as string;
+    return q ? `"${q}"` : null;
+  }
+  if (name === "search_assets") {
+    const q = (args.query ?? args.name ?? args.type) as string;
+    return q ? `"${q}"` : null;
+  }
+  if (name === "read_asset") return (args.slug ?? args.asset_id) as string ?? null;
+  if (name === "create_asset" || name === "update_asset") return (args.name ?? args.asset_slug) as string ?? null;
+  return null;
+}
+
+// Parse search_knowledge result into a readable summary
+function knowledgeResultSummary(raw: string): string | null {
+  try {
+    const data = JSON.parse(raw);
+    if (data.message) return data.message;
+    const results = data.results as Array<{ content?: string; document_name?: string; page_from?: number }>;
+    if (!results || results.length === 0) return "无匹配结果";
+    return `${results.length} 条结果 · ${results[0].document_name ?? ""} p${results[0].page_from ?? "?"}: ${(results[0].content ?? "").slice(0, 60)}…`;
+  } catch {
+    return null;
+  }
+}
+
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -123,6 +188,11 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
       consistencyReport = JSON.parse(toolCall.result_summary) as ConsistencyReport;
     } catch {}
   }
+
+  const inlineArgsSummary = argsSummary(toolCall.name, args);
+  const knowledgeSummary = (toolCall.name === "search_knowledge" || toolCall.name === "consult_rules") && toolCall.result_summary
+    ? knowledgeResultSummary(toolCall.result_summary)
+    : null;
 
   const statusIcon = () => {
     switch (toolCall.status) {
@@ -168,6 +238,11 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
         {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         {statusIcon()}
         <span style={{ color: "var(--text)", fontWeight: 500 }}>{label}</span>
+        {inlineArgsSummary && (
+          <span style={{ color: "var(--text-muted)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>
+            {inlineArgsSummary}
+          </span>
+        )}
         {isAutoApplied && (
           <span style={{
             fontSize: 9, padding: "1px 5px", borderRadius: 8,
@@ -177,9 +252,14 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
             已自动应用
           </span>
         )}
-        {toolCall.result_summary && !isAutoApplied && !consistencyReport && (
+        {toolCall.result_summary && !isAutoApplied && !consistencyReport && !knowledgeSummary && (
           <span style={{ color: "var(--text-subtle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             — {toolCall.result_summary}
+          </span>
+        )}
+        {knowledgeSummary && (
+          <span style={{ color: "var(--text-muted)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            — {knowledgeSummary}
           </span>
         )}
         {consistencyReport && (
@@ -211,6 +291,8 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
         <div style={{ padding: "6px 8px", background: "var(--bg-surface)", borderTop: "1px solid var(--border)" }}>
           {consistencyReport ? (
             <ConsistencyReportView report={consistencyReport} />
+          ) : knowledgeSummary && toolCall.result_summary ? (
+            <KnowledgeResultView raw={toolCall.result_summary} args={args} />
           ) : (
             <pre style={{
               fontSize: 10, margin: 0,
