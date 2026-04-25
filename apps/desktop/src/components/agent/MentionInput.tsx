@@ -198,6 +198,12 @@ export function MentionInput({ workspaceId, disabled = false, onSubmit }: Mentio
     editable: !disabled,
   });
 
+  // Sync disabled → editor.editable (TipTap doesn't watch the init-time option)
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!disabled);
+  }, [editor, disabled]);
+
   // Extract plain text and mention ids from editor
   const doSubmit = () => {
     if (!editor) return;
