@@ -7,6 +7,7 @@ that require user confirmation before being applied.
 from __future__ import annotations
 import json
 from agno.agent import Agent
+from agno.models.message import Message
 from app.agents.model_adapter import strip_code_fence
 from app.agents.tools import (
     ALL_TOOLS, PatchProposalInterrupt, configure as configure_tools,
@@ -60,38 +61,48 @@ async def run_director_stream(
         )
         prompt = f"{refs_block}\n\n---\n\n{user_message}"
 
-    # Build messages list for multi-turn history
-    messages: list = []
+    # Build messages list: history + current prompt (handled below)
+
+    # Build messages list: history + current prompt
+    input_messages: list[Message] = []
     if history:
         for msg in history:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role in ("user", "assistant") and content:
-                messages.append({"role": role, "content": content})
+                input_messages.append(Message(role=role, content=content))
+    input_messages.append(Message(role="user", content=prompt))
 
     try:
         async for chunk in await agent.arun(
-            message=prompt,
-            messages=messages if messages else None,
+            input_messages,
             stream=True,
+            stream_events=True,
         ):
-            # Agno streaming chunks
-            if hasattr(chunk, "content") and chunk.content:
+            event_type = getattr(chunk, "event", None)
+
+            # Text delta
+            if event_type == "RunContent" and getattr(chunk, "content", None):
                 yield {"event": "text_delta", "data": {"content": chunk.content}}
-            if hasattr(chunk, "tool_calls") and chunk.tool_calls:
-                for tc in chunk.tool_calls:
+
+            # Tool call started
+            elif event_type == "ToolCallStarted":
+                tool = getattr(chunk, "tool", None)
+                if tool:
                     yield {
                         "event": "tool_call_start",
                         "data": {
-                            "id": tc.tool_call_id or "",
-                            "name": tc.tool_name or "",
-                            "arguments": json.dumps(tc.tool_input or {}, ensure_ascii=False),
+                            "id": tool.tool_call_id or "",
+                            "name": tool.tool_name or "",
+                            "arguments": "",
                         },
                     }
-            if hasattr(chunk, "tool_results") and chunk.tool_results:
-                for tr in chunk.tool_results:
-                    raw_content = str(tr.content or "")
-                    # Check for auto_applied (trust mode)
+
+            # Tool call completed (result)
+            elif event_type == "ToolCallCompleted":
+                tool = getattr(chunk, "tool", None)
+                raw_content = str(getattr(chunk, "content", "") or "")
+                if tool:
                     try:
                         payload = json.loads(raw_content)
                         if isinstance(payload, dict) and payload.get("auto_applied"):
@@ -102,7 +113,7 @@ async def run_director_stream(
                     yield {
                         "event": "tool_call_result",
                         "data": {
-                            "id": tr.tool_call_id or "",
+                            "id": tool.tool_call_id or "",
                             "success": True,
                             "summary": raw_content[:200],
                         },
