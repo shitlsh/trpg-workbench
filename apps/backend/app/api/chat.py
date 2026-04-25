@@ -201,15 +201,49 @@ async def send_message(
         tool_calls_emitted: list[dict] = []
         patch_proposals: list[dict] = []
 
+        # ── Keepalive via asyncio queue ───────────────────────────────────────
+        # The director may go silent for 30-60s while LM Studio processes a
+        # large prompt.  We run the director in a background task and yield
+        # SSE comment keepalives every 15s so Tauri / proxies don't drop the
+        # connection.
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _produce():
+            try:
+                async for evt in run_director_stream(
+                    user_message=body.content,
+                    workspace_context=ws_ctx,
+                    model=model,
+                    history=history,
+                    referenced_assets=referenced_assets or None,
+                    db=db,
+                ):
+                    await queue.put(("evt", evt))
+            except Exception as exc:
+                await queue.put(("exc", exc))
+            finally:
+                await queue.put(("done", None))
+
+        producer = asyncio.create_task(_produce())
+
         try:
-            async for evt in run_director_stream(
-                user_message=body.content,
-                workspace_context=ws_ctx,
-                model=model,
-                history=history,
-                referenced_assets=referenced_assets or None,
-                db=db,
-            ):
+            while True:
+                try:
+                    kind, payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    # No event in 15s — send SSE comment to keep connection alive
+                    yield ": keepalive\n\n"
+                    continue
+
+                if kind == "done":
+                    break
+
+                if kind == "exc":
+                    yield _sse("error", {"message": str(payload)})
+                    yield _sse("done", {})
+                    break
+
+                evt = payload
                 event_type = evt.get("event")
                 data = evt.get("data", {})
 
@@ -277,9 +311,15 @@ async def send_message(
                     yield _sse("error", data)
                     yield _sse("done", {})
 
+        except asyncio.CancelledError:
+            producer.cancel()
+            raise
         except Exception as e:
             yield _sse("error", {"message": str(e)})
             yield _sse("done", {})
+        finally:
+            if not producer.done():
+                producer.cancel()
 
     return StreamingResponse(_event_generator(), media_type="text/event-stream")
 
