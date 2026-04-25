@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M21 全部完成。M22 正在进行：规则集管理 UX 打磨（移除内置规则集、Setup Wizard 补充规则集步骤、展示内置 AssetType、三标签提示词弹窗）。
+核心功能链路已通过 M1–M22 全部完成。M22 完成了规则集管理 UX 打磨——移除内置规则集、Setup Wizard 补充规则集步骤、展示内置 AssetType、三标签提示词弹窗。
 
 ```
 ✅ M1 基础骨架
@@ -27,7 +27,7 @@
                                                                                                                                                ├── ✅ M19 Agent 上下文控制
                                                                                                                                                        └── ✅ M20 Agent 创作质量增强
                                                                                                                                                               └── ✅ M21 聊天会话管理
-                                                                                                                                                                    └── M22 规则集 UX 打磨
+                                                                                                                                                                    └── ✅ M22 规则集 UX 打磨
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -64,11 +64,12 @@
 | M20 ✅ | Agent 创作质量与上下文感知增强 | 子 Agent 工具化（Consistency/Rules/Skill）、资产语义搜索、信任模式、Director prompt 质量提升 | [archive/m20-agent-quality.md](archive/m20-agent-quality.md) |
 | M21 ✅ | 聊天会话管理 | 多会话列表、切换、历史浏览、重命名删除；SessionDrawer + 刷新自动恢复上次会话 | [archive/m21-chat-sessions.md](archive/m21-chat-sessions.md) |
 
+| M22 ✅ | 规则集 UX 打磨 | 移除内置规则集限制、Setup Wizard 补充规则集步骤、展示内置 AssetType、三标签提示词弹窗 | [archive/m22-ruleset-ux-polish.md](archive/m22-ruleset-ux-polish.md) |
+
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M22 | 规则集 UX 打磨 | 移除内置规则集限制、Setup Wizard 补充规则集步骤、展示内置 AssetType、三标签提示词弹窗 | [m22-ruleset-ux-polish.md](m22-ruleset-ux-polish.md) |
 
 ---
 
