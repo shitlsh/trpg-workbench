@@ -77,6 +77,7 @@ function LLMSection() {
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
+  const [testModelName, setTestModelName] = useState<string>("");
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["llm-profiles"],
@@ -101,7 +102,7 @@ function LLMSection() {
   });
 
   function openNew() {
-    setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setShowForm(true);
+    setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setShowForm(true);
   }
   function openEdit(p: LLMProfile) {
     setEditTarget(p);
@@ -111,10 +112,10 @@ function LLMSection() {
       supports_json_mode: p.supports_json_mode, supports_tools: p.supports_tools,
       timeout_seconds: p.timeout_seconds,
     });
-    setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setShowForm(true);
+    setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setShowForm(true);
   }
   function closeForm() {
-    setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null);
+    setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName("");
   }
   function handleProviderChange(prov: LLMProviderType) {
     const defaults = LLM_DEFAULTS[prov];
@@ -157,9 +158,16 @@ function LLMSection() {
   }
   async function handleTest() {
     if (!editTarget) return;
+    if (!testModelName) {
+      setTestResult({ success: false, error: "请先在上方「测试用模型名称」字段输入或选择模型名称" });
+      return;
+    }
     setTesting(true); setTestResult(null);
     try {
-      const result = await apiFetch<LLMTestResult>(`/settings/llm-profiles/${editTarget.id}/test`, { method: "POST" });
+      const result = await apiFetch<LLMTestResult>(
+        `/settings/llm-profiles/${editTarget.id}/test?model_name=${encodeURIComponent(testModelName)}`,
+        { method: "POST" }
+      );
       setTestResult(result);
     } catch (e) {
       setTestResult({ success: false, error: String(e) });
@@ -240,7 +248,7 @@ function LLMSection() {
                       onChange={(e) => { setForm({ ...form, base_url: e.target.value }); setFetchedModels([]); }}
                       placeholder="https://..."
                     />
-                    {form.provider_type === "openai_compatible" && form.base_url && (
+                    {form.base_url && (
                       <button
                         type="button"
                         className={styles.btnSecondary}
@@ -254,6 +262,31 @@ function LLMSection() {
                   </div>
                   {fetchModelsError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>{fetchModelsError}</span>}
                   {fetchedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 获取到 {fetchedModels.length} 个模型</span>}
+                </label>
+              )}
+              {editTarget && (
+                <label className={styles.label}>
+                  测试用模型名称
+                  {fetchedModels.length > 0 ? (
+                    <select
+                      className={styles.select}
+                      value={testModelName}
+                      onChange={(e) => setTestModelName(e.target.value)}
+                    >
+                      <option value="">-- 选择模型 --</option>
+                      {fetchedModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      className={styles.input}
+                      value={testModelName}
+                      onChange={(e) => setTestModelName(e.target.value)}
+                      placeholder="例：gemini-2.0-flash / llama-3.1-8b"
+                    />
+                  )}
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    输入模型名称后点击「测试连接」验证供应商配置；可点「获取模型列表」自动填充
+                  </span>
                 </label>
               )}
               <label className={styles.label}>

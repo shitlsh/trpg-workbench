@@ -35,11 +35,12 @@ def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get_db)):
         model = model_from_profile(llm_profile, body.model_name)
 
         rs_desc = rule_set.description or "无"
+        style_hint = f"\n用户风格偏好：{body.style_description}" if body.style_description else ""
 
         prompt = f"""你是一位专业的 TRPG 模组创作顾问。请为以下规则集生成一份创作风格提示词（PromptProfile），指导 AI 助手进行创作。
 
 规则集名称：{rule_set.name}
-描述：{rs_desc}
+描述：{rs_desc}{style_hint}
 
 请以 JSON 格式返回，包含以下字段：
 - name: 提示词名称（简短，如"恐怖调查标准风格"）

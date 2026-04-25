@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
-  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil,
+  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check,
 } from "lucide-react";
 import { apiFetch, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
@@ -190,6 +190,8 @@ function SetPromptModal({
 
   // ai tab
   const [selectedLlmId, setSelectedLlmId] = useState("");
+  const [aiModelName, setAiModelName] = useState("");
+  const [aiStyleDesc, setAiStyleDesc] = useState("");
   const [aiName, setAiName] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiNotes, setAiNotes] = useState("");
@@ -198,7 +200,10 @@ function SetPromptModal({
   const [generated, setGenerated] = useState(false);
 
   async function handleGenerate() {
-    if (!selectedLlmId) return;
+    if (!selectedLlmId || !aiModelName.trim()) {
+      setGenError("请选择 LLM 供应商并填写模型名称");
+      return;
+    }
     setIsGenerating(true);
     setGenError(null);
     try {
@@ -206,7 +211,12 @@ function SetPromptModal({
         "/prompt-profiles/generate",
         {
           method: "POST",
-          body: JSON.stringify({ rule_set_id: ruleSetId, llm_profile_id: selectedLlmId }),
+          body: JSON.stringify({
+            rule_set_id: ruleSetId,
+            llm_profile_id: selectedLlmId,
+            model_name: aiModelName.trim(),
+            style_description: aiStyleDesc.trim() || undefined,
+          }),
         }
       );
       setAiName(res.name);
@@ -353,19 +363,39 @@ function SetPromptModal({
               选择 LLM 模型，自动为此规则集生成创作提示词，生成后可编辑调整。
             </p>
             <label className={styles.label}>
-              使用模型 *
+              LLM 供应商 *
               {llmProfiles.length === 0 ? (
                 <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6 }}>
                   暂无可用 LLM——请先在「模型配置」页面添加
                 </div>
               ) : (
                 <select className={styles.select} value={selectedLlmId} onChange={(e) => setSelectedLlmId(e.target.value)}>
-                  <option value="">请选择模型...</option>
+                  <option value="">请选择供应商...</option>
                   {llmProfiles.map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
               )}
+            </label>
+            <label className={styles.label}>
+              模型名称 *
+              <input
+                className={styles.input}
+                value={aiModelName}
+                onChange={(e) => setAiModelName(e.target.value)}
+                placeholder="例：gemini-2.0-flash / llama-3.1-8b"
+              />
+            </label>
+            <label className={styles.label}>
+              风格描述（可选）
+              <textarea
+                className={styles.textarea}
+                value={aiStyleDesc}
+                onChange={(e) => setAiStyleDesc(e.target.value)}
+                rows={2}
+                placeholder="例：克苏鲁恐怖风格，强调氛围压迫感，避免轻松幽默的语气"
+              />
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>描述你希望的风格方向，AI 生成时会作为参考</span>
             </label>
             {!generated && (
               <>
@@ -771,10 +801,13 @@ function LibraryDetailPanel({
   const queryClient = useQueryClient();
   const { activeWorkspaceId } = useWorkspaceStore();
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedDocIds, setExpandedDocIds] = useState<Set<string>>(new Set());
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [showSearchTest, setShowSearchTest] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(library.name);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: embeddingProfiles = [] } = useQuery({
@@ -804,11 +837,21 @@ function LibraryDetailPanel({
     },
   });
 
+  const renameLibMutation = useMutation({
+    mutationFn: (name: string) => apiFetch(`/knowledge/libraries/${library.id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge", "libraries"] });
+      setIsRenaming(false);
+    },
+  });
+
   async function handleUpload(file: File) {
     setUploadError(null);
+    setIsUploading(true);
     const profileId = selectedEmbeddingId || embeddingProfiles[0]?.id;
     if (!profileId) {
       setUploadError("请先在模型配置中添加 Embedding 模型");
+      setIsUploading(false);
       return;
     }
     const form = new FormData();
@@ -827,6 +870,8 @@ function LibraryDetailPanel({
       queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", library.id] });
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsUploading(false);
     }
   }
 
@@ -848,7 +893,40 @@ function LibraryDetailPanel({
             ← 返回知识库列表
           </button>
           <h2 className={styles.detailName} style={{ fontSize: 16 }}>
-            <Library size={15} /> {library.name}
+            <Library size={15} />
+            {isRenaming ? (
+              <>
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && renameValue.trim()) renameLibMutation.mutate(renameValue.trim());
+                    if (e.key === "Escape") { setIsRenaming(false); setRenameValue(library.name); }
+                  }}
+                  style={{ fontSize: 15, padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", marginLeft: 6 }}
+                />
+                <button
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: "0 4px", color: "var(--text-muted)" }}
+                  onClick={() => { if (renameValue.trim()) renameLibMutation.mutate(renameValue.trim()); }}
+                  title="确认"
+                ><Check size={14} /></button>
+                <button
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: "0 4px", color: "var(--text-muted)" }}
+                  onClick={() => { setIsRenaming(false); setRenameValue(library.name); }}
+                  title="取消"
+                ><X size={14} /></button>
+              </>
+            ) : (
+              <>
+                {library.name}
+                <button
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: "0 4px", color: "var(--text-muted)", marginLeft: 4 }}
+                  onClick={() => { setRenameValue(library.name); setIsRenaming(true); }}
+                  title="重命名"
+                ><Pencil size={12} /></button>
+              </>
+            )}
           </h2>
           <span className={styles.badge}>
             {LIBRARY_TYPES.find((t) => t.value === library.type)?.label ?? library.type}
@@ -885,23 +963,31 @@ function LibraryDetailPanel({
       )}
 
       {/* Upload area */}
-      <div
-        className={styles.dropzone}
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const file = e.dataTransfer.files[0];
-          if (file) handleUpload(file);
-        }}
-      >
-        <Upload size={20} color="var(--text-muted)" />
-        <span>拖拽 PDF 到此处，或点击选择文件</span>
-        <input
-          ref={fileInputRef} type="file" accept=".pdf" style={{ display: "none" }}
-          onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUpload(file); e.target.value = ""; }}
-        />
-      </div>
+      {(() => {
+        const uploadDisabled = isUploading || !!uploadingTaskId || documents.length > 0;
+        const overlayMsg = isUploading ? "上传中..." : uploadingTaskId ? "处理中，请稍候..." : documents.length > 0 ? "已上传文档，如需替换请先删除" : null;
+        return (
+          <div
+            className={styles.dropzone}
+            style={uploadDisabled ? { opacity: 0.5, cursor: "not-allowed", pointerEvents: "none" } : undefined}
+            onClick={() => !uploadDisabled && fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (uploadDisabled) return;
+              const file = e.dataTransfer.files[0];
+              if (file) handleUpload(file);
+            }}
+          >
+            <Upload size={20} color="var(--text-muted)" />
+            <span>{overlayMsg ?? "拖拽 PDF 到此处，或点击选择文件"}</span>
+            <input
+              ref={fileInputRef} type="file" accept=".pdf" style={{ display: "none" }}
+              onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUpload(file); e.target.value = ""; }}
+            />
+          </div>
+        );
+      })()}
 
       {uploadError && (
         <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>

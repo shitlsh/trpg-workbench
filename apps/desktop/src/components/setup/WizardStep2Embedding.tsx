@@ -13,13 +13,14 @@ const EMPTY_FORM: CreateEmbeddingProfileRequest = {
   api_key: "",
 };
 
-// Probe a local endpoint and return all available model IDs
+// Probe a local endpoint via backend proxy (avoids CORS preflight issues)
 async function probeLocalModels(baseUrl: string): Promise<string[]> {
   try {
-    const res = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return [];
-    const data = await res.json() as { data?: { id: string }[] };
-    return (data.data ?? []).map((m) => m.id).filter(Boolean);
+    const params = new URLSearchParams({ base_url: baseUrl });
+    const result = await apiFetch<{ models: string[]; error: string | null }>(
+      `/settings/model-catalog/probe-models?${params.toString()}`
+    );
+    return result.models ?? [];
   } catch {
     return [];
   }

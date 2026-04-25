@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.storage.database import get_db
 from app.models.orm import KnowledgeLibraryORM, KnowledgeDocumentORM, RuleSetORM
-from app.models.schemas import KnowledgeLibrarySchema, KnowledgeLibraryCreate
+from app.models.schemas import KnowledgeLibrarySchema, KnowledgeLibraryCreate, KnowledgeLibraryUpdate
 
 router = APIRouter(prefix="/knowledge/libraries", tags=["knowledge-libraries"])
 
@@ -45,6 +45,20 @@ def get_library(library_id: str, db: Session = Depends(get_db)):
     lib = db.get(KnowledgeLibraryORM, library_id)
     if not lib:
         raise HTTPException(status_code=404, detail="Library not found")
+    return _with_doc_count(lib, db)
+
+
+@router.patch("/{library_id}", response_model=KnowledgeLibrarySchema)
+def update_library(library_id: str, body: KnowledgeLibraryUpdate, db: Session = Depends(get_db)):
+    lib = db.get(KnowledgeLibraryORM, library_id)
+    if not lib:
+        raise HTTPException(status_code=404, detail="Library not found")
+    if body.name is not None:
+        lib.name = body.name
+    if body.description is not None:
+        lib.description = body.description
+    db.commit()
+    db.refresh(lib)
     return _with_doc_count(lib, db)
 
 

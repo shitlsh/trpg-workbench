@@ -208,15 +208,31 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     queryKey: ["llm-profiles"],
     queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
   });
-  const activeProfile = llmProfiles.find((p) => p.name === (sessionModel || defaultLlmName));
+  const activeProfile = llmProfiles.find((p) => p.name === defaultLlmName);
+
+  // Probe available models from active profile's base_url
+  const { data: probeResult } = useQuery({
+    queryKey: ["probe-models-chat", activeProfile?.base_url],
+    queryFn: async () => {
+      const params = new URLSearchParams({ base_url: activeProfile!.base_url! });
+      return apiFetch<{ models: string[]; error: string | null }>(
+        `/settings/model-catalog/probe-models?${params.toString()}`
+      );
+    },
+    enabled: !!activeProfile?.base_url,
+    staleTime: 60_000,
+  });
+  const availableModels = probeResult?.models ?? [];
+
+  const effectiveModel = sessionModel || defaultLlmModel;
 
   const { data: catalogEntry } = useQuery({
-    queryKey: ["model-catalog-entry", activeProfile?.provider_type, defaultLlmModel],
+    queryKey: ["model-catalog-entry", activeProfile?.provider_type, effectiveModel],
     queryFn: () =>
       apiFetch<ModelCatalogEntry[]>(
         `/settings/model-catalog?provider_type=${activeProfile!.provider_type}`
-      ).then((entries) => entries.find((e) => e.model_name === defaultLlmModel) ?? null),
-    enabled: !!activeProfile && !!defaultLlmModel,
+      ).then((entries) => entries.find((e) => e.model_name === effectiveModel) ?? null),
+    enabled: !!activeProfile && !!effectiveModel,
   });
 
   // Logs
@@ -288,7 +304,11 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const handleSend = async (content: string, mentionedAssetIds: string[] = []) => {
     if (!content.trim() || isStreaming) return;
     if (configResp && !defaultLlmName && !sessionModel) {
-      setModelWarning("未配置默认 LLM。请在下方选择模型或前往工作空间设置完成配置后再发送。");
+      setModelWarning("未配置默认 LLM。请前往工作空间设置完成配置后再发送。");
+      return;
+    }
+    if (configResp && defaultLlmName && !defaultLlmModel && !sessionModel) {
+      setModelWarning("未选择模型。请在下方选择模型或前往工作空间设置选择默认模型。");
       return;
     }
     setModelWarning(null);
@@ -657,17 +677,18 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               borderRadius: 4,
               padding: "2px 6px",
               cursor: "pointer",
-              maxWidth: 200,
+              maxWidth: 220,
               overflow: "hidden",
               textOverflow: "ellipsis",
             }}
           >
             <option value="">
-              {defaultLlmName ? `默认: ${defaultLlmName}` : "未配置模型"}
+              {defaultLlmModel ? `默认: ${defaultLlmModel}` : defaultLlmName ? `${defaultLlmName}（未选模型）` : "未配置模型"}
             </option>
-            {llmProfiles.map((p) => (
-              <option key={p.id} value={p.name}>{p.name}</option>
-            ))}
+            {availableModels.length > 0
+              ? availableModels.map((m) => <option key={m} value={m}>{m}</option>)
+              : null
+            }
           </select>
           <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
             Enter 发送 · Shift+Enter 换行 · @ 引用资产

@@ -30,7 +30,6 @@ def build_director(model, workspace_context: dict, db) -> Agent:
         tools=ALL_TOOLS,
         instructions=[system_prompt],
         markdown=False,
-        show_tool_calls=False,
     )
 
 

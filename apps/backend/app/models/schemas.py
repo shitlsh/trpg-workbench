@@ -163,6 +163,11 @@ class KnowledgeLibraryCreate(BaseModel):
     rule_set_id: str
 
 
+class KnowledgeLibraryUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
 class KnowledgeDocumentSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -359,6 +364,7 @@ class GeneratePromptRequest(BaseModel):
     rule_set_id: str
     llm_profile_id: str
     model_name: str
+    style_description: str | None = None
 
 
 class GeneratePromptResponse(BaseModel):
