@@ -21,13 +21,22 @@ from agno.exceptions import AgentRunException
 
 _workspace_context: dict = {}
 _db = None  # SQLAlchemy Session
+_model = None  # LLM model instance (for sub-agent delegation)
 
 
-def configure(workspace_context: dict, db) -> None:
+def configure(workspace_context: dict, db, model=None) -> None:
     """Inject runtime dependencies into tool closures."""
-    global _workspace_context, _db
+    global _workspace_context, _db, _model
     _workspace_context = workspace_context
     _db = db
+    _model = model
+
+
+def _get_model():
+    """Return the injected model, raising if not set."""
+    if _model is None:
+        raise ValueError("model not configured; call configure() with a model instance first")
+    return _model
 
 
 # ─── PatchProposal interrupt ──────────────────────────────────────────────────
@@ -272,7 +281,132 @@ def _get_workspace_id_from_path(workspace_path: str, db) -> str | None:
     return ws.id if ws else None
 
 
+# ─── Sub-agent delegation tools ──────────────────────────────────────────────
+
+@tool
+def check_consistency(draft_content_md: str = "", focus: str = "") -> str:
+    """对工作空间中现有资产运行一致性检查。
+    draft_content_md：可选，待写入的草稿 Markdown（用于提前检查草稿与现有资产的冲突）。
+    focus：可选，检查重点描述（如 "NPC 命名" / "时间线"）。
+    返回 ConsistencyReport JSON，包含 issues 列表和 overall_status。"""
+    from app.agents.consistency import run_consistency_agent
+
+    model = _get_model()
+    assets = _workspace_context.get("existing_assets", [])
+
+    # Build summaries: type/name/slug + content (truncated)
+    asset_summaries = []
+    for a in assets:
+        entry = {
+            "type": a.get("type", ""),
+            "name": a.get("name", ""),
+            "slug": a.get("slug", ""),
+            "summary": a.get("summary", ""),
+        }
+        asset_summaries.append(entry)
+
+    if draft_content_md:
+        asset_summaries.append({
+            "type": "draft",
+            "name": "[待写入草稿]",
+            "slug": "__draft__",
+            "summary": draft_content_md[:800],
+        })
+
+    if focus:
+        asset_summaries.append({"_focus_hint": focus})
+
+    report = run_consistency_agent(asset_summaries=asset_summaries, model=model)
+    return json.dumps(report, ensure_ascii=False)
+
+
+@tool
+def consult_rules(question: str, review_mode: bool = False) -> str:
+    """向规则顾问 Agent 提问，检索知识库并返回带引用来源的建议。
+    question：规则问题或待审查内容描述。
+    review_mode：True 时以结构化审查模式运行（含 severity/suggestion_patch 字段）。
+    返回 {"suggestions": [...], "summary": str} JSON。"""
+    from app.agents.rules import run_rules_agent
+
+    model = _get_model()
+    library_ids = _workspace_context.get("library_ids", [])
+
+    knowledge_context: list[dict] = []
+    if library_ids and _db is not None:
+        try:
+            from app.knowledge.retriever import retrieve_knowledge
+            knowledge_context = retrieve_knowledge(
+                query=question,
+                library_ids=library_ids,
+                db=_db,
+                top_k=6,
+            )
+        except Exception:
+            pass
+
+    result = run_rules_agent(
+        question=question,
+        knowledge_context=knowledge_context,
+        model=model,
+        review_mode=review_mode,
+    )
+    return json.dumps(result, ensure_ascii=False)
+
+
+@tool
+def create_skill(user_intent: str) -> str:
+    """根据用户意图创建一个可复用的 Agent Skill（技能模板）。
+    user_intent：描述想要的技能功能，如"COC 探索者人格创建框架"。
+    此操作需要用户确认后才会实际写入磁盘。"""
+    from app.agents.skill_agent import run_skill_agent
+
+    model = _get_model()
+    library_ids = _workspace_context.get("library_ids", [])
+
+    knowledge_context: list[dict] = []
+    if library_ids and _db is not None:
+        try:
+            from app.knowledge.retriever import retrieve_knowledge
+            knowledge_context = retrieve_knowledge(
+                query=user_intent,
+                library_ids=library_ids,
+                db=_db,
+                top_k=4,
+            )
+        except Exception:
+            pass
+
+    content_md = run_skill_agent(
+        user_intent=user_intent,
+        knowledge_context=knowledge_context,
+        workspace_context=_workspace_context,
+        model=model,
+    )
+
+    # Extract skill name from frontmatter for the proposal
+    skill_name = user_intent[:60]
+    try:
+        import re
+        m = re.search(r"^name:\s*(.+)$", content_md, re.MULTILINE)
+        if m:
+            skill_name = m.group(1).strip()
+    except Exception:
+        pass
+
+    proposal = {
+        "id": f"pp_{uuid.uuid4().hex[:12]}",
+        "tool_call_id": "",
+        "action": "create",
+        "asset_type": "skill",
+        "asset_name": skill_name,
+        "content_md": content_md,
+        "original_content": "",
+        "change_summary": f"新建 Skill：{skill_name}",
+    }
+    raise PatchProposalInterrupt(proposal)
+
+
 # ─── Tool list for Director ────────────────────────────────────────────────────
 
 ALL_TOOLS = [list_assets, read_asset, search_assets, read_config, search_knowledge,
-             create_asset, update_asset]
+             create_asset, update_asset, check_consistency, consult_rules, create_skill]

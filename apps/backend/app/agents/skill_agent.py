@@ -10,10 +10,17 @@ def run_skill_agent(
     knowledge_context: list[dict],
     workspace_context: dict,
     model=None,
-) -> dict:
+) -> str:
     """Generate a Skill definition from user intent and optional RAG knowledge context.
 
-    Returns a dict with keys: name, description, agent_types, body.
+    Returns a Frontmatter Markdown string:
+        ---
+        name: coc-npc-framework
+        description: One sentence.
+        agent_types:
+          - npc
+        ---
+        ...body...
     """
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
@@ -30,21 +37,4 @@ Generate a Skill based on the user's request."""
 
     response = agent.run(prompt)
     text = strip_code_fence(response.content if hasattr(response, "content") else str(response))
-
-    try:
-        result = json.loads(text)
-        # Normalise: ensure required fields exist
-        return {
-            "name": result.get("name", "custom-skill"),
-            "description": result.get("description", ""),
-            "agent_types": result.get("agent_types", []),
-            "body": result.get("body", ""),
-        }
-    except Exception:
-        # Fallback: treat raw text as body
-        return {
-            "name": "custom-skill",
-            "description": user_intent[:120],
-            "agent_types": [],
-            "body": text,
-        }
+    return text

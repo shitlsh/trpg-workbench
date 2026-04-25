@@ -16,7 +16,7 @@ from app.prompts import load_prompt
 
 def build_director(model, workspace_context: dict, db) -> Agent:
     """Build a Director Agent instance with tools configured for the given workspace."""
-    configure_tools(workspace_context, db)
+    configure_tools(workspace_context, db, model=model)
 
     system_prompt = load_prompt("director", "system")
 
