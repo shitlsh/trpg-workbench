@@ -223,21 +223,7 @@ class ChatSessionORM(Base):
 # ChatMessageORM removed — messages now stored in .trpg/chat/{session-id}.jsonl
 
 
-# ─── M5: Image Generation ─────────────────────────────────────────────────────
 
-class ImageGenerationJobORM(Base):
-    __tablename__ = "image_generation_jobs"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    asset_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    provider: Mapped[str] = mapped_column(String(50), default="dalle3")
-    status: Mapped[str] = mapped_column(String(30), default="pending")  # pending/running/completed/failed
-    result_path: Mapped[str | None] = mapped_column(Text, nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
 # ─── M5: Prompt Profiles ──────────────────────────────────────────────────────
@@ -256,26 +242,7 @@ class PromptProfileORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
-# ─── M4: Workflow State ───────────────────────────────────────────────────────
 
-class WorkflowStateORM(Base):
-    __tablename__ = "workflow_states"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="pending")
-    current_step: Mapped[int] = mapped_column(Integer, default=0)
-    total_steps: Mapped[int] = mapped_column(Integer, default=0)
-    input_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
-    clarification_questions: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
-    clarification_answers: Mapped[str | None] = mapped_column(Text, nullable=True)    # JSON
-    step_results: Mapped[str | None] = mapped_column(Text, nullable=True)
-    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    director_intent: Mapped[str | None] = mapped_column(Text, nullable=True)  # M12: natural language intent from Director
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
 # ─── M8: Rerank Profiles ──────────────────────────────────────────────────────

@@ -35,7 +35,7 @@ Requested: {location_count} locations and {lore_note_count} lore notes.
 Knowledge context (lore books, module references):
 {ctx}
 
-Create the requested locations and lore notes. Each location must include an image_brief."""
+Create the requested locations and lore notes."""
 
     response = agent.run(prompt)
     text = strip_code_fence(response.content if hasattr(response, "content") else str(response))

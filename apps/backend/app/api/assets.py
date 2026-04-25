@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
-from app.models.orm import AssetORM, WorkspaceORM, ImageGenerationJobORM, _uuid
+from app.models.orm import AssetORM, WorkspaceORM, _uuid
 from app.models.schemas import (
     AssetSchema, AssetWithContentSchema, AssetRevisionSchema,
     AssetCreate, AssetUpdate,
@@ -250,75 +250,4 @@ def get_diagnostics(workspace_id: str, db: Session = Depends(get_db)):
     return {"diagnostics": diagnostics}
 
 
-# ─── Image generation (kept from previous — schema-only) ─────────────────────
 
-class GenerateImageRequest(BaseModel):
-    provider: str = "dalle3"
-    prompt_override: str | None = None
-    api_key: str | None = None
-
-
-class ImageJobSchema(BaseModel):
-    id: str
-    asset_id: str
-    prompt: str
-    provider: str
-    status: str
-    result_path: str | None
-    error_message: str | None
-
-
-@asset_router.post("/{asset_id}/generate-image", response_model=dict, status_code=202)
-async def start_generate_image(
-    asset_id: str,
-    body: GenerateImageRequest,
-    db: Session = Depends(get_db),
-):
-    asset = _get_asset(asset_id, db)
-    from app.workflows.generate_image import run_generate_image
-    wf = await run_generate_image(
-        db=db,
-        workspace_id=asset.workspace_id,
-        asset_id=asset_id,
-        user_prompt_override=body.prompt_override,
-        provider=body.provider,
-    )
-    db.refresh(wf)
-    return {"workflow_id": wf.id, "status": wf.status, "step_results": wf.step_results}
-
-
-class ConfirmImageRequest(BaseModel):
-    confirmed_prompt: str
-    api_key: str | None = None
-
-
-@asset_router.post("/{asset_id}/generate-image/confirm", response_model=dict)
-async def confirm_generate_image(
-    asset_id: str,
-    body: ConfirmImageRequest,
-    workflow_id: str,
-    db: Session = Depends(get_db),
-):
-    from app.models.orm import WorkflowStateORM
-    from app.workflows.generate_image import resume_generate_image
-    wf = db.get(WorkflowStateORM, workflow_id)
-    if not wf:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-    wf = await resume_generate_image(db, wf, body.confirmed_prompt, body.api_key)
-    db.refresh(wf)
-    return {"workflow_id": wf.id, "status": wf.status, "result_summary": wf.result_summary}
-
-
-@asset_router.get("/{asset_id}/image-jobs", response_model=list[ImageJobSchema])
-def list_image_jobs(asset_id: str, db: Session = Depends(get_db)):
-    _get_asset(asset_id, db)
-    jobs = (
-        db.query(ImageGenerationJobORM)
-        .filter(ImageGenerationJobORM.asset_id == asset_id)
-        .order_by(ImageGenerationJobORM.created_at.desc())
-        .all()
-    )
-    return [ImageJobSchema(
-        id=j.id, asset_id=j.asset_id, prompt=j.prompt, provider=j.provider,
-        status=j.status, result_path=j.result_path, error_message=j.error_message,
-    ) for j in jobs]

@@ -1,7 +1,5 @@
-"""Shared workflow utilities – step persistence and workspace context loading."""
-import json
+"""Workspace context loading and skill utilities."""
 from pathlib import Path
-from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 try:
@@ -11,84 +9,10 @@ except ImportError:
     _HAS_FRONTMATTER = False
 
 from app.models.orm import (
-    WorkflowStateORM, WorkspaceORM, AssetORM, RuleSetORM,
+    WorkspaceORM, AssetORM, RuleSetORM,
     KnowledgeLibraryORM, WorkspaceLibraryBindingORM,
     PromptProfileORM, CustomAssetTypeConfigORM,
 )
-
-
-def _now():
-    return datetime.now(timezone.utc)
-
-
-def create_workflow(db: Session, workspace_id: str, wf_type: str,
-                    total_steps: int, input_snapshot: dict) -> WorkflowStateORM:
-    wf = WorkflowStateORM(
-        workspace_id=workspace_id,
-        type=wf_type,
-        status="running",
-        current_step=0,
-        total_steps=total_steps,
-        input_snapshot=json.dumps(input_snapshot, ensure_ascii=False),
-        step_results="[]",
-    )
-    db.add(wf)
-    db.commit()
-    db.refresh(wf)
-    return wf
-
-
-def update_step(db: Session, wf: WorkflowStateORM, step: int, step_name: str,
-                step_status: str, summary: str | None = None, error: str | None = None,
-                detail: str | None = None):
-    try:
-        results = json.loads(wf.step_results or "[]")
-    except (json.JSONDecodeError, TypeError):
-        results = []
-    # Update or append; never regress a completed step back to a non-terminal status
-    existing = next((r for r in results if r["step"] == step), None)
-    entry = {"step": step, "name": step_name, "status": step_status,
-             "summary": summary, "error": error, "detail": detail}
-    if existing:
-        # Protect completed steps: only allow overwriting with another terminal status
-        if existing.get("status") == "completed" and step_status not in ("completed", "failed"):
-            pass  # Skip regression
-        else:
-            results[results.index(existing)] = entry
-    else:
-        results.append(entry)
-
-    wf.step_results = json.dumps(results, ensure_ascii=False)
-    wf.current_step = step
-    wf.updated_at = _now()
-    db.commit()
-
-
-def complete_workflow(db: Session, wf: WorkflowStateORM, summary: str):
-    wf.status = "completed"
-    wf.result_summary = summary
-    wf.updated_at = _now()
-    db.commit()
-
-
-def fail_workflow(db: Session, wf: WorkflowStateORM, error: str):
-    wf.status = "failed"
-    wf.error_message = error
-    wf.updated_at = _now()
-    db.commit()
-
-
-def pause_workflow(db: Session, wf: WorkflowStateORM):
-    wf.status = "paused"
-    wf.updated_at = _now()
-    db.commit()
-
-
-def pause_for_clarification(db: Session, wf: WorkflowStateORM, clarification_questions: list):
-    wf.status = "waiting_for_clarification"
-    wf.clarification_questions = json.dumps(clarification_questions, ensure_ascii=False)
-    wf.updated_at = _now()
-    db.commit()
 
 
 def get_workspace_context(db: Session, workspace_id: str) -> dict:
@@ -158,7 +82,7 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
         "style_prompt": style_prompt,
         "library_ids": library_ids,
         "existing_assets": [
-            {"type": a.type, "name": a.name, "slug": a.slug}
+            {"type": a.type, "name": a.name, "slug": a.slug, "summary": a.summary}
             for a in assets
         ],
         "custom_asset_types": custom_asset_types,
@@ -169,6 +93,8 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
             if s.get("enabled", True)
         ],
     }
+
+
 # ─── Skill discovery & injection ─────────────────────────────────────────────
 
 def load_workspace_skills(workspace_path: str) -> list[dict]:
@@ -191,7 +117,6 @@ def load_workspace_skills(workspace_path: str) -> list[dict]:
                     "body": post.content,
                 })
             else:
-                # Fallback: plain text (no frontmatter library)
                 text = md_file.read_text(encoding="utf-8")
                 slug = md_file.stem
                 result.append({

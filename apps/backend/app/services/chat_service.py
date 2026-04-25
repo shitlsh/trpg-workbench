@@ -111,7 +111,53 @@ def list_sessions(workspace_path: str | Path) -> list[dict]:
     return sessions
 
 
-def create_session(
+def read_recent_messages(workspace_path: str | Path, session_id: str, limit: int = 20) -> list[dict]:
+    """Read the most recent messages for multi-turn context.
+
+    Tool call results are replaced with brief summaries to conserve token budget.
+    """
+    all_msgs = read_messages(workspace_path, session_id)
+    # Take last `limit` messages
+    recent = all_msgs[-limit:] if len(all_msgs) > limit else all_msgs
+    result = []
+    for msg in recent:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role not in ("user", "assistant"):
+            continue
+        # Summarize tool_calls_json to reduce token usage
+        tool_calls_raw = msg.get("tool_calls_json")
+        if tool_calls_raw and role == "assistant":
+            try:
+                tc_list = json.loads(tool_calls_raw)
+                if isinstance(tc_list, list) and tc_list:
+                    summary_parts = [f"[调用工具: {tc.get('name', '?')}]" for tc in tc_list if isinstance(tc, dict)]
+                    if summary_parts and not content.strip():
+                        content = " ".join(summary_parts)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        result.append({"role": role, "content": content})
+    return result
+
+
+def trim_to_budget(messages: list[dict], max_rounds: int = 10, max_chars: int = 8000) -> list[dict]:
+    """Trim message history to fit token budget.
+
+    Keeps the most recent messages, always preserving the last user message.
+    """
+    if not messages:
+        return []
+
+    # Take at most max_rounds * 2 messages (each round = user + assistant)
+    trimmed = messages[-(max_rounds * 2):]
+
+    # Check char budget
+    total = sum(len(m.get("content", "")) for m in trimmed)
+    while total > max_chars and len(trimmed) > 1:
+        trimmed = trimmed[1:]
+        total = sum(len(m.get("content", "")) for m in trimmed)
+
+    return trimmed
     workspace_path: str | Path,
     session_id: str | None = None,
     workspace_id: str = "",

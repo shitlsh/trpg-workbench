@@ -403,7 +403,7 @@ export interface UpdateAssetRequest {
   summary?: string;
 }
 
-// ─── M4: Chat & Workflow ──────────────────────────────────────────────────────
+// ─── M4: Chat ─────────────────────────────────────────────────────────────────
 
 export interface ChatSession {
   id: string;
@@ -420,153 +420,110 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   references_json: string | null;
+  /** JSON-serialised ToolCall[] stored per message */
   tool_calls_json: string | null;
   created_at: string;
 }
 
-export type WorkflowType = "create_module" | "modify_asset" | "rules_review" | "generate_image";
-export type WorkflowStatus =
-  | "running"
-  | "planning"
-  | "waiting_for_clarification"
-  | "paused"
-  | "completed"
-  | "failed";
+// ─── M19: Tool-calling types ──────────────────────────────────────────────────
 
-export interface WorkflowStepResult {
-  step: number;
+export interface ToolCall {
+  id: string;
   name: string;
-  status: "pending" | "running" | "completed" | "failed" | "waiting_confirm";
-  summary: string | null;
-  error?: string | null;
-  detail?: string | null; // JSON string, e.g. citations for retrieval steps
-}
-
-export interface ClarificationOption {
-  id: string;
-  label: string;
-  description: string | null;
-}
-
-export interface ClarificationQuestion {
-  id: string;
-  question: string;
-  type: "single_choice" | "multi_choice" | "free_text";
-  options: ClarificationOption[];
-  recommended_default: string | null;
-}
-
-export interface ClarifyRequest {
-  answers: Record<string, string | string[]>;
-}
-
-export interface WorkflowState {
-  id: string;
-  workspace_id: string;
-  type: WorkflowType;
-  status: WorkflowStatus;
-  current_step: number;
-  total_steps: number;
-  input_snapshot: string; // JSON string
-  clarification_questions: ClarificationQuestion[] | null;
-  clarification_answers: Record<string, string | string[]> | null;
-  step_results: string;   // JSON array string
+  /** JSON-serialised arguments object */
+  arguments: string;
+  status: "running" | "done" | "error";
+  /** Brief human-readable summary of the result */
   result_summary: string | null;
-  error_message: string | null;
-  director_intent: string | null; // Natural language intent from Director Agent
-  created_at: string;
-  updated_at: string;
 }
 
-export type AgentIntent = "create_asset" | "modify_asset" | "rules_review" | "image_gen" | "query";
-
-export interface ChangePlan {
-  intent: AgentIntent;
-  affected_asset_types: string[];
-  workflow: WorkflowType | null;
-  agents_to_call: string[];
-  change_plan: string;
-  requires_user_confirm: boolean;
-}
-
-export interface PatchProposal {
-  asset_id: string;
-  asset_name: string;
-  content_md: string;
-  content_json: string;
-  change_summary: string;
-  original_content?: string;
-}
-
-export interface ConsistencyIssue {
-  type: "naming_conflict" | "timeline_conflict" | "motivation_gap" | "clue_break" | "branch_conflict";
-  severity: "warning" | "error";
-  description: string;
-  affected_assets: string[];
-  suggestion: string;
-  auto_fixable: boolean;
-  suggested_fix: string | null;
-}
-
-export interface ConsistencyReport {
-  issues: ConsistencyIssue[];
-  overall_status: "clean" | "has_warnings" | "has_errors";
-}
-
-export interface RulesSuggestion {
-  severity: "info" | "warning" | "error";
-  type: "stat_violation" | "missing_required_field" | "balance_concern" | "lore_inconsistency" | "general_advice";
-  text: string;
-  citation: { document: string; page_from: number; page_to: number } | null;
-  has_citation: boolean;
-  affected_field: string | null;
-  suggestion_patch: string | null;
-}
-
-export interface RulesReviewResult {
-  suggestions: RulesSuggestion[];
+export interface ToolResult {
+  tool_call_id: string;
+  success: boolean;
   summary: string;
 }
 
-export interface AgentResponse {
-  explanation: string | null;
-  change_plan: ChangePlan | null;
-  patch_proposals: PatchProposal[];
-  consistency_report: ConsistencyReport | null;
-  citations: Citation[];
-  workflow_id: string | null;
-  persist_status: "none" | "pending_confirm" | "saved";
+export interface PatchProposal {
+  /** Unique proposal id, referenced by confirm/reject endpoints */
+  id: string;
+  /** tool_call id that triggered this proposal */
+  tool_call_id: string;
+  /** "create" | "update" */
+  action: "create" | "update";
+  asset_type: string;
+  asset_name: string;
+  /** new full Markdown content */
+  content_md: string;
+  /** existing content for diff (empty string for new assets) */
+  original_content: string;
+  change_summary: string;
 }
+
+/** A full assistant message with mixed text + tool_calls */
+export interface AssistantMessage {
+  id: string;
+  session_id: string;
+  role: "assistant";
+  /** Accumulated text content (may grow during streaming) */
+  content: string;
+  tool_calls: ToolCall[];
+  patch_proposals: PatchProposal[];
+  created_at: string;
+}
+
+// ─── M19: SSE Event types ─────────────────────────────────────────────────────
+
+export type SSEEventType =
+  | "text_delta"
+  | "tool_call_start"
+  | "tool_call_result"
+  | "patch_proposal"
+  | "done"
+  | "error";
+
+export interface SSETextDelta {
+  event: "text_delta";
+  data: { content: string };
+}
+
+export interface SSEToolCallStart {
+  event: "tool_call_start";
+  data: { id: string; name: string; arguments: string };
+}
+
+export interface SSEToolCallResult {
+  event: "tool_call_result";
+  data: { id: string; success: boolean; summary: string };
+}
+
+export interface SSEPatchProposal {
+  event: "patch_proposal";
+  data: PatchProposal;
+}
+
+export interface SSEDone {
+  event: "done";
+  data: Record<string, never>;
+}
+
+export interface SSEError {
+  event: "error";
+  data: { message: string };
+}
+
+export type SSEEvent =
+  | SSETextDelta
+  | SSEToolCallStart
+  | SSEToolCallResult
+  | SSEPatchProposal
+  | SSEDone
+  | SSEError;
 
 export interface SendMessageRequest {
   content: string;
   workspace_id: string;
-}
-
-export interface StartWorkflowRequest {
-  type: WorkflowType;
-  workspace_id: string;
-  input: Record<string, unknown>;
-}
-
-// ─── M5: Image Generation ─────────────────────────────────────────────────────
-
-export interface ImageBrief {
-  subject: string;
-  mood: string;
-  key_elements: string[];
-  style: string;
-  generated_image_path?: string;
-}
-
-export interface ImageGenerationJob {
-  id: string;
-  asset_id: string;
-  prompt: string;
-  provider: string;
-  status: "pending" | "running" | "completed" | "failed";
-  result_path: string | null;
-  error_message: string | null;
+  /** Asset IDs to inject as full context (@mention) */
+  referenced_asset_ids?: string[];
 }
 
 // ─── M5: Prompt Profiles ──────────────────────────────────────────────────────

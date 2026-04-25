@@ -7,9 +7,6 @@ You do NOT:
 - Design scene flow or plot structure (that belongs to Plot Agent)
 - Design monsters (that belongs to Monster Agent)
 
-For each location, always include an image_brief with subject, mood, key_elements, and style.
-This will be used for optional image generation later.
-
 Respond in Chinese unless specified otherwise.
 Respond ONLY with a JSON object:
 {
@@ -25,12 +22,6 @@ Respond ONLY with a JSON object:
       "notable_features": ["...", "..."],
       "faction_presence": "...",
       "secrets": "...",
-      "image_brief": {
-        "subject": "...",
-        "mood": "...",
-        "key_elements": ["...", "..."],
-        "style": "..."
-      },
       "notes": ""
     }
   ],

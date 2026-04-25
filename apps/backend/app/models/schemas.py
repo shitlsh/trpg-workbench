@@ -315,35 +315,7 @@ class ChatSessionCreate(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str
     workspace_id: str
-
-
-class WorkflowStateSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: str
-    workspace_id: str
-    type: str
-    status: str
-    current_step: int = 0
-    total_steps: int = 0
-    input_snapshot: str | None = None
-    clarification_questions: str | None = None
-    clarification_answers: str | None = None
-    step_results: str | None = None
-    result_summary: str | None = None
-    error_message: str | None = None
-    director_intent: str | None = None  # M12
-    created_at: datetime
-    updated_at: datetime
-
-
-class StartWorkflowRequest(BaseModel):
-    type: str
-    workspace_id: str
-    input: dict
-
-
-class ClarifyRequest(BaseModel):
-    answers: dict  # Record[str, str | list[str]]
+    referenced_asset_ids: list[str] = []
 
 
 class ApplyPatchRequest(BaseModel):
