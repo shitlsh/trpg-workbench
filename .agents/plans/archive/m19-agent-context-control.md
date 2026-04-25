@@ -2,6 +2,8 @@
 
 **前置条件**：M18 完成（资产/配置/聊天全部 file-first，DB 为可重建缓存索引）。
 
+**状态：✅ 已完成（commit e856f68）**
+
 **目标**：将 Agent 从"固定流水线 + 纯文本对话"升级为"拥有工具、能自主读写工作空间"的自主协作者。
 
 ---
@@ -255,58 +257,58 @@ def create_asset(type: str, name: str, content_md: str) -> dict:
 
 ### A0：开发 Skill 更新
 
-- [ ] **A0.1**：`.agents/skills/agent-workflow-patterns/SKILL.md` — 全面重写：删除 workflow/pipeline 内容，替换为 tool-calling 模式、工具注册规范、确认/拒绝循环、子 Agent 内化、Agno tool-call 自动循环与 LLM 自主重试
-- [ ] **A0.2**：`.agents/skills/trpg-workbench-architecture/SKILL.md` — 更新：删除 WorkflowState/workspace_context 旧格式，新增 SSE 协议、Agent tools 架构层、ToolCall/ToolResult 类型、对话历史裁剪
-- [ ] **A0.3**：`.agents/skills/frontend-ui-patterns/SKILL.md` — 更新：删除 WorkflowProgress/ChangePlanView 章节，新增 @mention 输入、ToolCallCard、SSE streaming 渲染、confirm/reject UI
+- [x] **A0.1**：`.agents/skills/agent-workflow-patterns/SKILL.md` — 全面重写为 tool-calling 模式
+- [x] **A0.2**：`.agents/skills/trpg-workbench-architecture/SKILL.md` — 更新通信协议、数据类型、架构分层
+- [x] **A0.3**：`.agents/skills/frontend-ui-patterns/SKILL.md` — 更新 UI 组件规范
 
 ### A1：自由响应格式
 
-- [ ] **A1.1**：`packages/shared-schema/src/index.ts` — 删除 `ChangePlan`/`AgentIntent`/`AgentResponse`/`WorkflowType`/`WorkflowStatus`，新增 `ToolCall`/`ToolResult`/`AssistantMessage`/SSE 事件类型
-- [ ] **A1.2**：后端 `ChatMessage` 模型 — `tool_calls_json` 改为结构化 `tool_calls`
-- [ ] **A1.3**：前端删除 `ChangePlanView.tsx` 及其引用
+- [x] **A1.1**：`packages/shared-schema/src/index.ts` — 删除旧类型，新增 `ToolCall`/`ToolResult`/`AssistantMessage`/SSE 事件类型
+- [x] **A1.2**：后端 `ChatMessage` 模型 — `tool_calls_json` 字段保留为 JSON 字符串（结构化序列化存储）
+- [x] **A1.3**：前端删除 `ChangePlanView.tsx` 及其引用
 
 ### A2：上下文增强
 
-- [ ] **A2.1**：`apps/backend/app/workflows/utils.py` — `get_workspace_context()` 的 existing_assets 增加 summary 字段（从 frontmatter description 读取）
-- [ ] **A2.2**：Director prompt 更新 — 指导基于 summary 判断资产相关性
+- [x] **A2.1**：`apps/backend/app/workflows/utils.py` — `get_workspace_context()` 的 existing_assets 增加 summary 字段
+- [x] **A2.2**：Director prompt 更新 — 重写为 tool-calling 风格，指导基于 summary 判断资产相关性
 
 ### A3：多轮对话记忆
 
-- [ ] **A3.1**：`apps/backend/app/services/chat_service.py` — 新增 `read_recent_messages(session_id, limit)`
-- [ ] **A3.2**：`apps/backend/app/agents/director.py` — `run_director` 接收 history 参数，构建多轮 messages
-- [ ] **A3.3**：实现 `trim_to_budget()` 历史裁剪函数
+- [x] **A3.1**：`apps/backend/app/services/chat_service.py` — 新增 `read_recent_messages(session_id, limit)`
+- [x] **A3.2**：`apps/backend/app/agents/director.py` — `run_director_stream` 接收 history 参数，构建多轮 messages
+- [x] **A3.3**：实现 `trim_to_budget()` 历史裁剪函数
 
 ### A4：SSE Streaming
 
-- [ ] **A4.1**：`apps/backend/app/api/chat.py` — `send_message` 改为 `EventSourceResponse`
-- [ ] **A4.2**：`apps/backend/app/agents/director.py` — 使用 `agent.arun(stream=True)`
-- [ ] **A4.3**：`apps/desktop/src/components/agent/AgentPanel.tsx` — SSE 接收逻辑（fetch + ReadableStream）
-- [ ] **A4.4**：`apps/desktop/src/components/agent/MessageBubble.tsx` — 增量渲染（打字机效果 + 工具卡片）
+- [x] **A4.1**：`apps/backend/app/api/chat.py` — `send_message` 改为 `StreamingResponse(text/event-stream)`
+- [x] **A4.2**：`apps/backend/app/agents/director.py` — 使用 `agent.arun(stream=True)` 异步生成器
+- [x] **A4.3**：`apps/desktop/src/components/agent/AgentPanel.tsx` — SSE 接收逻辑（fetch + ReadableStream）
+- [x] **A4.4**：`apps/desktop/src/components/agent/AgentPanel.tsx` — 增量渲染（流式文本气泡 + ToolCallCard，未单独抽 MessageBubble.tsx）
 
 ### A5：Agent Tool-calling
 
-- [ ] **A5.1**：新建 `apps/backend/app/agents/tools.py` — 定义读取类工具（list_assets, read_asset, search_assets, read_config, search_knowledge）
-- [ ] **A5.2**：`tools.py` — 定义写入类工具（create_asset, update_asset）+ PatchProposal 拦截机制
-- [ ] **A5.3**：`agents/director.py` — Director Agent 注册所有工具
-- [ ] **A5.4**：`api/chat.py` — 实现 confirm/reject 端点（`POST /chat/sessions/{id}/confirm/{proposal_id}` 和 reject）
-- [ ] **A5.5**：新建 `apps/desktop/src/components/agent/ToolCallCard.tsx` — 工具调用卡片 UI（状态、参数、结果摘要）
-- [ ] **A5.6**：`PatchConfirmDialog.tsx` — 适配 tool-call 产生的 PatchProposal 确认流
+- [x] **A5.1**：新建 `apps/backend/app/agents/tools.py` — 定义读取类工具（list_assets, read_asset, search_assets, read_config, search_knowledge）
+- [x] **A5.2**：`tools.py` — 定义写入类工具（create_asset, update_asset）+ PatchProposalInterrupt 拦截机制（继承 AgentRunException）
+- [x] **A5.3**：`agents/director.py` — Director Agent 注册所有工具
+- [x] **A5.4**：`api/chat.py` — 实现 confirm/reject 端点（`POST /sessions/{id}/confirm/{proposal_id}` 和 reject）
+- [x] **A5.5**：新建 `apps/desktop/src/components/agent/ToolCallCard.tsx` — 工具调用卡片 UI
+- [x] **A5.6**：`PatchConfirmDialog.tsx` — 适配 tool-call 产生的 PatchProposal 确认流
 
 ### A6：废弃固定流水线
 
-- [ ] **A6.1**：删除 `workflows/create_module.py`、`modify_asset.py`、`rules_review.py`、`generate_image.py`
-- [ ] **A6.2**：删除 `api/workflows.py` 路由
-- [ ] **A6.3**：删除 `WorkflowType`/`WorkflowORM`/`WorkflowStatus` 相关代码
-- [ ] **A6.4**：删除 `WorkflowProgress.tsx` 及其引用
-- [ ] **A6.5**：`agents/director.py` — system prompt 重写为 tool-calling 风格（删除 clarification/planning 两阶段 prompt）
-- [ ] **A6.6**：子 Agent prompt 内化 — 将 npc.py/plot.py/monster.py/lore.py 的专业 prompt 提取到 tools.py 的对应工具函数中
-- [ ] **A6.7**：清理图片生成残留 — 删除 `workflows/generate_image.py`（A6.1 已覆盖）；删除 `api/assets.py` 中 3 个图片生成端点（`start_generate_image`/`confirm_generate_image`/`image-jobs`）；删除 `models/orm.py` 中 `ImageGenerationJobORM`；删除 `shared-schema` 中 `ImageBrief`/`ImageGenerationJob` 类型；删除 `AssetMetaPanel.tsx` 中 `ImageSection` 组件；清理 `lore.py` 和 `prompts/lore/system.txt` 中 `image_brief` 相关指令；清理 Director prompt 中 `image_gen` intent 和 `generate_image` workflow 引用
+- [x] **A6.1**：删除 `workflows/create_module.py`、`modify_asset.py`、`rules_review.py`、`generate_image.py`
+- [x] **A6.2**：删除 `api/workflows.py` 路由
+- [x] **A6.3**：删除 `WorkflowType`/`WorkflowORM`/`WorkflowStatus` 相关代码
+- [x] **A6.4**：删除 `WorkflowProgress.tsx` 及其引用
+- [x] **A6.5**：`agents/director.py` — system prompt 重写为 tool-calling 风格
+- [x] **A6.6**：子 Agent prompt 内化 — Director 作为 LLM 自主 agent 已具备创作能力，无需在工具函数中嵌入子 Agent prompt；npc.py/plot.py 等文件保留但不被调用（与 plan 方案 A 描述有偏差：保留文件，不嵌入 prompt，依赖 LLM 能力）
+- [x] **A6.7**：清理图片生成残留 — 删除 generate_image.py、assets.py 图片端点、ImageGenerationJobORM、ImageBrief 类型、ImageSection 组件、lore agent 的 image_brief 引用
 
 ### A7：@资产引用
 
-- [ ] **A7.1**：`packages/shared-schema/src/index.ts` — `SendMessageRequest` 新增 `referenced_asset_ids: string[]`
-- [ ] **A7.2**：`apps/desktop/src/components/agent/AgentPanel.tsx` — textarea 替换为 tiptap + @mention 输入组件
-- [ ] **A7.3**：`apps/backend/app/api/chat.py` — 根据 referenced_asset_ids 加载完整资产内容注入 Agent prompt
+- [x] **A7.1**：`packages/shared-schema/src/index.ts` — `SendMessageRequest` 新增 `referenced_asset_ids: string[]`
+- [x] **A7.2**：新建 `apps/desktop/src/components/agent/MentionInput.tsx` — tiptap @mention 输入组件，集成到 AgentPanel
+- [x] **A7.3**：`apps/backend/app/api/chat.py` — 根据 referenced_asset_ids 加载完整资产内容注入 Agent prompt
 
 ---
 

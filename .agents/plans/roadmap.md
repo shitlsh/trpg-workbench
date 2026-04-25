@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M18 全部完成。M18 将数据层重构为 file-first 架构。
+核心功能链路已通过 M1–M19 全部完成。M19 将 Agent 升级为 tool-calling 自主协作者。
 
 ```
 ✅ M1 基础骨架
@@ -24,7 +24,7 @@
                                                                                                                                   ├── ✅ M16 AssetType 开放化
                                                                                                                                   └── ✅ M17 用户自定义 Agent Skill
                                                                                                                                         └── ✅ M18 File-first 自包含 Workspace
-                                                                                                                                              ├── 🔲 M19 Agent 上下文控制
+                                                                                                                                              ├── ✅ M19 Agent 上下文控制
                                                                                                                                               └── 🔲 M20 发布打包 & CI/CD
 ```
 
@@ -58,12 +58,13 @@
 | M16 ✅ | AssetType 开放化与自定义类型注册 | `AssetType` 改为开放字符串，用户可在 RuleSet 中注册自定义资产类型（名称、标签、图标） | [archive/m16-asset-type-openness.md](archive/m16-asset-type-openness.md) |
 | M17 ✅ | 用户自定义 Agent Skill | 用户为每个 Agent 类型编写持久化创作框架指令，注入 Workflow 执行；Chat 可对话创建 Skill | [archive/m17-user-agent-skills.md](archive/m17-user-agent-skills.md) |
 | M18 ✅ | File-first 自包含 Workspace | 资产/配置/聊天全部以文件为真相源，DB 降级为可重建缓存索引，工作空间目录可拷贝即迁移 | [archive/m18-file-first-workspace.md](archive/m18-file-first-workspace.md) |
+| M19 ✅ | Agent 上下文控制与工具能力 | Agent 从固定流水线升级为拥有工具的自主协作者（tool-calling + SSE streaming + 多轮记忆 + @引用） | [archive/m19-agent-context-control.md](archive/m19-agent-context-control.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M19 | Agent 上下文控制与工具能力 | Agent 从固定流水线升级为拥有工具的自主协作者（tool-calling + SSE streaming + 多轮记忆 + @引用） | [m19-agent-context-control.md](m19-agent-context-control.md) |
+| M20 | 发布打包 & CI/CD | 应用打包发布、自动构建流水线 | （待规划） |
 
 ---
 
