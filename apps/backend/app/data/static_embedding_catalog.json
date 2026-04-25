@@ -38,5 +38,21 @@
     "dimensions": 768,
     "max_input_tokens": 8192,
     "input_price_per_1m": 0.018
+  },
+  {
+    "provider_type": "openai_compatible",
+    "model_name": "jina-embeddings-v5-text-small-retrieval",
+    "display_name": "Jina Embeddings v5 Small (Local - LM Studio)",
+    "dimensions": 1024,
+    "max_input_tokens": 8192,
+    "input_price_per_1m": null
+  },
+  {
+    "provider_type": "openai_compatible",
+    "model_name": "jina-embeddings-v3",
+    "display_name": "Jina Embeddings v3 (Local - LM Studio)",
+    "dimensions": 1024,
+    "max_input_tokens": 8192,
+    "input_price_per_1m": null
   }
 ]

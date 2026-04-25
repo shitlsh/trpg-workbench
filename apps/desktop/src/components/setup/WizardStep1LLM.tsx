@@ -15,7 +15,7 @@ interface MemoryTier {
 }
 
 const MEMORY_TIERS: MemoryTier[] = [
-  { label: "高端",   minGb: 20, models: "Gemma3-27B / Qwen3-32B / Qwen3-30B-A3B", description: "最高本地质量",        lmStudioDefault: "lmstudio-community/Qwen3-30B-A3B-GGUF",  ollamaDefault: "qwen3:30b-a3b" },
+  { label: "高端",   minGb: 20, models: "Qwen3-27B / Qwen3-30B-A3B / Gemma3-27B", description: "最高本地质量，推荐 qwen3-27b-q4_k_m",        lmStudioDefault: "qwen3-27b-q4_k_m",  ollamaDefault: "qwen3:27b" },
   { label: "高质量", minGb: 12, models: "Qwen3-14B / Gemma3-12B",                  description: "创作主力，综合性价比高", lmStudioDefault: "lmstudio-community/Qwen3-14B-GGUF",       ollamaDefault: "qwen3:14b" },
   { label: "平衡",   minGb: 8,  models: "Qwen3-8B",                                description: "推荐入门首选",        lmStudioDefault: "lmstudio-community/Qwen3-8B-GGUF",        ollamaDefault: "qwen3:8b" },
   { label: "轻量",   minGb: 4,  models: "Qwen3-4B / Gemma3-4B",                    description: "设备受限时的可用选项", lmStudioDefault: "lmstudio-community/Qwen3-4B-GGUF",        ollamaDefault: "qwen3:4b" },
@@ -46,14 +46,14 @@ async function fetchSystemMemoryGb(): Promise<number | null> {
 
 type ProbeStatus = "idle" | "detecting" | "found" | "offline";
 
-async function probeModels(baseUrl: string): Promise<string | null> {
+async function probeModels(baseUrl: string): Promise<string[]> {
   try {
     const res = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const data = await res.json() as { data?: { id: string }[] };
-    return data.data?.[0]?.id ?? null;
+    return (data.data ?? []).map((m) => m.id).filter(Boolean);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -91,7 +91,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   const [memoryGb, setMemoryGb] = useState<number | null>(null);
   const [lmStudioStatus, setLmStudioStatus] = useState<ProbeStatus>("idle");
   const [ollamaStatus, setOllamaStatus] = useState<ProbeStatus>("idle");
-  const [lmStudioModel, setLmStudioModel] = useState<string | null>(null);
+  const [lmStudioModels, setLmStudioModels] = useState<string[]>([]);
   const [ollamaModel, setOllamaModel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -103,12 +103,14 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   async function handleLmStudioPreset() {
     setLmStudioStatus("detecting");
     const detected = await probeModels("http://localhost:1234/v1");
-    const modelName = detected ?? recommendedTier.lmStudioDefault;
-    const displayName = detected
+    // Pick first qwen3 model if available, else first model, else tier default
+    const preferred = detected.find((m) => m.toLowerCase().includes("qwen3"));
+    const modelName = preferred ?? detected[0] ?? recommendedTier.lmStudioDefault;
+    const displayName = detected.length > 0
       ? `LM Studio - ${modelName.split("/").pop()?.replace(/-GGUF$/i, "") ?? modelName}`
       : `LM Studio - ${recommendedTier.label}档推荐`;
-    setLmStudioModel(detected);
-    setLmStudioStatus(detected ? "found" : "offline");
+    setLmStudioModels(detected);
+    setLmStudioStatus(detected.length > 0 ? "found" : "offline");
     setForm((f) => ({
       ...f,
       ...LLM_DEFAULTS["openai_compatible"],
@@ -125,12 +127,10 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   async function handleOllamaPreset() {
     setOllamaStatus("detecting");
     const detected = await probeModels("http://localhost:11434/v1");
-    const modelName = detected ?? recommendedTier.ollamaDefault;
-    const displayName = detected
-      ? `Ollama - ${modelName}`
-      : `Ollama - ${recommendedTier.label}档推荐`;
-    setOllamaModel(detected);
-    setOllamaStatus(detected ? "found" : "offline");
+    const modelName = detected[0] ?? recommendedTier.ollamaDefault;
+    const displayName = detected.length > 0 ? `Ollama - ${modelName}` : `Ollama - ${recommendedTier.label}档推荐`;
+    setOllamaModel(detected[0] ?? null);
+    setOllamaStatus(detected.length > 0 ? "found" : "offline");
     setForm((f) => ({
       ...f,
       ...LLM_DEFAULTS["openai_compatible"],
@@ -241,7 +241,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
                   {lmStudioStatus === "detecting" ? "检测中…" : "LM Studio（推荐）"}
                 </button>
                 {lmStudioStatus === "found" && (
-                  <span style={{ fontSize: 10, color: "#22c55e" }}>✓ 已检测到：{lmStudioModel}</span>
+                  <span style={{ fontSize: 10, color: "#22c55e" }}>✓ 已检测到 {lmStudioModels.length} 个模型</span>
                 )}
                 {lmStudioStatus === "offline" && (
                   <span style={{ fontSize: 10, color: "var(--text-muted)" }}>服务未运行，已填入推荐默认值</span>
@@ -285,7 +285,17 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
         </label>
         <label style={labelStyle}>
           模型名称 *
-          <input style={inputStyle} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder={isLocalProvider ? "例：qwen2.5:14b 或 lmstudio-community/..." : "例：gemini-2.0-flash"} />
+          {lmStudioModels.length > 1 ? (
+            <select
+              style={inputStyle}
+              value={form.model_name}
+              onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+            >
+              {lmStudioModels.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : (
+            <input style={inputStyle} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder={isLocalProvider ? "例：qwen3-27b-q4_k_m（在 LM Studio 中加载后点击上方检测）" : "例：gemini-2.0-flash"} />
+          )}
         </label>
         {showBaseUrl && (
           <label style={labelStyle}>

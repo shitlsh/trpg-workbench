@@ -640,8 +640,10 @@ export interface UpdateModelCatalogEntryRequest {
 }
 
 export interface CatalogRefreshRequest {
-  provider_type: LLMProviderType;
-  llm_profile_id: string;
+  provider_type: LLMProviderType | "openai_compatible";
+  llm_profile_id?: string;         // required for cloud providers
+  base_url?: string;               // for openai_compatible direct probe
+  api_key?: string | null;         // optional override
 }
 
 export interface CatalogRefreshResult {

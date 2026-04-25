@@ -164,6 +164,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   } = useAgentStore();
 
   const [modelWarning, setModelWarning] = useState<string | null>(null);
+  const [sessionModel, setSessionModel] = useState<string>(""); // "" = use workspace default
   const bottomRef = useRef<HTMLDivElement>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
@@ -205,9 +206,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const { data: llmProfiles = [] } = useQuery({
     queryKey: ["llm-profiles"],
     queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
-    enabled: !!defaultLlmName,
   });
-  const activeProfile = llmProfiles.find((p) => p.name === defaultLlmName);
+  const activeProfile = llmProfiles.find((p) => p.name === (sessionModel || defaultLlmName));
 
   const { data: catalogEntry } = useQuery({
     queryKey: ["model-catalog-entry", activeProfile?.provider_type, activeProfile?.model_name],
@@ -286,8 +286,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
   const handleSend = async (content: string, mentionedAssetIds: string[] = []) => {
     if (!content.trim() || isStreaming) return;
-    if (configResp && !defaultLlmName) {
-      setModelWarning("未配置默认 LLM。请前往工作空间设置 → 模型路由完成配置后再发送。");
+    if (configResp && !defaultLlmName && !sessionModel) {
+      setModelWarning("未配置默认 LLM。请在下方选择模型或前往工作空间设置完成配置后再发送。");
       return;
     }
     setModelWarning(null);
@@ -321,6 +321,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         body: JSON.stringify({
           content,
           workspace_id: workspaceId,
+          ...(sessionModel ? { model: sessionModel } : {}),
           ...(mentionedAssetIds.length > 0 ? { referenced_asset_ids: mentionedAssetIds } : {}),
         }),
         signal: ctrl.signal,
@@ -641,8 +642,35 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       <div style={{
         padding: "8px 12px", borderTop: "1px solid var(--border)",
       }}>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-          Enter 发送 · Shift+Enter 换行 · @ 引用资产
+        {/* Bottom bar: model selector + hints */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 8 }}>
+          <select
+            value={sessionModel}
+            onChange={(e) => setSessionModel(e.target.value)}
+            title="本次对话使用的模型（临时覆盖，不修改工作空间设置）"
+            style={{
+              fontSize: 11,
+              color: sessionModel ? "var(--text)" : "var(--text-muted)",
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              padding: "2px 6px",
+              cursor: "pointer",
+              maxWidth: 200,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            <option value="">
+              {defaultLlmName ? `默认: ${defaultLlmName}` : "未配置模型"}
+            </option>
+            {llmProfiles.map((p) => (
+              <option key={p.id} value={p.name}>{p.name}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+            Enter 发送 · Shift+Enter 换行 · @ 引用资产
+          </span>
         </div>
         <MentionInput
           workspaceId={workspaceId}

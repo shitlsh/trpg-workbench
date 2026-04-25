@@ -69,32 +69,43 @@ def load_static_catalog(db: Session) -> None:
 def refresh_catalog_from_provider(
     db: Session,
     provider_type: str,
-    llm_profile_id: str,
+    llm_profile_id: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
 ) -> tuple[int, int, str | None]:
     """Dynamically fetch model list from a provider using the given profile's credentials.
     Returns (models_added, models_updated, error).
     Only modifies model_catalog_entries; never touches the profile itself.
+    For openai_compatible, base_url and api_key can be passed directly (no profile needed).
     """
-    profile = db.get(LLMProfileORM, llm_profile_id)
-    if not profile:
-        return 0, 0, "LLM profile not found"
+    resolved_api_key = api_key
+    resolved_base_url = base_url
 
-    # Decrypt api_key
-    api_key: str | None = None
-    if profile.api_key_encrypted:
-        try:
-            from app.utils.secrets import decrypt_secret
-            api_key = decrypt_secret(profile.api_key_encrypted)
-        except Exception:
-            api_key = profile.api_key_encrypted  # fallback: treat as plaintext
+    if llm_profile_id:
+        profile = db.get(LLMProfileORM, llm_profile_id)
+        if not profile:
+            return 0, 0, "LLM profile not found"
+        # Decrypt api_key from profile
+        if profile.api_key_encrypted:
+            try:
+                from app.utils.secrets import decrypt_secret
+                resolved_api_key = resolved_api_key or decrypt_secret(profile.api_key_encrypted)
+            except Exception:
+                resolved_api_key = resolved_api_key or profile.api_key_encrypted
+        if not resolved_base_url and hasattr(profile, "base_url"):
+            resolved_base_url = profile.base_url
 
     try:
         if provider_type == "openrouter":
-            return _refresh_openrouter(db, api_key)
+            return _refresh_openrouter(db, resolved_api_key)
         elif provider_type == "google":
-            return _refresh_google(db, api_key)
+            return _refresh_google(db, resolved_api_key)
         elif provider_type == "openai":
-            return _refresh_openai(db, api_key)
+            return _refresh_openai(db, resolved_api_key)
+        elif provider_type == "openai_compatible":
+            if not resolved_base_url:
+                return 0, 0, "openai_compatible requires a base_url"
+            return _refresh_openai_compatible(db, resolved_base_url, resolved_api_key)
         else:
             return 0, 0, f"Dynamic fetch not supported for provider '{provider_type}'"
     except Exception as exc:
@@ -219,6 +230,51 @@ def _refresh_openai(db: Session, api_key: str | None) -> tuple[int, int, str | N
             "supports_json_mode": None,
             "supports_tools": None,
             "input_price_per_1m": None,  # OpenAI list API has no pricing
+            "output_price_per_1m": None,
+        }
+        is_new = _upsert_llm_catalog(db, entry_id, data)
+        if is_new:
+            added += 1
+        else:
+            updated += 1
+    db.commit()
+    return added, updated, None
+
+
+def _refresh_openai_compatible(
+    db: Session, base_url: str, api_key: str | None
+) -> tuple[int, int, str | None]:
+    """Fetch model list from an OpenAI-compatible endpoint (e.g. LM Studio, Ollama)."""
+    # Normalize base_url: strip trailing slash, ensure /v1/models
+    base = base_url.rstrip("/")
+    # Support both http://localhost:1234 and http://localhost:1234/v1
+    if base.endswith("/v1"):
+        url = f"{base}/models"
+    else:
+        url = f"{base}/v1/models"
+
+    headers = {}
+    if api_key and api_key not in ("local", "ollama", "lm-studio", ""):
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    resp = httpx.get(url, headers=headers, timeout=5)
+    resp.raise_for_status()
+    models = resp.json().get("data", [])
+    added = updated = 0
+    for m in models:
+        model_id = m.get("id", "")
+        if not model_id:
+            continue
+        entry_id = f"openai_compatible:{model_id}"
+        data = {
+            "provider_type": "openai_compatible",
+            "model_name": model_id,
+            "display_name": m.get("name") or model_id.split("/")[-1],
+            "context_window": m.get("context_length") or m.get("context_window"),
+            "max_output_tokens": None,
+            "supports_json_mode": None,
+            "supports_tools": None,
+            "input_price_per_1m": None,
             "output_price_per_1m": None,
         }
         is_new = _upsert_llm_catalog(db, entry_id, data)

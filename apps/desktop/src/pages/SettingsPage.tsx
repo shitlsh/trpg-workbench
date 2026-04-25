@@ -74,6 +74,9 @@ function LLMSection() {
   const [deleteTarget, setDeleteTarget] = useState<LLMProfile | null>(null);
   const [testResult, setTestResult] = useState<LLMTestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["llm-profiles"],
@@ -98,7 +101,7 @@ function LLMSection() {
   });
 
   function openNew() {
-    setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setShowForm(true);
+    setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setShowForm(true);
   }
   function openEdit(p: LLMProfile) {
     setEditTarget(p);
@@ -108,14 +111,45 @@ function LLMSection() {
       supports_json_mode: p.supports_json_mode, supports_tools: p.supports_tools,
       timeout_seconds: p.timeout_seconds,
     });
-    setTestResult(null); setShowForm(true);
+    setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setShowForm(true);
   }
   function closeForm() {
-    setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null);
+    setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null);
   }
   function handleProviderChange(prov: LLMProviderType) {
     const defaults = LLM_DEFAULTS[prov];
     setForm((f) => ({ ...f, provider_type: prov, ...defaults }));
+    setFetchedModels([]); setFetchModelsError(null);
+  }
+
+  async function handleFetchModels() {
+    if (!form.base_url) return;
+    setFetchingModels(true); setFetchModelsError(null);
+    try {
+      const result = await apiFetch<CatalogRefreshResult>("/settings/model-catalog/refresh", {
+        method: "POST",
+        body: JSON.stringify({
+          provider_type: "openai_compatible",
+          base_url: form.base_url,
+          api_key: form.api_key || null,
+        } satisfies CatalogRefreshRequest),
+      });
+      if (result.error) {
+        setFetchModelsError(result.error);
+      } else {
+        // Fetch the catalog entries we just populated
+        const entries = await apiFetch<ModelCatalogEntry[]>("/settings/model-catalog?provider_type=openai_compatible");
+        const names = entries.map((e) => e.model_name);
+        setFetchedModels(names);
+        if (names.length > 0 && !form.model_name) {
+          setForm((f) => ({ ...f, model_name: names[0] }));
+        }
+      }
+    } catch (e) {
+      setFetchModelsError((e as Error).message);
+    } finally {
+      setFetchingModels(false);
+    }
   }
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -207,12 +241,43 @@ function LLMSection() {
               </label>
               <label className={styles.label}>
                 模型名称 *
-                <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：gemini-2.0-flash" />
+                {form.provider_type === "openai_compatible" && fetchedModels.length > 0 ? (
+                  <select
+                    className={styles.select}
+                    value={form.model_name}
+                    onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+                  >
+                    {fetchedModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                ) : (
+                  <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：gemini-2.0-flash" />
+                )}
               </label>
               {showBaseUrl && (
                 <label className={styles.label}>
                   Base URL {form.provider_type === "openai_compatible" ? "*" : ""}
-                  <input className={styles.input} value={form.base_url ?? ""} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://..." />
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      className={styles.input}
+                      style={{ flex: 1 }}
+                      value={form.base_url ?? ""}
+                      onChange={(e) => { setForm({ ...form, base_url: e.target.value }); setFetchedModels([]); }}
+                      placeholder="https://..."
+                    />
+                    {form.provider_type === "openai_compatible" && form.base_url && (
+                      <button
+                        type="button"
+                        className={styles.btnSecondary}
+                        style={{ whiteSpace: "nowrap", fontSize: 11 }}
+                        onClick={handleFetchModels}
+                        disabled={fetchingModels}
+                      >
+                        {fetchingModels ? "获取中..." : "获取模型列表"}
+                      </button>
+                    )}
+                  </div>
+                  {fetchModelsError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>{fetchModelsError}</span>}
+                  {fetchedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 获取到 {fetchedModels.length} 个模型</span>}
                 </label>
               )}
               <label className={styles.label}>
@@ -296,6 +361,9 @@ function EmbeddingSection() {
   const [deleteTarget, setDeleteTarget] = useState<EmbeddingProfile | null>(null);
   const [testResult, setTestResult] = useState<EmbeddingTestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["embedding-profiles"],
@@ -319,13 +387,37 @@ function EmbeddingSection() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["embedding-profiles"] }); setDeleteTarget(null); },
   });
 
-  function openNew() { setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); setShowForm(true); }
+  function openNew() { setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setShowForm(true); }
   function openEdit(p: EmbeddingProfile) {
     setEditTarget(p);
     setForm({ name: p.name, provider_type: p.provider_type as EmbeddingProviderType, model_name: p.model_name, base_url: p.base_url ?? "", api_key: "", dimensions: p.dimensions ?? undefined });
-    setTestResult(null); setShowForm(true);
+    setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setShowForm(true);
   }
-  function closeForm() { setShowForm(false); setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); }
+  function closeForm() { setShowForm(false); setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); }
+
+  async function handleFetchEmbeddingModels() {
+    if (!form.base_url) return;
+    setFetchingModels(true); setFetchModelsError(null);
+    try {
+      // Directly probe the OpenAI-compatible /v1/models endpoint from the frontend,
+      // bypassing the backend catalog (which only stores LLM entries).
+      const baseUrl = form.base_url.replace(/\/+$/, "");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (form.api_key) headers["Authorization"] = `Bearer ${form.api_key}`;
+      const resp = await fetch(`${baseUrl}/v1/models`, { headers });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json() as { data?: { id: string }[] };
+      const names = (data.data ?? []).map((m) => m.id).filter(Boolean);
+      setFetchedModels(names);
+      if (names.length > 0 && !form.model_name) {
+        setForm((f) => ({ ...f, model_name: names[0] }));
+      }
+    } catch (e) {
+      setFetchModelsError((e as Error).message);
+    } finally {
+      setFetchingModels(false);
+    }
+  }
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const body = { ...form };
@@ -391,17 +483,29 @@ function EmbeddingSection() {
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>{editTarget ? "编辑 Embedding 配置" : "新增 Embedding 配置"}</h2>
             {!editTarget && (
-              <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐：Jina Embeddings v3，多语言支持，适合中文规则书检索</span>
-                <button
-                  type="button"
-                  style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
-                  onClick={() => {
-                    setForm((f) => ({ ...f, ...JINA_EMBEDDING_PRESET, name: f.name || "Jina Embeddings v3" }));
-                  }}
-                >
-                  一键填入 Jina 推荐值
-                </button>
+              <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ padding: "8px 12px", background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐本地：LM Studio + jina-embeddings-v5，数据不离本机，无需 API Key</span>
+                  <button
+                    type="button"
+                    style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
+                    onClick={() => setForm((f) => ({ ...f, provider_type: "openai_compatible", model_name: "jina-embeddings-v5-text-small-retrieval", base_url: "http://localhost:1234/v1", api_key: "lm-studio", name: f.name || "LM Studio Jina v5" }))}
+                  >
+                    LM Studio 本地推荐
+                  </button>
+                </div>
+                <div style={{ padding: "8px 12px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐云端：Jina Embeddings v3，多语言支持，适合中文规则书检索</span>
+                  <button
+                    type="button"
+                    style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
+                    onClick={() => {
+                      setForm((f) => ({ ...f, ...JINA_EMBEDDING_PRESET, name: f.name || "Jina Embeddings v3" }));
+                    }}
+                  >
+                    一键填入 Jina 推荐值
+                  </button>
+                </div>
               </div>
             )}
             <form onSubmit={handleSubmit} className={styles.form}>
@@ -417,12 +521,43 @@ function EmbeddingSection() {
               </label>
               <label className={styles.label}>
                 模型名称 *
-                <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：jina-embeddings-v3" />
+                {form.provider_type === "openai_compatible" && fetchedModels.length > 0 ? (
+                  <select
+                    className={styles.select}
+                    value={form.model_name}
+                    onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+                  >
+                    {fetchedModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                ) : (
+                  <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：jina-embeddings-v3" />
+                )}
               </label>
               {showBaseUrl && (
                 <label className={styles.label}>
                   Base URL *
-                  <input className={styles.input} value={form.base_url ?? ""} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://api.jina.ai/v1" />
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      className={styles.input}
+                      style={{ flex: 1 }}
+                      value={form.base_url ?? ""}
+                      onChange={(e) => { setForm({ ...form, base_url: e.target.value }); setFetchedModels([]); }}
+                      placeholder="https://api.jina.ai/v1"
+                    />
+                    {form.base_url && (
+                      <button
+                        type="button"
+                        className={styles.btnSecondary}
+                        style={{ whiteSpace: "nowrap", fontSize: 11 }}
+                        onClick={handleFetchEmbeddingModels}
+                        disabled={fetchingModels}
+                      >
+                        {fetchingModels ? "获取中..." : "获取模型列表"}
+                      </button>
+                    )}
+                  </div>
+                  {fetchModelsError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>{fetchModelsError}</span>}
+                  {fetchedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 获取到 {fetchedModels.length} 个模型</span>}
                 </label>
               )}
               <label className={styles.label}>

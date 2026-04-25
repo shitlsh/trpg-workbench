@@ -399,7 +399,9 @@ class UpdateModelCatalogEntryRequest(BaseModel):
 
 class CatalogRefreshRequest(BaseModel):
     provider_type: str
-    llm_profile_id: str
+    llm_profile_id: str | None = None   # required for cloud providers; optional for openai_compatible
+    base_url: str | None = None         # for openai_compatible direct probe (no saved profile needed)
+    api_key: str | None = None          # optional override for openai_compatible
 
 
 class CatalogRefreshResult(BaseModel):

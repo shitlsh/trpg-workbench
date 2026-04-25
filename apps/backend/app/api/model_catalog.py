@@ -79,6 +79,8 @@ def refresh_catalog(body: CatalogRefreshRequest, db: Session = Depends(get_db)):
         db=db,
         provider_type=body.provider_type,
         llm_profile_id=body.llm_profile_id,
+        base_url=body.base_url,
+        api_key=body.api_key,
     )
     return CatalogRefreshResult(
         provider_type=body.provider_type,
