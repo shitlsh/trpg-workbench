@@ -116,9 +116,11 @@ def read_asset(asset_slug: str) -> str:
 
 
 @tool
-def search_assets(query: str) -> str:
+def search_assets(query: str = "") -> str:
     """按关键词或语义搜索资产名称和内容。返回匹配资产的 JSON 数组。
     有 embedding profile 时走语义路径，否则 fallback 到关键词匹配。"""
+    if not query or not query.strip():
+        return json.dumps({"error": "query 参数不能为空。"}, ensure_ascii=False)
     ws_path = _workspace_context.get("workspace_path", "")
     # Semantic path (preferred when embedder is available)
     if _embedder is not None and ws_path:
@@ -155,8 +157,10 @@ def read_config() -> str:
 
 
 @tool
-def search_knowledge(query: str) -> str:
+def search_knowledge(query: str = "") -> str:
     """检索工作空间关联的知识库（RAG）。返回相关段落列表（JSON），含文档名和页码。"""
+    if not query or not query.strip():
+        return json.dumps({"error": "query 参数不能为空，请提供具体的搜索关键词。"}, ensure_ascii=False)
     library_ids = _workspace_context.get("library_ids", [])
     if not library_ids or _db is None:
         return json.dumps({
@@ -527,7 +531,57 @@ def create_skill(user_intent: str) -> str:
     raise PatchProposalInterrupt(proposal)
 
 
+@tool
+def web_search(query: str = "", max_results: int = 5) -> str:
+    """Search the internet for real-world reference information using DuckDuckGo.
+
+    Use this tool when you need factual background that is NOT in the rulebook:
+    - Real-world locations, landmarks, geography (e.g. "1920s Shanghai architecture")
+    - Historical events, figures, time periods
+    - Cultural details, customs, folklore
+    - Scientific or medical facts relevant to the story
+
+    Do NOT use for game rule queries — use search_knowledge or consult_rules instead.
+
+    Args:
+        query: Search query in the most specific language (English or Chinese).
+        max_results: Number of results to return (1-10, default 5).
+
+    Returns:
+        JSON array of {title, url, snippet} objects, or an error message.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    if not query or not query.strip():
+        return json.dumps({"error": "query 参数不能为空。"}, ensure_ascii=False)
+    try:
+        from ddgs import DDGS
+        max_results = max(1, min(10, max_results))
+        # timeout=20s; region="cn-zh" for Chinese queries for better results
+        with DDGS(timeout=20) as ddgs:
+            results = list(ddgs.text(query, max_results=max_results, region="cn-zh"))
+        # Fallback: retry without region if empty
+        if not results:
+            with DDGS(timeout=20) as ddgs:
+                results = list(ddgs.text(query, max_results=max_results))
+        formatted = [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("href", ""),
+                "snippet": r.get("body", ""),
+            }
+            for r in results
+        ]
+        if not formatted:
+            return json.dumps({"results": [], "note": "No results found. Try rephrasing the query or use English keywords."}, ensure_ascii=False)
+        return json.dumps({"results": formatted}, ensure_ascii=False)
+    except Exception as e:
+        logger.warning("web_search failed for query %r: %s", query, e)
+        return json.dumps({"error": str(e), "results": []}, ensure_ascii=False)
+
+
 # ─── Tool list for Director ────────────────────────────────────────────────────
 
 ALL_TOOLS = [list_assets, read_asset, search_assets, read_config, search_knowledge,
-             create_asset, update_asset, check_consistency, consult_rules, create_skill]
+             create_asset, update_asset, check_consistency, consult_rules, create_skill,
+             web_search]

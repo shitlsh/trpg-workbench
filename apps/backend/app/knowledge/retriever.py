@@ -1,10 +1,13 @@
 """Retrieval logic: search across libraries by priority, return Citations."""
 from __future__ import annotations
+import logging
 from pathlib import Path
 from typing import Any
 from app.knowledge.citations import Citation
 from app.knowledge.vector_index import search_library
 from app.utils.paths import get_data_dir
+
+logger = logging.getLogger(__name__)
 
 
 def retrieve_knowledge(
@@ -33,12 +36,14 @@ def retrieve_knowledge(
     try:
         embedding_profile = get_embedding_for_query(library_ids[0], db)
         embedder = embedding_from_profile(embedding_profile)
-    except Exception:
+    except Exception as e:
+        logger.warning("retrieve_knowledge: failed to get embedder: %s", e)
         return []
 
     try:
         query_vector = embedder.embed_one(query)
-    except Exception:
+    except Exception as e:
+        logger.warning("retrieve_knowledge: failed to embed query %r: %s", query, e)
         return []
 
     doc_map: dict[str, dict] = {}
