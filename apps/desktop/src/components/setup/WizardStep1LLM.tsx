@@ -92,7 +92,9 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   const [lmStudioStatus, setLmStudioStatus] = useState<ProbeStatus>("idle");
   const [ollamaStatus, setOllamaStatus] = useState<ProbeStatus>("idle");
   const [lmStudioModels, setLmStudioModels] = useState<string[]>([]);
-  const [ollamaModel, setOllamaModel] = useState<string | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  // unified list of probed models for the current local preset
+  const [probedModels, setProbedModels] = useState<string[]>([]);
 
   useEffect(() => {
     fetchSystemMemoryGb().then(setMemoryGb);
@@ -102,6 +104,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
 
   async function handleLmStudioPreset() {
     setLmStudioStatus("detecting");
+    setOllamaStatus("idle");
     const detected = await probeModels("http://localhost:1234/v1");
     // Pick first qwen3 model if available, else first model, else tier default
     const preferred = detected.find((m) => m.toLowerCase().includes("qwen3"));
@@ -110,6 +113,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
       ? `LM Studio - ${modelName.split("/").pop()?.replace(/-GGUF$/i, "") ?? modelName}`
       : `LM Studio - ${recommendedTier.label}档推荐`;
     setLmStudioModels(detected);
+    setProbedModels(detected);
     setLmStudioStatus(detected.length > 0 ? "found" : "offline");
     setForm((f) => ({
       ...f,
@@ -126,10 +130,12 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
 
   async function handleOllamaPreset() {
     setOllamaStatus("detecting");
+    setLmStudioStatus("idle");
     const detected = await probeModels("http://localhost:11434/v1");
     const modelName = detected[0] ?? recommendedTier.ollamaDefault;
     const displayName = detected.length > 0 ? `Ollama - ${modelName}` : `Ollama - ${recommendedTier.label}档推荐`;
-    setOllamaModel(detected[0] ?? null);
+    setOllamaModels(detected);
+    setProbedModels(detected);
     setOllamaStatus(detected.length > 0 ? "found" : "offline");
     setForm((f) => ({
       ...f,
@@ -257,7 +263,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
                   {ollamaStatus === "detecting" ? "检测中…" : "Ollama"}
                 </button>
                 {ollamaStatus === "found" && (
-                  <span style={{ fontSize: 10, color: "#22c55e" }}>✓ 已检测到：{ollamaModel}</span>
+                  <span style={{ fontSize: 10, color: "#22c55e" }}>✓ 已检测到 {ollamaModels.length} 个模型</span>
                 )}
                 {ollamaStatus === "offline" && (
                   <span style={{ fontSize: 10, color: "var(--text-muted)" }}>服务未运行，已填入推荐默认值</span>
@@ -285,13 +291,13 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
         </label>
         <label style={labelStyle}>
           模型名称 *
-          {lmStudioModels.length > 1 ? (
+          {probedModels.length > 0 ? (
             <select
               style={inputStyle}
               value={form.model_name}
               onChange={(e) => setForm({ ...form, model_name: e.target.value })}
             >
-              {lmStudioModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              {probedModels.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           ) : (
             <input style={inputStyle} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder={isLocalProvider ? "例：qwen3-27b-q4_k_m（在 LM Studio 中加载后点击上方检测）" : "例：gemini-2.0-flash"} />
