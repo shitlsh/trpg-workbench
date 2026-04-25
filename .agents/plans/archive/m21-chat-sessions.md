@@ -10,6 +10,8 @@
 
 ## 背景与动机
 
+> **来源**：`docs/benchmark-reviews/completed/2026-04-25_chat-session-management.md`
+
 当前 AgentPanel 采用"永远只有一个 session"的简化模型：
 
 - 页面挂载时如果 `agentStore.session === null` 就立即创建新 session，历史对话无处可见
