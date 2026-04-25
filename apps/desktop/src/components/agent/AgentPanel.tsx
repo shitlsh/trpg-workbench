@@ -460,6 +460,11 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           }
         }
       }
+      // Guard: if stream closed without a `done` SSE event, clear streaming state
+      setIsStreaming(false);
+      setStreamingText("");
+      setStreamingToolCalls([]);
+      setTyping(false);
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         addMessage({
