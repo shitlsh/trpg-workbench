@@ -8,7 +8,6 @@ class RuleSetSchema(BaseModel):
     name: str
     slug: str
     description: str | None
-    genre: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -17,13 +16,11 @@ class RuleSetCreate(BaseModel):
     name: str
     slug: str
     description: str | None = None
-    genre: str | None = None
 
 
 class RuleSetUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
-    genre: str | None = None
 
 
 class WorkspaceSchema(BaseModel):

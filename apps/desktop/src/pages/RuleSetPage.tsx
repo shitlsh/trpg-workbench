@@ -33,15 +33,6 @@ import type {
 import styles from "./RuleSetPage.module.css";
 import { HelpButton } from "../components/HelpButton";
 
-const GENRE_OPTIONS = [
-  { value: "", label: "通用" },
-  { value: "horror", label: "恐怖" },
-  { value: "fantasy", label: "奇幻" },
-  { value: "sci_fi", label: "科幻" },
-  { value: "modern", label: "现代" },
-  { value: "historical", label: "历史" },
-  { value: "cyberpunk", label: "赛博朋克" },
-];
 
 const LIBRARY_TYPES: { value: LibraryType; label: string }[] = [
   { value: "core_rules", label: "核心规则" },
@@ -975,7 +966,7 @@ export default function RuleSetPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [newGenre, setNewGenre] = useState("");
+
 
   // Edit modal
   const [editTarget, setEditTarget] = useState<RuleSet | null>(null);
@@ -1037,7 +1028,7 @@ export default function RuleSetPage() {
     onSuccess: (rs) => {
       queryClient.invalidateQueries({ queryKey: ["rule-sets"] });
       setShowCreate(false);
-      setNewName(""); setNewDesc(""); setNewGenre("");
+      setNewName(""); setNewDesc("");
       setSelectedId(rs.id);
     },
   });
@@ -1103,7 +1094,7 @@ export default function RuleSetPage() {
     e.preventDefault();
     if (!newName.trim()) return;
     const slug = newName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 60) + "-" + Date.now();
-    createMutation.mutate({ name: newName.trim(), slug, description: newDesc.trim() || undefined, genre: newGenre || undefined });
+    createMutation.mutate({ name: newName.trim(), slug, description: newDesc.trim() || undefined });
   }
 
   function handleEdit(e: React.FormEvent) {
@@ -1144,7 +1135,6 @@ export default function RuleSetPage() {
               onClick={() => selectRuleSet(rs.id)}
             >
               <span className={styles.rsName}>{rs.name}</span>
-              {rs.genre && <span className={styles.rsGenre}>{GENRE_OPTIONS.find(g => g.value === rs.genre)?.label ?? rs.genre}</span>}
             </button>
           ))}
         </aside>
@@ -1169,11 +1159,6 @@ export default function RuleSetPage() {
                 <div>
                   <div className={styles.detailName}>
                     {selectedRuleSet.name}
-                    {selectedRuleSet.genre && (
-                      <span className={styles.badge}>
-                        {GENRE_OPTIONS.find(g => g.value === selectedRuleSet.genre)?.label ?? selectedRuleSet.genre}
-                      </span>
-                    )}
                   </div>
                   {selectedRuleSet.description && <p className={styles.detailDesc}>{selectedRuleSet.description}</p>}
                 </div>
@@ -1398,12 +1383,6 @@ export default function RuleSetPage() {
               <label className={styles.label}>
                 描述
                 <textarea className={styles.textarea} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} rows={2} placeholder="可选" />
-              </label>
-              <label className={styles.label}>
-                风格类型
-                <select className={styles.select} value={newGenre} onChange={(e) => setNewGenre(e.target.value)}>
-                  {GENRE_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
-                </select>
               </label>
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={() => setShowCreate(false)}>取消</button>

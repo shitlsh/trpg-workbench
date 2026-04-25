@@ -34,13 +34,11 @@ def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get_db)):
 
         model = model_from_profile(llm_profile)
 
-        genre_desc = rule_set.genre or "通用"
         rs_desc = rule_set.description or "无"
 
         prompt = f"""你是一位专业的 TRPG 模组创作顾问。请为以下规则集生成一份创作风格提示词（PromptProfile），指导 AI 助手进行创作。
 
 规则集名称：{rule_set.name}
-风格类型：{genre_desc}
 描述：{rs_desc}
 
 请以 JSON 格式返回，包含以下字段：

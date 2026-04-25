@@ -19,7 +19,6 @@ export interface RuleSet {
   name: string;
   slug: string;
   description: string | null;
-  genre: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,13 +27,11 @@ export interface CreateRuleSetRequest {
   name: string;
   slug: string;
   description?: string;
-  genre?: string;
 }
 
 export interface UpdateRuleSetRequest {
   name?: string;
   description?: string;
-  genre?: string;
 }
 
 // ─── Workspace ────────────────────────────────────────────────────────────────

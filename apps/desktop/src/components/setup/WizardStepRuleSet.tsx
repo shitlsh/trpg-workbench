@@ -3,16 +3,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
 import type { RuleSet, CreateRuleSetRequest } from "@trpg-workbench/shared-schema";
 
-const GENRE_OPTIONS = [
-  { value: "", label: "通用" },
-  { value: "horror", label: "恐怖" },
-  { value: "fantasy", label: "奇幻" },
-  { value: "sci_fi", label: "科幻" },
-  { value: "modern", label: "现代" },
-  { value: "historical", label: "历史" },
-  { value: "cyberpunk", label: "赛博朋克" },
-];
-
 interface Props {
   onComplete: (ruleSet: RuleSet) => void;
   onSkip: () => void;
@@ -22,7 +12,6 @@ export function WizardStepRuleSet({ onComplete, onSkip }: Props) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  const [genre, setGenre] = useState("");
 
   const createMutation = useMutation({
     mutationFn: (body: CreateRuleSetRequest) =>
@@ -44,7 +33,6 @@ export function WizardStepRuleSet({ onComplete, onSkip }: Props) {
       name: name.trim(),
       slug,
       description: desc.trim() || undefined,
-      genre: genre || undefined,
     });
   }
 
@@ -82,20 +70,6 @@ export function WizardStepRuleSet({ onComplete, onSkip }: Props) {
             onChange={(e) => setDesc(e.target.value)}
             placeholder="简单描述这套规则集的主题和风格..."
           />
-        </label>
-        <label style={labelStyle}>
-          风格类型
-          <select
-            style={inputStyle}
-            value={genre}
-            onChange={(e) => setGenre(e.target.value)}
-          >
-            {GENRE_OPTIONS.map((g) => (
-              <option key={g.value} value={g.value}>
-                {g.label}
-              </option>
-            ))}
-          </select>
         </label>
         {createMutation.isError && (
           <p style={{ fontSize: 12, color: "var(--error, #f55)" }}>
