@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock, Zap } from "lucide-react";
 import type { ToolCall } from "@trpg-workbench/shared-schema";
 
 const TOOL_LABELS: Record<string, string> = {
@@ -10,6 +10,9 @@ const TOOL_LABELS: Record<string, string> = {
   search_knowledge: "检索知识库",
   create_asset: "新建资产",
   update_asset: "更新资产",
+  check_consistency: "一致性检查",
+  consult_rules: "规则咨询",
+  create_skill: "新建 Skill",
 };
 
 interface ToolCallCardProps {
@@ -24,6 +27,8 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
     args = JSON.parse(toolCall.arguments);
   } catch {}
 
+  const isAutoApplied = toolCall.status === ("auto_applied" as string);
+
   const statusIcon = () => {
     switch (toolCall.status) {
       case "running":
@@ -33,6 +38,9 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
       case "error":
         return <XCircle size={11} style={{ color: "#e05252" }} />;
       default:
+        if (isAutoApplied) {
+          return <Zap size={11} style={{ color: "#52c97e" }} />;
+        }
         return <Clock size={11} style={{ color: "#f0c050" }} />;
     }
   };
@@ -42,7 +50,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   return (
     <div style={{
       margin: "4px 0",
-      border: "1px solid var(--border)",
+      border: `1px solid ${isAutoApplied ? "rgba(82,201,126,0.4)" : "var(--border)"}`,
       borderRadius: 4,
       overflow: "hidden",
       fontSize: 11,
@@ -55,7 +63,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           display: "flex",
           alignItems: "center",
           gap: 6,
-          background: "var(--bg)",
+          background: isAutoApplied ? "rgba(82,201,126,0.06)" : "var(--bg)",
           border: "none",
           cursor: "pointer",
           color: "var(--text-muted)",
@@ -65,7 +73,16 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
         {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         {statusIcon()}
         <span style={{ color: "var(--text)", fontWeight: 500 }}>{label}</span>
-        {toolCall.result_summary && (
+        {isAutoApplied && (
+          <span style={{
+            fontSize: 9, padding: "1px 5px", borderRadius: 8,
+            background: "rgba(82,201,126,0.15)", color: "#52c97e",
+            border: "1px solid rgba(82,201,126,0.3)", flexShrink: 0,
+          }}>
+            已自动应用
+          </span>
+        )}
+        {toolCall.result_summary && !isAutoApplied && (
           <span style={{ color: "var(--text-subtle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             — {toolCall.result_summary}
           </span>

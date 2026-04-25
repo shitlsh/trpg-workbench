@@ -91,12 +91,21 @@ async def run_director_stream(
                     }
             if hasattr(chunk, "tool_results") and chunk.tool_results:
                 for tr in chunk.tool_results:
+                    raw_content = str(tr.content or "")
+                    # Check for auto_applied (trust mode)
+                    try:
+                        payload = json.loads(raw_content)
+                        if isinstance(payload, dict) and payload.get("auto_applied"):
+                            yield {"event": "auto_applied", "data": payload}
+                            continue
+                    except Exception:
+                        pass
                     yield {
                         "event": "tool_call_result",
                         "data": {
                             "id": tr.tool_call_id or "",
                             "success": True,
-                            "summary": str(tr.content or "")[:200],
+                            "summary": raw_content[:200],
                         },
                     }
 

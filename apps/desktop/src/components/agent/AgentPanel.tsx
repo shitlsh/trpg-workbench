@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
-  RefreshCw, FileText, ChevronDown, ChevronUp,
+  RefreshCw, FileText, ChevronDown, ChevronUp, Shield,
 } from "lucide-react";
 import type {
   ChatSession, ChatMessage, ToolCall, PatchProposal,
@@ -185,6 +185,17 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     enabled: !!workspaceId,
   });
   const defaultLlmName = configResp?.config?.models?.default_llm ?? "";
+  const trustMode = configResp?.config?.trust_mode === true;
+
+  // Trust mode toggle mutation
+  const trustMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiFetch(`/workspaces/${workspaceId}/config`, {
+        method: "PATCH",
+        body: JSON.stringify({ updates: { trust_mode: enabled } }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workspace", workspaceId, "config"] }),
+  });
 
   // LLM profile + catalog for context badge
   const { data: llmProfiles = [] } = useQuery({
@@ -332,6 +343,20 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               );
               setStreamingToolCalls([...accToolCalls]);
 
+            } else if (currentEvent === "auto_applied") {
+              // Trust mode: asset was written without confirmation
+              const tc: ToolCall = {
+                id: (data.slug as string) ?? `aa_${Date.now()}`,
+                name: (data.action as string) === "updated" ? "update_asset" : "create_asset",
+                arguments: JSON.stringify({ slug: data.slug, asset_id: data.asset_id }),
+                status: "auto_applied" as ToolCall["status"],
+                result_summary: null,
+              };
+              accToolCalls = [...accToolCalls, tc];
+              setStreamingToolCalls([...accToolCalls]);
+              // Refresh assets list
+              qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
+
             } else if (currentEvent === "patch_proposal") {
               const proposal = data as unknown as PatchProposal;
               setPendingProposals((prev) => [...prev, proposal]);
@@ -431,7 +456,25 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             {pendingProposals.length} 个待确认变更
           </span>
         )}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+          {/* Trust mode toggle */}
+          <button
+            onClick={() => trustMutation.mutate(!trustMode)}
+            title={trustMode ? "信任模式已开启（点击关闭）" : "信任模式已关闭（点击开启）"}
+            style={{
+              background: trustMode ? "rgba(82,201,126,0.15)" : "none",
+              color: trustMode ? "#52c97e" : "var(--text-muted)",
+              border: trustMode ? "1px solid rgba(82,201,126,0.3)" : "1px solid transparent",
+              borderRadius: 4,
+              padding: "2px 6px",
+              fontSize: 10,
+              display: "flex", alignItems: "center", gap: 3,
+              cursor: "pointer",
+            }}
+          >
+            <Shield size={10} />
+            {trustMode ? "信任" : "确认"}
+          </button>
           <button
             onClick={handleReset}
             title="新建对话"
