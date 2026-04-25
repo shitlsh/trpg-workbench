@@ -199,7 +199,10 @@ function SetPromptModal({
     queryKey: ["probe-models-prompt", selectedLlmProfile?.base_url],
     queryFn: async () => {
       const params = new URLSearchParams({ base_url: selectedLlmProfile!.base_url! });
-      return apiFetch<string[]>(`/settings/model-catalog/probe-models?${params}`);
+      const res = await apiFetch<{ models: string[]; error?: string }>(
+        `/settings/model-catalog/probe-models?${params}`
+      );
+      return res.models ?? [];
     },
     enabled: !!selectedLlmProfile?.base_url,
     staleTime: 30_000,
