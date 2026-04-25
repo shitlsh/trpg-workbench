@@ -22,14 +22,31 @@ from agno.exceptions import AgentRunException
 _workspace_context: dict = {}
 _db = None  # SQLAlchemy Session
 _model = None  # LLM model instance (for sub-agent delegation)
+_embedder = None  # Embedding model instance (for semantic search)
 
 
 def configure(workspace_context: dict, db, model=None) -> None:
-    """Inject runtime dependencies into tool closures."""
-    global _workspace_context, _db, _model
+    """Inject runtime dependencies into tool closures.
+    
+    Also resolves an embedder from the first bound knowledge library so that
+    search_assets can use semantic similarity when available.
+    """
+    global _workspace_context, _db, _model, _embedder
     _workspace_context = workspace_context
     _db = db
     _model = model
+
+    # Attempt to resolve embedder for semantic asset search
+    _embedder = None
+    library_ids = workspace_context.get("library_ids", [])
+    if library_ids and db is not None:
+        try:
+            from app.services.model_routing import get_embedding_for_query
+            from app.agents.model_adapter import embedding_from_profile
+            profile = get_embedding_for_query(library_ids[0], db)
+            _embedder = embedding_from_profile(profile)
+        except Exception:
+            pass  # no embedding profile available — semantic search degrades to keyword
 
 
 def _get_model():
@@ -100,7 +117,20 @@ def read_asset(asset_slug: str) -> str:
 
 @tool
 def search_assets(query: str) -> str:
-    """按关键词搜索资产名称和 summary。返回匹配资产的 JSON 数组。"""
+    """按关键词或语义搜索资产名称和内容。返回匹配资产的 JSON 数组。
+    有 embedding profile 时走语义路径，否则 fallback 到关键词匹配。"""
+    ws_path = _workspace_context.get("workspace_path", "")
+    # Semantic path (preferred when embedder is available)
+    if _embedder is not None and ws_path:
+        try:
+            from app.knowledge.asset_indexer import search_assets_semantic
+            results = search_assets_semantic(ws_path, query, _embedder, top_k=8)
+            if results:
+                return json.dumps(results, ensure_ascii=False)
+        except Exception:
+            pass  # fall through to keyword
+
+    # Keyword fallback
     assets = _workspace_context.get("existing_assets", [])
     query_lower = query.lower()
     results = [
@@ -129,7 +159,10 @@ def search_knowledge(query: str) -> str:
     """检索工作空间关联的知识库（RAG）。返回相关段落列表（JSON），含文档名和页码。"""
     library_ids = _workspace_context.get("library_ids", [])
     if not library_ids or _db is None:
-        return json.dumps({"results": [], "message": "没有可用的知识库"}, ensure_ascii=False)
+        return json.dumps({
+            "results": [],
+            "message": "当前工作空间未绑定任何知识库。若需要规则参考，请先在「知识库」页面导入规则书并绑定到此工作空间。",
+        }, ensure_ascii=False)
 
     try:
         from app.knowledge.retriever import retrieve_knowledge
@@ -170,6 +203,10 @@ def create_asset(asset_type: str, name: str, content_md: str, change_summary: st
         "original_content": "",
         "change_summary": change_summary or f"新建 {asset_type}：{name}",
     }
+    if _workspace_context.get("trust_mode") and _db is not None:
+        ws_path = _workspace_context.get("workspace_path", "")
+        result = execute_patch_proposal(proposal, ws_path, _db)
+        return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
     raise PatchProposalInterrupt(proposal)
 
 
@@ -208,6 +245,9 @@ def update_asset(asset_slug: str, content_md: str, change_summary: str = "") -> 
         "original_content": original,
         "change_summary": change_summary or f"修改资产：{asset_name}",
     }
+    if _workspace_context.get("trust_mode") and _db is not None:
+        result = execute_patch_proposal(proposal, ws_path, _db)
+        return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
     raise PatchProposalInterrupt(proposal)
 
 
@@ -215,23 +255,45 @@ def update_asset(asset_slug: str, content_md: str, change_summary: str = "") -> 
 
 def execute_patch_proposal(proposal: dict, workspace_path: str, db) -> dict:
     """Actually write the patch to disk and update DB index. Returns result summary."""
+    import re
+    import threading
     from app.services import asset_service
+    from app.models.orm import AssetORM, _uuid
 
     action = proposal.get("action", "create")
     asset_type = proposal.get("asset_type", "")
     asset_name = proposal.get("asset_name", "")
     content_md = proposal.get("content_md", "")
 
-    if action == "create":
-        # Use asset_service to create the asset
-        workspace_id = _get_workspace_id_from_path(workspace_path, db)
-        if not workspace_id:
-            return {"success": False, "error": "Workspace not found"}
+    workspace_id = _get_workspace_id_from_path(workspace_path, db)
+    if not workspace_id:
+        return {"success": False, "error": "Workspace not found"}
 
-        import re
+    # Parse summary from frontmatter (if present) to store in DB index
+    summary = _extract_frontmatter_field(content_md, "summary")
+    # Strip frontmatter to get body for service call
+    body = _strip_frontmatter_block(content_md)
+
+    def _trigger_index(asset_id: str, slug: str, name: str, atype: str, cmd: str) -> None:
+        """Background thread: embed and index the asset."""
+        if _embedder is None:
+            return
+        try:
+            from app.knowledge.asset_indexer import index_asset
+            index_asset(
+                workspace_path=workspace_path,
+                asset_id=asset_id,
+                slug=slug,
+                name=name,
+                asset_type=atype,
+                content_md=cmd,
+                embedder=_embedder,
+            )
+        except Exception:
+            pass
+
+    if action == "create":
         slug_base = re.sub(r"[^\w\u4e00-\u9fff]+", "-", asset_name.lower()).strip("-") or "asset"
-        # Ensure unique slug
-        from app.models.orm import AssetORM
         existing_slugs = {a.slug for a in db.query(AssetORM).filter_by(workspace_id=workspace_id).all()}
         slug = slug_base
         counter = 1
@@ -239,37 +301,80 @@ def execute_patch_proposal(proposal: dict, workspace_path: str, db) -> dict:
             slug = f"{slug_base}-{counter}"
             counter += 1
 
-        result = asset_service.create_asset_file(
+        # Write file to disk
+        result = asset_service.create_asset(
             workspace_path=workspace_path,
-            workspace_id=workspace_id,
             asset_type=asset_type,
             name=asset_name,
             slug=slug,
-            content_md=content_md,
-            change_summary=proposal.get("change_summary", "Agent 创建"),
-            db=db,
+            summary=summary,
+            body=content_md,  # write full content_md as body (includes frontmatter if any)
         )
-        return {"success": True, "asset_id": result.get("id"), "slug": slug, "action": "created"}
+
+        # Create DB index row
+        asset_id = _uuid()
+        asset_row = AssetORM(
+            id=asset_id,
+            workspace_id=workspace_id,
+            type=asset_type,
+            name=asset_name,
+            slug=slug,
+            status="draft",
+            summary=summary,
+            file_path=result["rel_path"],
+            file_hash=result["file_hash"],
+            version=1,
+        )
+        db.add(asset_row)
+        db.commit()
+
+        # Async embed
+        threading.Thread(
+            target=_trigger_index,
+            args=(asset_id, slug, asset_name, asset_type, content_md),
+            daemon=True,
+        ).start()
+
+        return {"success": True, "asset_id": asset_id, "slug": slug, "action": "created"}
 
     elif action == "update":
         asset_slug = proposal.get("asset_slug", "")
-        workspace_id = _get_workspace_id_from_path(workspace_path, db)
-        if not workspace_id:
-            return {"success": False, "error": "Workspace not found"}
-
-        from app.models.orm import AssetORM
         asset = db.query(AssetORM).filter_by(workspace_id=workspace_id, slug=asset_slug).first()
         if not asset:
             return {"success": False, "error": f"Asset '{asset_slug}' not found"}
 
-        result = asset_service.update_asset_content(
+        from app.utils.paths import asset_type_dir
+        file_path = asset_type_dir(workspace_path, asset.type) / f"{asset_slug}.md"
+        if not file_path.exists():
+            # Fallback: scan
+            for md_file in Path(workspace_path).rglob("*.md"):
+                if md_file.stem == asset_slug:
+                    file_path = md_file
+                    break
+
+        result = asset_service.update_asset(
             workspace_path=workspace_path,
-            asset=asset,
-            content_md=content_md,
+            file_path=file_path,
+            body=content_md,
+            meta_updates={"summary": summary} if summary else None,
             change_summary=proposal.get("change_summary", "Agent 修改"),
             source_type="agent",
-            db=db,
         )
+
+        # Update DB index
+        asset.file_hash = result["file_hash"]
+        asset.version = result["revision_version"]
+        if summary:
+            asset.summary = summary
+        db.commit()
+
+        # Async embed
+        threading.Thread(
+            target=_trigger_index,
+            args=(asset.id, asset_slug, asset.name, asset.type, content_md),
+            daemon=True,
+        ).start()
+
         return {"success": True, "asset_id": asset.id, "slug": asset_slug, "action": "updated"}
 
     return {"success": False, "error": f"Unknown action: {action}"}
@@ -279,6 +384,22 @@ def _get_workspace_id_from_path(workspace_path: str, db) -> str | None:
     from app.models.orm import WorkspaceORM
     ws = db.query(WorkspaceORM).filter_by(workspace_path=workspace_path).first()
     return ws.id if ws else None
+
+
+def _extract_frontmatter_field(md: str, field: str) -> str | None:
+    """Extract a single scalar field from YAML frontmatter."""
+    import re
+    m = re.search(rf"^{field}:\s*(.+)$", md, re.MULTILINE)
+    return m.group(1).strip().strip('"\'') if m else None
+
+
+def _strip_frontmatter_block(md: str) -> str:
+    """Remove YAML frontmatter (---...---) and return the body."""
+    if md.startswith("---"):
+        end = md.find("\n---", 3)
+        if end != -1:
+            return md[end + 4:].lstrip()
+    return md
 
 
 # ─── Sub-agent delegation tools ──────────────────────────────────────────────

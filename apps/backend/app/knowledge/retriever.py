@@ -7,6 +7,75 @@ from app.knowledge.vector_index import search_library
 from app.utils.paths import get_data_dir
 
 
+def retrieve_knowledge(
+    query: str,
+    library_ids: list[str],
+    db,
+    top_k: int = 5,
+) -> list[dict]:
+    """Synchronous convenience wrapper used by tool functions.
+
+    Resolves the embedder from the first library's snapshot profile, embeds the
+    query, and returns results as plain dicts (not Citation objects) so that
+    caller code doesn't need to import Citation.
+
+    Returns [] silently if no library is indexed or embedding profile is missing.
+    """
+    if not library_ids or db is None:
+        return []
+
+    try:
+        from app.services.model_routing import get_embedding_for_query, LibraryNotIndexedError, ModelNotConfiguredError
+        from app.agents.model_adapter import embedding_from_profile
+    except ImportError:
+        return []
+
+    try:
+        embedding_profile = get_embedding_for_query(library_ids[0], db)
+        embedder = embedding_from_profile(embedding_profile)
+    except Exception:
+        return []
+
+    try:
+        query_vector = embedder.embed_one(query)
+    except Exception:
+        return []
+
+    doc_map: dict[str, dict] = {}
+    try:
+        from app.models.orm import KnowledgeDocumentORM
+        docs = db.query(KnowledgeDocumentORM).filter(
+            KnowledgeDocumentORM.library_id.in_(library_ids)
+        ).all()
+        doc_map = {d.id: {"filename": d.filename} for d in docs}
+    except Exception:
+        pass
+
+    seen_chunk_ids: set[str] = set()
+    all_results: list[dict] = []
+    for lib_id in library_ids:
+        idx_dir = _index_dir(lib_id)
+        hits = search_library(idx_dir, query_vector, top_k=top_k)
+        for hit in hits:
+            cid = hit.get("chunk_id", "")
+            if cid not in seen_chunk_ids:
+                seen_chunk_ids.add(cid)
+                doc_info = doc_map.get(hit.get("document_id", ""), {})
+                all_results.append({
+                    "chunk_id": cid,
+                    "document_id": hit.get("document_id", ""),
+                    "document_name": doc_info.get("filename", hit.get("document_id", "")),
+                    "page_from": hit.get("page_from"),
+                    "page_to": hit.get("page_to"),
+                    "section_title": hit.get("section_title") or "",
+                    "content": hit.get("content", ""),
+                    "_distance": hit.get("_distance", 999),
+                })
+
+    all_results.sort(key=lambda x: x.get("_distance", 999))
+    return all_results[:top_k]
+
+
 def _index_dir(library_id: str) -> Path:
     return get_data_dir() / "knowledge" / "libraries" / library_id / "index"
 

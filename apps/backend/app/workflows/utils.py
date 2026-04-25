@@ -81,6 +81,7 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
         "rule_set_id": rule_set_id,
         "style_prompt": style_prompt,
         "library_ids": library_ids,
+        "trust_mode": bool(config.get("trust_mode", False)),
         "existing_assets": [
             {"type": a.type, "name": a.name, "slug": a.slug, "summary": a.summary}
             for a in assets

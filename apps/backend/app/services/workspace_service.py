@@ -30,6 +30,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "top_k": 20,
     },
     "knowledge_libraries": [],
+    "trust_mode": False,
 }
 
 
