@@ -77,11 +77,12 @@ interface MentionInputProps {
   workspaceId: string;
   disabled?: boolean;
   isStreaming?: boolean;
+  queueLength?: number;
   onSubmit: (text: string, mentionedAssetIds: string[]) => void;
   onStop?: () => void;
 }
 
-export function MentionInput({ workspaceId, disabled = false, isStreaming = false, onSubmit, onStop }: MentionInputProps) {
+export function MentionInput({ workspaceId, disabled = false, isStreaming = false, queueLength = 0, onSubmit, onStop }: MentionInputProps) {
   const [allAssets, setAllAssets] = useState<AssetOption[]>([]);
   // Load assets once for suggestions
   useEffect(() => {
@@ -235,6 +236,26 @@ export function MentionInput({ workspaceId, disabled = false, isStreaming = fals
 
   return (
     <div ref={containerRef} style={{ position: "relative", flex: 1 }}>
+      {/* Queue indicator */}
+      {queueLength > 0 && (
+        <div style={{
+          fontSize: 11,
+          color: "var(--text-muted)",
+          padding: "2px 6px 4px",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+        }}>
+          <span style={{
+            display: "inline-block",
+            width: 6, height: 6,
+            borderRadius: "50%",
+            background: "#d29922",
+            flexShrink: 0,
+          }} />
+          {queueLength} 条消息将在当前回复完成后发送
+        </div>
+      )}
       <div style={{
         background: "var(--bg)",
         border: "1px solid var(--border)",

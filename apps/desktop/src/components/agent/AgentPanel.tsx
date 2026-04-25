@@ -210,6 +210,15 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
+  // Queue for messages sent while a stream is in progress
+  const [pendingQueue, setPendingQueue] = useState<Array<{ content: string; mentionedAssetIds: string[] }>>([]);
+  const pendingQueueRef = useRef<Array<{ content: string; mentionedAssetIds: string[] }>>([]);
+  // Keep ref in sync so the stream-end handler can read without stale closure
+  const syncQueue = (q: Array<{ content: string; mentionedAssetIds: string[] }>) => {
+    pendingQueueRef.current = q;
+    setPendingQueue(q);
+  };
+
   // Pending patch proposals (to confirm/reject)
   const [pendingProposals, setPendingProposals] = useState<PatchProposal[]>([]);
   const [activeProposal, setActiveProposal] = useState<PatchProposal | null>(null);
@@ -335,7 +344,12 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   }, [workspaceId]);
 
   const handleSend = async (content: string, mentionedAssetIds: string[] = []) => {
-    if (!content.trim() || isStreaming) return;
+    if (!content.trim()) return;
+    // If already streaming, queue the message for later
+    if (isStreaming) {
+      syncQueue([...pendingQueueRef.current, { content, mentionedAssetIds }]);
+      return;
+    }
     if (configResp && !defaultLlmName && !sessionModel) {
       setModelWarning("未配置默认 LLM。请前往工作空间设置完成配置后再发送。");
       return;
@@ -481,6 +495,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               setStreamingText("");
               setStreamingToolCalls([]);
               setTyping(false);
+              flushQueue();
 
             } else if (currentEvent === "error") {
               const errMsg: ChatMessage = {
@@ -497,6 +512,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               setStreamingText("");
               setStreamingToolCalls([]);
               setTyping(false);
+              flushQueue();
             }
           }
         }
@@ -506,6 +522,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       setStreamingText("");
       setStreamingToolCalls([]);
       setTyping(false);
+      flushQueue();
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         addMessage({
@@ -522,6 +539,12 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       setStreamingText("");
       setStreamingToolCalls([]);
       setTyping(false);
+      // Don't flush on abort — user intentionally stopped; discard queue too
+      if ((e as Error).name === "AbortError") {
+        syncQueue([]);
+      } else {
+        flushQueue();
+      }
     }
   };
 
@@ -532,7 +555,18 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     setStreamingToolCalls([]);
     setPendingProposals([]);
     setActiveProposal(null);
+    syncQueue([]);
     createNewSession();
+  };
+
+  // Called after every stream ends (done / error / abort) to drain the queue
+  const flushQueue = () => {
+    const next = pendingQueueRef.current[0];
+    if (!next) return;
+    const remaining = pendingQueueRef.current.slice(1);
+    syncQueue(remaining);
+    // Small timeout so React state settles before next send
+    setTimeout(() => handleSend(next.content, next.mentionedAssetIds), 50);
   };
 
   const handleProposalDone = (proposalId: string) => {
@@ -744,6 +778,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           workspaceId={workspaceId}
           disabled={!session}
           isStreaming={isStreaming}
+          queueLength={pendingQueue.length}
           onSubmit={handleSend}
           onStop={() => abortRef.current?.abort()}
         />
