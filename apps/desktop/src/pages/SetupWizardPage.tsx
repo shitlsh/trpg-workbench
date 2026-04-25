@@ -1,8 +1,9 @@
 import { useState } from "react";
-import type { LLMProfile, EmbeddingProfile, Workspace } from "@trpg-workbench/shared-schema";
+import type { LLMProfile, EmbeddingProfile, RuleSet, Workspace } from "@trpg-workbench/shared-schema";
 import { WizardStep1LLM } from "../components/setup/WizardStep1LLM";
 import { WizardStep2Embedding } from "../components/setup/WizardStep2Embedding";
-import { WizardStep4Workspace as WizardStep3Workspace } from "../components/setup/WizardStep4Workspace";
+import { WizardStepRuleSet } from "../components/setup/WizardStepRuleSet";
+import { WizardStep4Workspace as WizardStepWorkspace } from "../components/setup/WizardStep4Workspace";
 import { WizardSummary } from "../components/setup/WizardSummary";
 
 type StepStatus = "pending" | "completed" | "skipped";
@@ -10,14 +11,16 @@ type StepStatus = "pending" | "completed" | "skipped";
 const STEPS = [
   { label: "LLM 模型" },
   { label: "Embedding 模型" },
+  { label: "规则集" },
   { label: "工作空间" },
 ];
 
 export default function SetupWizardPage() {
   const [currentStep, setCurrentStep] = useState(0);
-  const [stepStatus, setStepStatus] = useState<StepStatus[]>(["pending", "pending", "pending"]);
+  const [stepStatus, setStepStatus] = useState<StepStatus[]>(["pending", "pending", "pending", "pending"]);
   const [llmProfile, setLlmProfile] = useState<LLMProfile | null>(null);
   const [embeddingProfile, setEmbeddingProfile] = useState<EmbeddingProfile | null>(null);
+  const [ruleSet, setRuleSet] = useState<RuleSet | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [done, setDone] = useState(false);
 
@@ -72,7 +75,7 @@ export default function SetupWizardPage() {
 
         {/* Step content */}
         {done ? (
-          <WizardSummary llmProfile={llmProfile} embeddingProfile={embeddingProfile} workspace={workspace} />
+          <WizardSummary llmProfile={llmProfile} embeddingProfile={embeddingProfile} ruleSet={ruleSet} workspace={workspace} />
         ) : currentStep === 0 ? (
           <WizardStep1LLM
             onComplete={(p) => { setLlmProfile(p); advanceStep(0, "completed"); }}
@@ -83,10 +86,15 @@ export default function SetupWizardPage() {
             onComplete={(p) => { setEmbeddingProfile(p); advanceStep(1, "completed"); }}
             onSkip={() => advanceStep(1, "skipped")}
           />
+        ) : currentStep === 2 ? (
+          <WizardStepRuleSet
+            onComplete={(rs) => { setRuleSet(rs); advanceStep(2, "completed"); }}
+            onSkip={() => advanceStep(2, "skipped")}
+          />
         ) : (
-          <WizardStep3Workspace
-            onComplete={(w) => { setWorkspace(w); advanceStep(2, "completed"); }}
-            onSkip={() => { advanceStep(2, "skipped"); setDone(true); }}
+          <WizardStepWorkspace
+            onComplete={(w) => { setWorkspace(w); advanceStep(3, "completed"); }}
+            onSkip={() => { advanceStep(3, "skipped"); setDone(true); }}
           />
         )}
       </div>

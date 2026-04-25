@@ -9,10 +9,6 @@ from app.models.schemas import (
 router = APIRouter(prefix="/rule-sets", tags=["rule-sets"])
 
 
-def _is_builtin(rule_set_id: str) -> bool:
-    return rule_set_id.startswith("builtin-")
-
-
 @router.get("", response_model=list[RuleSetSchema])
 def list_rule_sets(db: Session = Depends(get_db)):
     return db.query(RuleSetORM).order_by(RuleSetORM.name).all()
@@ -35,8 +31,6 @@ def update_rule_set(rule_set_id: str, body: RuleSetUpdate, db: Session = Depends
     rs = db.get(RuleSetORM, rule_set_id)
     if not rs:
         raise HTTPException(status_code=404, detail="Rule set not found")
-    if _is_builtin(rule_set_id):
-        raise HTTPException(status_code=403, detail="Built-in rule sets cannot be modified")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(rs, field, value)
     db.commit()
@@ -49,8 +43,6 @@ def delete_rule_set(rule_set_id: str, db: Session = Depends(get_db)):
     rs = db.get(RuleSetORM, rule_set_id)
     if not rs:
         raise HTTPException(status_code=404, detail="Rule set not found")
-    if _is_builtin(rule_set_id):
-        raise HTTPException(status_code=403, detail="Built-in rule sets cannot be deleted")
     dependent = db.query(WorkspaceORM).filter(WorkspaceORM.rule_set_id == rule_set_id).all()
     if dependent:
         names = [w.name for w in dependent]
@@ -60,4 +52,3 @@ def delete_rule_set(rule_set_id: str, db: Session = Depends(get_db)):
         )
     db.delete(rs)
     db.commit()
-

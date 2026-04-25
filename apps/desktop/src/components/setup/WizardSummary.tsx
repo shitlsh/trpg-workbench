@@ -1,14 +1,15 @@
-import type { LLMProfile, EmbeddingProfile, Workspace } from "@trpg-workbench/shared-schema";
+import type { LLMProfile, EmbeddingProfile, RuleSet, Workspace } from "@trpg-workbench/shared-schema";
 import { useNavigate } from "react-router-dom";
 import { useSettingsStore } from "../../stores/settingsStore";
 
 interface Props {
   llmProfile: LLMProfile | null;
   embeddingProfile: EmbeddingProfile | null;
+  ruleSet?: RuleSet | null;
   workspace: Workspace | null;
 }
 
-export function WizardSummary({ llmProfile, embeddingProfile, workspace }: Props) {
+export function WizardSummary({ llmProfile, embeddingProfile, ruleSet, workspace }: Props) {
   const navigate = useNavigate();
   const { completeSetup } = useSettingsStore();
 
@@ -29,6 +30,7 @@ export function WizardSummary({ llmProfile, embeddingProfile, workspace }: Props
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <SummaryRow label="LLM 模型" value={llmProfile?.name ?? null} skipped={!llmProfile} />
         <SummaryRow label="Embedding 模型" value={embeddingProfile?.name ?? null} skipped={!embeddingProfile} />
+        <SummaryRow label="规则集" value={ruleSet?.name ?? null} skipped={!ruleSet} />
         <SummaryRow label="工作空间" value={workspace?.name ?? null} skipped={!workspace} />
       </div>
       <div style={{ padding: "10px 14px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6 }}>

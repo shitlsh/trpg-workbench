@@ -3,11 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
-  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag,
+  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil,
 } from "lucide-react";
 import { apiFetch, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
+import { getAssetTypeIcon, getAssetTypeLabel, getAssetTypeColor } from "../lib/assetTypeVisual";
+import { BUILTIN_ASSET_TYPES } from "@trpg-workbench/shared-schema";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import type {
   RuleSet,
@@ -23,6 +25,7 @@ import type {
   SearchTestRequest,
   SearchTestResponse,
   PromptProfile,
+  LLMProfile,
   EmbeddingProfile,
   CustomAssetTypeConfig,
   CreateCustomAssetTypeRequest,
@@ -64,10 +67,6 @@ const WARNING_LABEL: Record<string, string> = {
   has_table: "包含表格（可能格式异常）", has_multi_column: "包含多列排版",
   page_range_anomaly: "页码范围异常", empty_page: "存在空白页",
 };
-
-function isBuiltin(id: string) {
-  return id.startsWith("builtin-");
-}
 
 // ─── Create Library Modal ─────────────────────────────────────────────────────
 
@@ -151,12 +150,20 @@ function SetPromptModal({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  type Tab = "select" | "manual" | "ai";
+  const [tab, setTab] = useState<Tab>("select");
+
+  // select tab
   const { data: profiles = [] } = useQuery({
     queryKey: ["prompt-profiles"],
     queryFn: () => apiFetch<PromptProfile[]>("/prompt-profiles"),
   });
+  const { data: llmProfiles = [] } = useQuery({
+    queryKey: ["llm-profiles"],
+    queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
+  });
 
-  const updateMutation = useMutation({
+  const selectMutation = useMutation({
     mutationFn: (profileId: string) =>
       apiFetch<PromptProfile>(`/prompt-profiles/${profileId}`, {
         method: "PATCH",
@@ -168,44 +175,255 @@ function SetPromptModal({
     },
   });
 
+  // manual tab
+  const [manualName, setManualName] = useState("");
+  const [manualPrompt, setManualPrompt] = useState("");
+  const [manualNotes, setManualNotes] = useState("");
+
+  const createManualMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<PromptProfile>("/prompt-profiles", {
+        method: "POST",
+        body: JSON.stringify({
+          name: manualName.trim(),
+          system_prompt: manualPrompt.trim(),
+          style_notes: manualNotes.trim() || undefined,
+          rule_set_id: ruleSetId,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prompt-profiles"] });
+      onClose();
+    },
+  });
+
+  // ai tab
+  const [selectedLlmId, setSelectedLlmId] = useState("");
+  const [aiName, setAiName] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiNotes, setAiNotes] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  const [generated, setGenerated] = useState(false);
+
+  async function handleGenerate() {
+    if (!selectedLlmId) return;
+    setIsGenerating(true);
+    setGenError(null);
+    try {
+      const res = await apiFetch<{ name: string; system_prompt: string; style_notes: string }>(
+        "/prompt-profiles/generate",
+        {
+          method: "POST",
+          body: JSON.stringify({ rule_set_id: ruleSetId, llm_profile_id: selectedLlmId }),
+        }
+      );
+      setAiName(res.name);
+      setAiPrompt(res.system_prompt);
+      setAiNotes(res.style_notes);
+      setGenerated(true);
+    } catch (e) {
+      setGenError((e as Error).message);
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  const createAiMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<PromptProfile>("/prompt-profiles", {
+        method: "POST",
+        body: JSON.stringify({
+          name: aiName.trim(),
+          system_prompt: aiPrompt.trim(),
+          style_notes: aiNotes.trim() || undefined,
+          rule_set_id: ruleSetId,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prompt-profiles"] });
+      onClose();
+    },
+  });
+
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: "6px 14px", fontSize: 13, fontWeight: active ? 600 : 400,
+    color: active ? "var(--accent)" : "var(--text-muted)",
+    borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
+    background: "transparent", cursor: "pointer", border: "none",
+    borderBottomStyle: "solid",
+  });
+
   return (
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <h2 className={styles.modalTitle}>指定创作风格提示词</h2>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
-          选择一个 PromptProfile 作为该规则集的创作风格约束。Agent 生成内容时将以此为前置上下文。
-        </p>
-        <div className={styles.selectList}>
-          {profiles.length === 0 && (
-            <p className={styles.empty}>没有可用的提示词，请先在「Prompt 配置」页面创建</p>
-          )}
-          {profiles.map((p) => (
-            <div
-              key={p.id}
-              className={`${styles.selectListItem} ${p.id === currentProfileId ? styles.selected : ""}`}
-              onClick={() => updateMutation.mutate(p.id)}
-            >
-              <MessageSquare size={14} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 500 }}>{p.name}</div>
-                {p.style_notes && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                    {p.style_notes.slice(0, 80)}{p.style_notes.length > 80 ? "..." : ""}
-                  </div>
-                )}
-              </div>
-              {p.id === currentProfileId && (
-                <span style={{ fontSize: 11, color: "var(--accent)" }}>当前</span>
+      <div className={styles.modal} style={{ width: 540, maxWidth: "95vw" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h2 className={styles.modalTitle} style={{ margin: 0 }}>创作风格提示词</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}><X size={16} /></button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
+          <button style={tabStyle(tab === "select")} onClick={() => setTab("select")}>
+            <MessageSquare size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+            选择已有
+          </button>
+          <button style={tabStyle(tab === "manual")} onClick={() => setTab("manual")}>
+            <Pencil size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+            手动创建
+          </button>
+          <button style={tabStyle(tab === "ai")} onClick={() => setTab("ai")}>
+            <Sparkles size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+            AI 生成
+          </button>
+        </div>
+
+        {/* Select tab */}
+        {tab === "select" && (
+          <>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
+              选择一个已有的提示词关联到此规则集。
+            </p>
+            <div className={styles.selectList}>
+              {profiles.length === 0 && (
+                <p className={styles.empty}>暂无提示词——请使用「手动创建」或「AI 生成」新建一个</p>
               )}
+              {profiles.map((p) => (
+                <div
+                  key={p.id}
+                  className={`${styles.selectListItem} ${p.id === currentProfileId ? styles.selected : ""}`}
+                  onClick={() => selectMutation.mutate(p.id)}
+                >
+                  <MessageSquare size={14} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500 }}>{p.name}</div>
+                    {p.style_notes && (
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                        {p.style_notes.slice(0, 80)}{p.style_notes.length > 80 ? "..." : ""}
+                      </div>
+                    )}
+                  </div>
+                  {p.id === currentProfileId && (
+                    <span style={{ fontSize: 11, color: "var(--accent)" }}>当前</span>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        {updateMutation.isError && (
-          <p className={styles.error}>{(updateMutation.error as Error).message}</p>
+            {selectMutation.isError && (
+              <p className={styles.error}>{(selectMutation.error as Error).message}</p>
+            )}
+          </>
         )}
-        <div className={styles.formActions} style={{ marginTop: 16 }}>
-          <button className={styles.btnSecondary} onClick={onClose}>关闭</button>
-        </div>
+
+        {/* Manual tab */}
+        {tab === "manual" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+              手动填写提示词内容，创建后自动关联到此规则集。
+            </p>
+            <label className={styles.label}>
+              名称 *
+              <input className={styles.input} value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="例：恐怖调查标准风格" autoFocus />
+            </label>
+            <label className={styles.label}>
+              系统提示词 *
+              <textarea
+                className={styles.textarea}
+                value={manualPrompt}
+                onChange={(e) => setManualPrompt(e.target.value)}
+                rows={6}
+                placeholder="你是一位擅长...的 TRPG 创作助手。&#10;&#10;创作风格约束：&#10;- ..."
+              />
+            </label>
+            <label className={styles.label}>
+              风格摘要（用于界面展示）
+              <input className={styles.input} value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} placeholder="简短描述风格要点（30-60字）" />
+            </label>
+            {createManualMutation.isError && (
+              <p className={styles.error}>{(createManualMutation.error as Error).message}</p>
+            )}
+            <div className={styles.formActions}>
+              <button className={styles.btnSecondary} onClick={onClose}>取消</button>
+              <button
+                className={styles.btnPrimary}
+                disabled={!manualName.trim() || !manualPrompt.trim() || createManualMutation.isPending}
+                onClick={() => createManualMutation.mutate()}
+              >
+                {createManualMutation.isPending ? "保存中..." : "保存并关联"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* AI tab */}
+        {tab === "ai" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+              选择 LLM 模型，自动为此规则集生成创作提示词，生成后可编辑调整。
+            </p>
+            <label className={styles.label}>
+              使用模型 *
+              {llmProfiles.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6 }}>
+                  暂无可用 LLM——请先在「模型配置」页面添加
+                </div>
+              ) : (
+                <select className={styles.select} value={selectedLlmId} onChange={(e) => setSelectedLlmId(e.target.value)}>
+                  <option value="">请选择模型...</option>
+                  {llmProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )}
+            </label>
+            {!generated && (
+              <>
+                {genError && <p className={styles.error}>{genError}</p>}
+                <div className={styles.formActions}>
+                  <button className={styles.btnSecondary} onClick={onClose}>取消</button>
+                  <button
+                    className={styles.btnPrimary}
+                    disabled={!selectedLlmId || isGenerating}
+                    onClick={handleGenerate}
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <Sparkles size={13} />
+                    {isGenerating ? "生成中..." : "生成提示词"}
+                  </button>
+                </div>
+              </>
+            )}
+            {generated && (
+              <>
+                <label className={styles.label}>
+                  名称
+                  <input className={styles.input} value={aiName} onChange={(e) => setAiName(e.target.value)} />
+                </label>
+                <label className={styles.label}>
+                  系统提示词
+                  <textarea className={styles.textarea} value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={6} />
+                </label>
+                <label className={styles.label}>
+                  风格摘要
+                  <input className={styles.input} value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} />
+                </label>
+                {createAiMutation.isError && (
+                  <p className={styles.error}>{(createAiMutation.error as Error).message}</p>
+                )}
+                <div className={styles.formActions}>
+                  <button className={styles.btnSecondary} onClick={() => { setGenerated(false); setGenError(null); }}>重新生成</button>
+                  <button
+                    className={styles.btnPrimary}
+                    disabled={!aiName.trim() || !aiPrompt.trim() || createAiMutation.isPending}
+                    onClick={() => createAiMutation.mutate()}
+                  >
+                    {createAiMutation.isPending ? "保存中..." : "保存并关联"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -926,7 +1144,6 @@ export default function RuleSetPage() {
               onClick={() => selectRuleSet(rs.id)}
             >
               <span className={styles.rsName}>{rs.name}</span>
-              {isBuiltin(rs.id) && <span className={styles.builtinBadge}>内置</span>}
               {rs.genre && <span className={styles.rsGenre}>{GENRE_OPTIONS.find(g => g.value === rs.genre)?.label ?? rs.genre}</span>}
             </button>
           ))}
@@ -952,7 +1169,6 @@ export default function RuleSetPage() {
                 <div>
                   <div className={styles.detailName}>
                     {selectedRuleSet.name}
-                    {isBuiltin(selectedRuleSet.id) && <span className={styles.builtinBadge}>内置</span>}
                     {selectedRuleSet.genre && (
                       <span className={styles.badge}>
                         {GENRE_OPTIONS.find(g => g.value === selectedRuleSet.genre)?.label ?? selectedRuleSet.genre}
@@ -962,22 +1178,20 @@ export default function RuleSetPage() {
                   {selectedRuleSet.description && <p className={styles.detailDesc}>{selectedRuleSet.description}</p>}
                 </div>
                 <div className={styles.detailActions}>
-                  {!isBuiltin(selectedRuleSet.id) && (
-                    <>
-                      <button
-                        className={styles.btnSecondary}
-                        onClick={() => { setEditTarget(selectedRuleSet); setEditName(selectedRuleSet.name); setEditDesc(selectedRuleSet.description ?? ""); }}
-                      >
-                        <Edit2 size={13} /> 编辑
-                      </button>
-                      <button
-                        className={styles.btnDanger}
-                        onClick={() => { setDeleteTarget(selectedRuleSet); setDeleteError(null); }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </>
-                  )}
+                  <>
+                    <button
+                      className={styles.btnSecondary}
+                      onClick={() => { setEditTarget(selectedRuleSet); setEditName(selectedRuleSet.name); setEditDesc(selectedRuleSet.description ?? ""); }}
+                    >
+                      <Edit2 size={13} /> 编辑
+                    </button>
+                    <button
+                      className={styles.btnDanger}
+                      onClick={() => { setDeleteTarget(selectedRuleSet); setDeleteError(null); }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </>
                 </div>
               </div>
 
@@ -1059,20 +1273,18 @@ export default function RuleSetPage() {
               {/* Asset Types section (A5) */}
               <div className={styles.section}>
                 <div className={styles.sectionHeader}>
-                  <span className={styles.sectionLabel}><Tag size={12} /> 资产类型（{customAssetTypes.length}）</span>
-                  {!isBuiltin(selectedRuleSet.id) && (
-                    <button
-                      className={styles.btnSecondary}
-                      style={{ fontSize: 12, padding: "4px 10px" }}
-                      onClick={() => { setShowNewTypeForm((v) => !v); setNewTypeError(null); }}
-                    >
-                      <Plus size={12} /> 添加类型
-                    </button>
-                  )}
+                  <span className={styles.sectionLabel}><Tag size={12} /> 资产类型（{BUILTIN_ASSET_TYPES.length + customAssetTypes.length}）</span>
+                  <button
+                    className={styles.btnSecondary}
+                    style={{ fontSize: 12, padding: "4px 10px" }}
+                    onClick={() => { setShowNewTypeForm((v) => !v); setNewTypeError(null); }}
+                  >
+                    <Plus size={12} /> 添加类型
+                  </button>
                 </div>
 
                 {/* New type form */}
-                {showNewTypeForm && !isBuiltin(selectedRuleSet.id) && (
+                {showNewTypeForm && (
                   <div className={styles.promptCard} style={{ marginBottom: 10 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <div style={{ display: "flex", gap: 6 }}>
@@ -1123,34 +1335,50 @@ export default function RuleSetPage() {
                   </div>
                 )}
 
-                {customAssetTypes.length === 0 ? (
-                  <p className={styles.empty}>
+                {/* Builtin types (read-only) */}
+                <p style={{ fontSize: 11, color: "var(--text-subtle, var(--text-muted))", margin: "6px 0 4px", opacity: 0.7 }}>内置类型</p>
+                {BUILTIN_ASSET_TYPES.map((typeKey) => {
+                  const Icon = getAssetTypeIcon(typeKey);
+                  const color = getAssetTypeColor(typeKey);
+                  const label = getAssetTypeLabel(typeKey);
+                  return (
+                    <div key={typeKey} className={styles.bindingItem} style={{ opacity: 0.75 }}>
+                      <Icon size={14} color={color} />
+                      <span className={styles.bindingName}>{label}</span>
+                      <span className={styles.bindingType} style={{ fontFamily: "monospace", fontSize: 11 }}>{typeKey}</span>
+                    </div>
+                  );
+                })}
+
+                {/* Custom types */}
+                {customAssetTypes.length > 0 && (
+                  <p style={{ fontSize: 11, color: "var(--text-subtle, var(--text-muted))", margin: "10px 0 4px", opacity: 0.7 }}>自定义类型</p>
+                )}
+                {customAssetTypes.length === 0 && (
+                  <p className={styles.empty} style={{ marginTop: 8 }}>
                     暂无自定义类型——点击「添加类型」注册新的资产种类（如 spell、item、handout）
                   </p>
-                ) : (
-                  customAssetTypes.map((ct) => (
+                )}
+                {customAssetTypes.map((ct) => (
                     <div key={ct.id} className={styles.bindingItem}>
                       <span style={{ fontSize: 16 }}>{ct.icon}</span>
                       <span className={styles.bindingName}>{ct.label}</span>
                       <span className={styles.bindingType} style={{ fontFamily: "monospace", fontSize: 11 }}>
                         {ct.type_key}
                       </span>
-                      {!isBuiltin(selectedRuleSet.id) && (
-                        <button
-                          className={styles.btnGhost}
-                          onClick={() => {
-                            if (confirm(`确认删除类型「${ct.label}」？已有此类型的资产不受影响。`)) {
-                              deleteTypeMutation.mutate(ct.id);
-                            }
-                          }}
-                          title="删除"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
+                      <button
+                        className={styles.btnGhost}
+                        onClick={() => {
+                          if (confirm(`确认删除类型「${ct.label}」？已有此类型的资产不受影响。`)) {
+                            deleteTypeMutation.mutate(ct.id);
+                          }
+                        }}
+                        title="删除"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
-                  ))
-                )}
+                  ))}
               </div>
             </>
           )}

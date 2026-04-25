@@ -360,6 +360,17 @@ class PromptProfileUpdate(BaseModel):
     rule_set_id: str | None = None
 
 
+class GeneratePromptRequest(BaseModel):
+    rule_set_id: str
+    llm_profile_id: str
+
+
+class GeneratePromptResponse(BaseModel):
+    name: str
+    system_prompt: str
+    style_notes: str
+
+
 # ─── M7: Model Catalog ────────────────────────────────────────────────────────
 
 class ModelCatalogEntrySchema(BaseModel):
