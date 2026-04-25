@@ -11,7 +11,7 @@ import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -21,6 +21,7 @@ from app.models.orm import ChatSessionORM, WorkspaceORM
 from app.models.schemas import (
     ChatSessionSchema, ChatMessageSchema,
     ChatSessionCreate, SendMessageRequest,
+    UpdateChatSessionRequest,
 )
 from app.services import chat_service
 from app.agents.director import run_director_stream
@@ -57,6 +58,50 @@ def create_session(body: ChatSessionCreate, db: Session = Depends(get_db)):
         title=body.title,
     )
     db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.get("/sessions", response_model=list[ChatSessionSchema])
+def list_sessions(workspace_id: str = Query(...), db: Session = Depends(get_db)):
+    """List all sessions for a workspace, newest first."""
+    ws = db.get(WorkspaceORM, workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    sessions = chat_service.list_sessions(ws.workspace_path)
+    # Inject workspace_id and ensure message_count is present
+    result = []
+    for s in sessions:
+        s = dict(s)
+        s["workspace_id"] = workspace_id  # get_session_metadata always sets "" so we must override
+        s.setdefault("agent_scope", None)
+        s.setdefault("message_count", 0)
+        result.append(s)
+    return result
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+def delete_session(session_id: str, workspace_id: str = Query(...), db: Session = Depends(get_db)):
+    """Delete a chat session (JSONL file + DB record)."""
+    ws = db.get(WorkspaceORM, workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    from pathlib import Path
+    jsonl_path = Path(ws.workspace_path) / ".trpg" / "chat" / f"{session_id}.jsonl"
+    if jsonl_path.exists():
+        jsonl_path.unlink()
+    db.query(ChatSessionORM).filter(ChatSessionORM.id == session_id).delete()
+    db.commit()
+
+
+@router.patch("/sessions/{session_id}", response_model=ChatSessionSchema)
+def update_session(session_id: str, body: UpdateChatSessionRequest, db: Session = Depends(get_db)):
+    """Rename a chat session."""
+    session = db.get(ChatSessionORM, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session.title = body.title
     db.commit()
     db.refresh(session)
     return session

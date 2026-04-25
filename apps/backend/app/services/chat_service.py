@@ -158,6 +158,9 @@ def trim_to_budget(messages: list[dict], max_rounds: int = 10, max_chars: int = 
         total = sum(len(m.get("content", "")) for m in trimmed)
 
     return trimmed
+
+
+def create_session(
     workspace_path: str | Path,
     session_id: str | None = None,
     workspace_id: str = "",

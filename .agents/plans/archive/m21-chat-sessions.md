@@ -2,6 +2,8 @@
 
 **前置条件**：无强依赖（ChatSession ORM、JSONL 存储、消息读取接口均已在 M4/M18 中完成；本 milestone 仅为补全 UI 入口和缺失的 CRUD 路由）。
 
+**状态：✅ 已完成（2026-04-25）**
+
 **目标**：让用户可以查看、切换、重命名和删除同一工作空间下的多条聊天历史，彻底解决"刷新即失忆"和"无法回溯历史对话"的体验断点。
 
 ---
@@ -173,36 +175,36 @@ AgentPanel mount
 
 ### A1：后端 Session CRUD 路由
 
-- [ ] **A1.1**：`api/chat.py` — 新增 `GET /chat/sessions?workspace_id=&limit=` 路由，调用 `chat_service.list_sessions()`
-- [ ] **A1.2**：`api/chat.py` — 新增 `DELETE /chat/sessions/{session_id}?workspace_id=` 路由，删除 JSONL + DB 记录
-- [ ] **A1.3**：`api/chat.py` — 新增 `PATCH /chat/sessions/{session_id}` 路由，更新 title
-- [ ] **A1.4**：验证 `chat_service.list_sessions()` 对空目录、单文件、多文件场景的边界处理
+- [x] **A1.1**：`api/chat.py` — 新增 `GET /chat/sessions?workspace_id=&limit=` 路由，调用 `chat_service.list_sessions()`
+- [x] **A1.2**：`api/chat.py` — 新增 `DELETE /chat/sessions/{session_id}?workspace_id=` 路由，删除 JSONL + DB 记录
+- [x] **A1.3**：`api/chat.py` — 新增 `PATCH /chat/sessions/{session_id}` 路由，更新 title
+- [x] **A1.4**：验证 `chat_service.list_sessions()` 对空目录、单文件、多文件场景的边界处理（服务层已有 `if not cdir.exists(): return []` 防护）
 
 ### A2：SessionDrawer 组件
 
-- [ ] **A2.1**：`SessionDrawer.tsx` — 创建组件骨架：折叠/展开状态、"新对话"按钮、会话列表容器
-- [ ] **A2.2**：`SessionDrawer.tsx` — 实现会话列表项：title 截断、相对时间、message_count 徽章
-- [ ] **A2.3**：`SessionDrawer.tsx` — 实现 hover 操作：重命名内联编辑（`input` 替换 title span）、删除确认（inline 二次确认，不用 modal）
-- [ ] **A2.4**：`AgentPanel.tsx` — 接入 SessionDrawer，顶部增加 toggle 按钮（会话列表图标 + 当前 session 标题）
-- [ ] **A2.5**：TanStack Query `useQuery` 接入：`queryKey: ["sessions", workspaceId]`，`queryFn: GET /chat/sessions?workspace_id=`
+- [x] **A2.1**：`SessionDrawer.tsx` — 创建组件骨架：折叠/展开状态、"新对话"按钮、会话列表容器
+- [x] **A2.2**：`SessionDrawer.tsx` — 实现会话列表项：title 截断、相对时间、message_count 徽章
+- [x] **A2.3**：`SessionDrawer.tsx` — 实现 hover 操作：重命名内联编辑（`input` 替换 title span）、删除确认（inline 二次确认，不用 modal）
+- [x] **A2.4**：`AgentPanel.tsx` — 接入 SessionDrawer，顶部增加 toggle 按钮（MessageSquare 图标，折叠状态持久化至 localStorage）
+- [x] **A2.5**：TanStack Query `useQuery` 接入：`queryKey: ["sessions", workspaceId]`，`queryFn: GET /chat/sessions?workspace_id=`
 
 ### A3：切换 session 加载历史
 
-- [ ] **A3.1**：`agentStore.ts` — 新增 `sessions: ChatSession[]`、`setActiveSession(session, messages)` action
-- [ ] **A3.2**：`AgentPanel.tsx` — 实现 `switchToSession(s)`：先清空展示骨架屏，再 `GET /sessions/{id}/messages`，反序列化后写入 store
-- [ ] **A3.3**：`AgentPanel.tsx` — 历史消息中 assistant 类型消息的 `tool_calls_json` 解析为 `ToolCall[]`，渲染已有 ToolCallCard（只读）
+- [x] **A3.1**：`agentStore.ts` — 新增 `sessions: ChatSession[]`、`setActiveSession(session, messages)` action
+- [x] **A3.2**：`AgentPanel.tsx` — 实现 `switchToSession(s)`：先清空展示骨架屏，再 `GET /sessions/{id}/messages`，反序列化后写入 store
+- [x] **A3.3**：`AgentPanel.tsx` — 历史消息中 assistant 类型消息的 `tool_calls_json` 解析为 `ToolCall[]`，渲染已有 ToolCallCard（只读）（`StoredMessageBubble` 已在 M19 实现，本 milestone 无需额外改动）
 
 ### A4：初始化恢复上次会话
 
-- [ ] **A4.1**：`AgentPanel.tsx` — 移除 `useEffect` 中的无条件 `POST /chat/sessions` 逻辑
-- [ ] **A4.2**：`AgentPanel.tsx` — 实现初始化流程：拉取 session 列表 → 按 `localStorage` 恢复 or 取最新 → 无历史时创建新 session
-- [ ] **A4.3**：`AgentPanel.tsx` — 创建/切换 session 时写 `localStorage["last_session_{workspaceId}"]`
+- [x] **A4.1**：`AgentPanel.tsx` — 移除 `useEffect` 中的无条件 `POST /chat/sessions` 逻辑
+- [x] **A4.2**：`AgentPanel.tsx` — 实现初始化流程：拉取 session 列表 → 按 `localStorage` 恢复 or 取最新 → 无历史时创建新 session
+- [x] **A4.3**：`AgentPanel.tsx` — 创建/切换 session 时写 `localStorage["last_session_{workspaceId}"]`
 
 ### A5：shared-schema 类型修正
 
-- [ ] **A5.1**：`shared-schema/index.ts` — `ChatSession` 补充 `message_count: number`
-- [ ] **A5.2**：`shared-schema/index.ts` — `ToolCall.status` 扩展为 `"running" | "done" | "error" | "auto_applied" | "pending_confirm"`
-- [ ] **A5.3**：`shared-schema/index.ts` — 新增 `UpdateChatSessionRequest { title: string }`
+- [x] **A5.1**：`shared-schema/index.ts` — `ChatSession` 补充 `message_count: number`
+- [x] **A5.2**：`shared-schema/index.ts` — `ToolCall.status` 扩展为 `"running" | "done" | "error" | "auto_applied" | "pending_confirm"`
+- [x] **A5.3**：`shared-schema/index.ts` — 新增 `UpdateChatSessionRequest { title: string }`
 
 ---
 

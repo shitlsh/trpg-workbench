@@ -312,6 +312,10 @@ class ChatSessionCreate(BaseModel):
     title: str | None = None
 
 
+class UpdateChatSessionRequest(BaseModel):
+    title: str
+
+
 class SendMessageRequest(BaseModel):
     content: str
     workspace_id: str

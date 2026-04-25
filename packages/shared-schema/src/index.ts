@@ -411,8 +411,13 @@ export interface ChatSession {
   workspace_id: string;
   agent_scope: string | null;
   title: string | null;
+  message_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface UpdateChatSessionRequest {
+  title: string;
 }
 
 export interface ChatMessage {
@@ -433,7 +438,7 @@ export interface ToolCall {
   name: string;
   /** JSON-serialised arguments object */
   arguments: string;
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "auto_applied" | "pending_confirm";
   /** Brief human-readable summary of the result */
   result_summary: string | null;
 }

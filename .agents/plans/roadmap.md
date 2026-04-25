@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M20 全部完成。M20 补齐了 Agent 创作质量缺口——子 Agent 工具化、资产语义搜索、信任模式。
+核心功能链路已通过 M1–M21 全部完成。M21 补齐了聊天会话管理——多会话列表、历史恢复、SessionDrawer。
 
 ```
 ✅ M1 基础骨架
@@ -25,8 +25,8 @@
                                                                                                                                   └── ✅ M17 用户自定义 Agent Skill
                                                                                                                                         └── ✅ M18 File-first 自包含 Workspace
                                                                                                                                                ├── ✅ M19 Agent 上下文控制
-                                                                                                                                                └── ✅ M20 Agent 创作质量增强
-                                                                                                                                                      └── 🔲 M21 聊天会话管理
+                                                                                                                                                       └── ✅ M20 Agent 创作质量增强
+                                                                                                                                                             └── ✅ M21 聊天会话管理
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -61,12 +61,12 @@
 | M18 ✅ | File-first 自包含 Workspace | 资产/配置/聊天全部以文件为真相源，DB 降级为可重建缓存索引，工作空间目录可拷贝即迁移 | [archive/m18-file-first-workspace.md](archive/m18-file-first-workspace.md) |
 | M19 ✅ | Agent 上下文控制与工具能力 | Agent 从固定流水线升级为拥有工具的自主协作者（tool-calling + SSE streaming + 多轮记忆 + @引用） | [archive/m19-agent-context-control.md](archive/m19-agent-context-control.md) |
 | M20 ✅ | Agent 创作质量与上下文感知增强 | 子 Agent 工具化（Consistency/Rules/Skill）、资产语义搜索、信任模式、Director prompt 质量提升 | [archive/m20-agent-quality.md](archive/m20-agent-quality.md) |
+| M21 ✅ | 聊天会话管理 | 多会话列表、切换、历史浏览、重命名删除；SessionDrawer + 刷新自动恢复上次会话 | [archive/m21-chat-sessions.md](archive/m21-chat-sessions.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M21 | 聊天会话管理 | 多会话列表、切换、历史浏览、重命名删除；彻底解决刷新失忆和历史不可达问题 | [m21-chat-sessions.md](m21-chat-sessions.md) |
 
 ---
 

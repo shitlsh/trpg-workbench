@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
-  RefreshCw, FileText, ChevronDown, ChevronUp, Shield,
+  RefreshCw, FileText, ChevronDown, ChevronUp, Shield, MessageSquare,
 } from "lucide-react";
 import type {
   ChatSession, ChatMessage, ToolCall, PatchProposal,
@@ -12,6 +12,7 @@ import { PatchConfirmDialog } from "./PatchConfirmDialog";
 import ContextUsageBadge from "./ContextUsageBadge";
 import { ToolCallCard } from "./ToolCallCard";
 import { MentionInput } from "./MentionInput";
+import { SessionDrawer } from "./SessionDrawer";
 import { apiFetch } from "@/lib/api";
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
@@ -159,13 +160,16 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const qc = useQueryClient();
   const {
     session, messages,
-    setSession, addMessage, setMessages, setTyping,
+    setActiveSession, addMessage, setTyping,
   } = useAgentStore();
 
   const [modelWarning, setModelWarning] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(() => {
+    try { return localStorage.getItem(`agent_drawer_open_${workspaceId}`) === "true"; } catch { return false; }
+  });
 
   // SSE streaming state
   const [streamingText, setStreamingText] = useState("");
@@ -230,22 +234,54 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming, streamingText, streamingToolCalls]);
 
-  // Create session if needed
-  useEffect(() => {
-    if (!session) {
-      setSessionError(null);
-      apiFetch<ChatSession>("/chat/sessions", {
+  // Switch to a session and load its messages
+  const switchToSession = useCallback(async (s: ChatSession) => {
+    setActiveSession(s, []);
+    localStorage.setItem(`last_session_${workspaceId}`, s.id);
+    try {
+      const msgs = await apiFetch<ChatMessage[]>(`/chat/sessions/${s.id}/messages`);
+      setActiveSession(s, msgs);
+    } catch (e) {
+      setSessionError((e as Error)?.message ?? "加载消息失败");
+    }
+  }, [workspaceId, setActiveSession]);
+
+  // Create a brand-new session
+  const createNewSession = useCallback(async () => {
+    setSessionError(null);
+    try {
+      const s = await apiFetch<ChatSession>("/chat/sessions", {
         method: "POST",
         body: JSON.stringify({ workspace_id: workspaceId }),
-      })
-        .then((s) => {
-          setSession(s);
-          setMessages([]);
-        })
-        .catch((e) => {
-          setSessionError(e?.message ?? "无法连接到后端，请检查服务状态");
-        });
+      });
+      setActiveSession(s, []);
+      localStorage.setItem(`last_session_${workspaceId}`, s.id);
+      qc.invalidateQueries({ queryKey: ["sessions", workspaceId] });
+    } catch (e) {
+      setSessionError((e as Error)?.message ?? "无法连接到后端，请检查服务状态");
     }
+  }, [workspaceId, setActiveSession, qc]);
+
+  // Initialize: restore last session or create new one
+  // Re-runs whenever workspaceId changes (workspace switch resets session)
+  useEffect(() => {
+    // If session belongs to a different workspace, reset
+    if (session && session.workspace_id !== workspaceId) {
+      setActiveSession({ ...session }, []);
+    }
+    setSessionError(null);
+    apiFetch<ChatSession[]>(`/chat/sessions?workspace_id=${workspaceId}`)
+      .then(async (sessions) => {
+        if (sessions.length === 0) {
+          await createNewSession();
+          return;
+        }
+        const lastId = localStorage.getItem(`last_session_${workspaceId}`);
+        const target = sessions.find((s) => s.id === lastId) ?? sessions[0];
+        await switchToSession(target);
+      })
+      .catch(() => createNewSession());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   const handleSend = async (content: string, mentionedAssetIds: string[] = []) => {
@@ -423,13 +459,12 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
   const handleReset = () => {
     abortRef.current?.abort();
-    setSession(null);
-    setMessages([]);
     setIsStreaming(false);
     setStreamingText("");
     setStreamingToolCalls([]);
     setPendingProposals([]);
     setActiveProposal(null);
+    createNewSession();
   };
 
   const handleProposalDone = (proposalId: string) => {
@@ -446,6 +481,26 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         borderBottom: "1px solid var(--border)",
         display: "flex", alignItems: "center", gap: 8,
       }}>
+        <button
+          onClick={() => {
+            const next = !drawerOpen;
+            setDrawerOpen(next);
+            try { localStorage.setItem(`agent_drawer_open_${workspaceId}`, String(next)); } catch {}
+          }}
+          title="会话历史"
+          style={{
+            background: drawerOpen ? "rgba(99,102,241,0.1)" : "none",
+            color: drawerOpen ? "var(--accent, #6366f1)" : "var(--text-muted)",
+            border: "none",
+            borderRadius: 4,
+            padding: "2px 4px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          <MessageSquare size={13} />
+        </button>
         <span>AI 助手</span>
         {pendingProposals.length > 0 && (
           <span style={{
@@ -485,26 +540,40 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         </div>
       </div>
 
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
-        {messages.length === 0 && !isStreaming && (
-          <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 24 }}>
-            在下方输入创作请求，例如：<br />
-            "帮我创建一个 COC 乡村调查模组"<br />
-            "把第一幕改得更压抑一点"
-          </div>
+      {/* Body: optional drawer + chat area */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {drawerOpen && (
+          <SessionDrawer
+            workspaceId={workspaceId}
+            activeSessionId={session?.id ?? null}
+            onSelect={(s) => switchToSession(s)}
+            onNew={handleReset}
+          />
         )}
 
-        {messages.map((msg) => (
-          <StoredMessageBubble key={msg.id} msg={msg} />
-        ))}
+        {/* Chat column */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-        {isStreaming && (
-          <StreamingBubble content={streamingText} toolCalls={streamingToolCalls} />
-        )}
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
+          {messages.length === 0 && !isStreaming && (
+            <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 24 }}>
+              在下方输入创作请求，例如：<br />
+              "帮我创建一个 COC 乡村调查模组"<br />
+              "把第一幕改得更压抑一点"
+            </div>
+          )}
 
-        <div ref={bottomRef} />
-      </div>
+          {messages.map((msg) => (
+            <StoredMessageBubble key={msg.id} msg={msg} />
+          ))}
+
+          {isStreaming && (
+            <StreamingBubble content={streamingText} toolCalls={streamingToolCalls} />
+          )}
+
+          <div ref={bottomRef} />
+        </div>
 
       {/* Execution log panel (collapsible) */}
       <div style={{ borderTop: "1px solid var(--border)" }}>
@@ -581,6 +650,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           onSubmit={handleSend}
         />
       </div>
+      </div>{/* end chat column */}
+      </div>{/* end body */}
 
       {/* Patch confirm dialog for active proposal */}
       {activeProposal && (
