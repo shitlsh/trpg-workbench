@@ -1,5 +1,6 @@
 ---
-status: proposed
+status: rejected
+rejection_reason: agno tool_call_limit 无官方推荐值、静默截断行为对前端不透明；批量写入改造后工具调用次数合理增加，此限制弊大于利。已有前端 10min 超时 + Stop 按钮作为替代。
 date: 2026-04-26
 source: OpenPawz, OpenCode Desktop
 theme: Agent 稳定性与编排守卫

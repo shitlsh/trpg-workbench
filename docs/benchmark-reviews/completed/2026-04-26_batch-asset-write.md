@@ -1,5 +1,6 @@
 ---
-status: proposed
+status: completed
+completion_commit: 2b595b6
 date: 2026-04-26
 source: 用户反馈
 theme: Agent 批量写入能力
