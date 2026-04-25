@@ -74,7 +74,7 @@ async def run_director_stream(
     input_messages.append(Message(role="user", content=prompt))
 
     try:
-        async for chunk in await agent.arun(
+        async for chunk in agent.arun(
             input_messages,
             stream=True,
             stream_events=True,
