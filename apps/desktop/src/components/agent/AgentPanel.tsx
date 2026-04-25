@@ -705,8 +705,10 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         </div>
         <MentionInput
           workspaceId={workspaceId}
-          disabled={isStreaming || !session}
+          disabled={!session}
+          isStreaming={isStreaming}
           onSubmit={handleSend}
+          onStop={() => abortRef.current?.abort()}
         />
       </div>
       </div>{/* end chat column */}

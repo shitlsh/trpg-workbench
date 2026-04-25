@@ -12,6 +12,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Mention from "@tiptap/extension-mention";
 import { useEffect, useRef, useState } from "react";
+import { ArrowUp, Square } from "lucide-react";
 import type { SuggestionProps } from "@tiptap/suggestion";
 import { apiFetch } from "@/lib/api";
 
@@ -75,10 +76,12 @@ function SuggestionList({ items, command, selectedIndex }: SuggestionListProps) 
 interface MentionInputProps {
   workspaceId: string;
   disabled?: boolean;
+  isStreaming?: boolean;
   onSubmit: (text: string, mentionedAssetIds: string[]) => void;
+  onStop?: () => void;
 }
 
-export function MentionInput({ workspaceId, disabled = false, onSubmit }: MentionInputProps) {
+export function MentionInput({ workspaceId, disabled = false, isStreaming = false, onSubmit, onStop }: MentionInputProps) {
   const [allAssets, setAllAssets] = useState<AssetOption[]>([]);
   // Load assets once for suggestions
   useEffect(() => {
@@ -177,7 +180,7 @@ export function MentionInput({ workspaceId, disabled = false, onSubmit }: Mentio
           "min-height:68px",
           "max-height:150px",
           "overflow-y:auto",
-          "padding:8px",
+          "padding:8px 38px 8px 8px",
           "outline:none",
           "font-size:13px",
           "line-height:1.5",
@@ -236,9 +239,40 @@ export function MentionInput({ workspaceId, disabled = false, onSubmit }: Mentio
         background: "var(--bg)",
         border: "1px solid var(--border)",
         borderRadius: 6,
-        opacity: disabled ? 0.6 : 1,
+        opacity: disabled && !isStreaming ? 0.6 : 1,
+        position: "relative",
       }}>
         <EditorContent editor={editor} />
+
+        {/* Send / Stop button — bottom-right of input */}
+        <button
+          onClick={isStreaming ? onStop : doSubmit}
+          title={isStreaming ? "停止生成" : "发送 (Enter)"}
+          style={{
+            position: "absolute",
+            bottom: 6,
+            right: 6,
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            border: "none",
+            cursor: isStreaming ? "pointer" : (disabled ? "default" : "pointer"),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: isStreaming
+              ? "rgba(239, 68, 68, 0.15)"
+              : "var(--accent, rgba(74,144,217,0.15))",
+            color: isStreaming ? "#ef4444" : "var(--accent-text, #4a90d9)",
+            transition: "background 0.15s, color 0.15s",
+            flexShrink: 0,
+          }}
+        >
+          {isStreaming
+            ? <Square size={12} fill="currentColor" />
+            : <ArrowUp size={13} strokeWidth={2.5} />
+          }
+        </button>
       </div>
 
       {/* Suggestion dropdown */}
