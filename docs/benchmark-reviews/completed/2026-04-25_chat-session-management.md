@@ -1,6 +1,8 @@
 ---
-status: proposed
+status: completed
 date: 2026-04-25
+completed_at: 2026-04-25
+milestone: M21
 source: Internal (M19 agent-context-control review spillover)
 theme: 聊天会话管理（多会话列表、切换、历史浏览）
 priority: medium
