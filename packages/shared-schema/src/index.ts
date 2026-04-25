@@ -83,6 +83,7 @@ export interface WorkspaceConfig {
     top_k: number;
   };
   knowledge_libraries: string[];
+  trust_mode?: boolean; // M20: skip confirmation dialogs and auto-apply writes
 }
 
 export interface WorkspaceConfigResponse {
@@ -473,11 +474,46 @@ export interface AssistantMessage {
 
 // ─── M19: SSE Event types ─────────────────────────────────────────────────────
 
+// ─── M20: Agent Quality Types ─────────────────────────────────────────────────
+
+export type ConsistencyIssueType =
+  | "naming_conflict"
+  | "timeline_conflict"
+  | "motivation_gap"
+  | "clue_break"
+  | "branch_conflict";
+
+export type ConsistencyIssueSeverity = "warning" | "error";
+
+export interface ConsistencyIssue {
+  type: ConsistencyIssueType;
+  severity: ConsistencyIssueSeverity;
+  description: string;
+  affected_assets: string[];
+  suggestion: string;
+}
+
+export interface ConsistencyReport {
+  issues: ConsistencyIssue[];
+  overall_status: "clean" | "has_warnings" | "has_errors";
+}
+
+export interface AutoAppliedEvent {
+  auto_applied: true;
+  success: boolean;
+  action: "created" | "updated";
+  asset_id: string;
+  slug: string;
+}
+
+// ─── M19: SSE Event types ─────────────────────────────────────────────────────
+
 export type SSEEventType =
   | "text_delta"
   | "tool_call_start"
   | "tool_call_result"
   | "patch_proposal"
+  | "auto_applied"
   | "done"
   | "error";
 
@@ -501,6 +537,11 @@ export interface SSEPatchProposal {
   data: PatchProposal;
 }
 
+export interface SSEAutoApplied {
+  event: "auto_applied";
+  data: AutoAppliedEvent;
+}
+
 export interface SSEDone {
   event: "done";
   data: Record<string, never>;
@@ -516,6 +557,7 @@ export type SSEEvent =
   | SSEToolCallStart
   | SSEToolCallResult
   | SSEPatchProposal
+  | SSEAutoApplied
   | SSEDone
   | SSEError;
 
