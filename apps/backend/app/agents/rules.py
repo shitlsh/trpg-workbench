@@ -19,7 +19,7 @@ def run_rules_agent(
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
     phase = "review" if review_mode else "system"
-    agent = Agent(model=model, system_prompt=load_prompt("rules", phase), markdown=False)
+    agent = Agent(model=model, instructions=[load_prompt("rules", phase)], markdown=False)
 
     ctx = json.dumps(knowledge_context, ensure_ascii=False, indent=2)
     prompt = f"""Knowledge context from rule books:

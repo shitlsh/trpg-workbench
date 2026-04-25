@@ -25,7 +25,7 @@ def run_skill_agent(
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
 
-    agent = Agent(model=model, system_prompt=load_prompt("skill", "system"), markdown=False)
+    agent = Agent(model=model, instructions=[load_prompt("skill", "system")], markdown=False)
 
     ctx = json.dumps(knowledge_context[:5], ensure_ascii=False) if knowledge_context else "None"
 

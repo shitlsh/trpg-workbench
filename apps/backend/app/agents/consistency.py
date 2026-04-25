@@ -16,7 +16,7 @@ def run_consistency_agent(
     if model is None:
         raise ValueError("model must be provided; configure an LLM profile in workspace settings")
     mdl = model
-    agent = Agent(model=mdl, system_prompt=load_prompt("consistency", "system"), markdown=False)
+    agent = Agent(model=mdl, instructions=[load_prompt("consistency", "system")], markdown=False)
 
     ctx = json.dumps(asset_summaries, ensure_ascii=False, indent=2)
     prompt = f"""Please check consistency across the following assets:
