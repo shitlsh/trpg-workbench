@@ -362,6 +362,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
       let accText = "";
       let accToolCalls: ToolCall[] = [];
+      let currentEvent = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -371,9 +372,12 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         const lines = buf.split("\n");
         buf = lines.pop() ?? "";
 
-        let currentEvent = "";
+
         for (const line of lines) {
-          if (line.startsWith("event: ")) {
+          if (line === "") {
+            // Blank line = SSE event boundary; reset for next event
+            currentEvent = "";
+          } else if (line.startsWith("event: ")) {
             currentEvent = line.slice(7).trim();
           } else if (line.startsWith("data: ")) {
             const rawData = line.slice(6).trim();
