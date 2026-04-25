@@ -24,8 +24,9 @@
                                                                                                                                   ├── ✅ M16 AssetType 开放化
                                                                                                                                   └── ✅ M17 用户自定义 Agent Skill
                                                                                                                                         └── ✅ M18 File-first 自包含 Workspace
-                                                                                                                                              ├── ✅ M19 Agent 上下文控制
-                                                                                                                                              └── 🔲 M20 发布打包 & CI/CD
+                                                                                                                                               ├── ✅ M19 Agent 上下文控制
+                                                                                                                                               └── 🔲 M20 Agent 创作质量增强
+                                                                                                                                                     └── 🔲 M21 发布打包 & CI/CD
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -64,7 +65,8 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M20 | 发布打包 & CI/CD | 应用打包发布、自动构建流水线 | （待规划） |
+| M20 | Agent 创作质量与上下文感知增强 | 子 Agent prompt 内化、资产语义搜索、信任模式、知识库检索主动性 | [m20-agent-quality.md](m20-agent-quality.md) |
+| M21 | 发布打包 & CI/CD | 应用打包发布、自动构建流水线 | （待规划） |
 
 ---
 
