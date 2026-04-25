@@ -1,8 +1,8 @@
 """Director Agent – tool-calling autonomous agent.
 
 The Director is the single entry point for all user requests. It has access to
-a set of tools to read and write the workspace. Write tools generate PatchProposals
-that require user confirmation before being applied.
+a set of tools to read and write the workspace. Write tools write directly to
+disk and return results immediately — no user confirmation step.
 """
 from __future__ import annotations
 import json
@@ -10,7 +10,7 @@ from agno.agent import Agent
 from agno.models.message import Message
 from app.agents.model_adapter import strip_code_fence
 from app.agents.tools import (
-    ALL_TOOLS, PatchProposalInterrupt, configure as configure_tools,
+    ALL_TOOLS, configure as configure_tools,
 )
 from app.prompts import load_prompt
 
@@ -87,7 +87,7 @@ async def run_director_stream(
     """Async generator yielding SSE event dicts.
 
     Yields dicts with keys: event, data
-    Events: text_delta, tool_call_start, tool_call_result, patch_proposal, done, error
+    Events: text_delta, tool_call_start, tool_call_result, auto_applied, done, error
     """
     if model is None:
         yield {"event": "error", "data": {"message": "未配置 LLM，请在工作区设置中配置 LLM Profile"}}
@@ -102,8 +102,6 @@ async def run_director_stream(
             f"[引用资产: {a['name']}]\n{a['content']}" for a in referenced_assets
         )
         prompt = f"{refs_block}\n\n---\n\n{user_message}"
-
-    # Build messages list: history + current prompt (handled below)
 
     # Build messages list: history + current prompt
     input_messages: list[Message] = []
@@ -162,11 +160,6 @@ async def run_director_stream(
                         },
                     }
 
-        yield {"event": "done", "data": {}}
-
-    except PatchProposalInterrupt as pp:
-        yield {"event": "patch_proposal", "data": pp.proposal}
-        # Confirm/reject happen via separate HTTP endpoints, not this stream.
         yield {"event": "done", "data": {}}
 
     except Exception as e:

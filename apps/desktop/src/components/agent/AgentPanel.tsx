@@ -1,14 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  RefreshCw, FileText, ChevronDown, ChevronUp, Shield, MessageSquare,
+  RefreshCw, FileText, ChevronDown, ChevronUp, MessageSquare,
 } from "lucide-react";
 import type {
-  ChatSession, ChatMessage, ToolCall, PatchProposal,
+  ChatSession, ChatMessage, ToolCall,
   LLMProfile, ModelCatalogEntry, WorkspaceConfigResponse,
 } from "@trpg-workbench/shared-schema";
 import { useAgentStore } from "@/stores/agentStore";
-import { PatchConfirmDialog } from "./PatchConfirmDialog";
 import ContextUsageBadge from "./ContextUsageBadge";
 import { ToolCallCard } from "./ToolCallCard";
 import { MentionInput } from "./MentionInput";
@@ -219,10 +218,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     setPendingQueue(q);
   };
 
-  // Pending patch proposals (to confirm/reject)
-  const [pendingProposals, setPendingProposals] = useState<PatchProposal[]>([]);
-  const [activeProposal, setActiveProposal] = useState<PatchProposal | null>(null);
-
   const abortRef = useRef<AbortController | null>(null);
 
   // Workspace config to check model
@@ -233,17 +228,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   });
   const defaultLlmName = configResp?.config?.models?.default_llm ?? "";
   const defaultLlmModel = configResp?.config?.models?.default_llm_model ?? "";
-  const trustMode = configResp?.config?.trust_mode === true;
-
-  // Trust mode toggle mutation
-  const trustMutation = useMutation({
-    mutationFn: (enabled: boolean) =>
-      apiFetch(`/workspaces/${workspaceId}/config`, {
-        method: "PATCH",
-        body: JSON.stringify({ updates: { trust_mode: enabled } }),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["workspace", workspaceId, "config"] }),
-  });
 
   // LLM profile + catalog for context badge
   const { data: llmProfiles = [] } = useQuery({
@@ -457,7 +441,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               setStreamingToolCalls([...accToolCalls]);
 
             } else if (currentEvent === "auto_applied") {
-              // Trust mode: asset was written without confirmation
+              // Asset written directly — refresh assets list
+              qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
               const tc: ToolCall = {
                 id: (data.slug as string) ?? `aa_${Date.now()}`,
                 name: (data.action as string) === "updated" ? "update_asset" : "create_asset",
@@ -467,14 +452,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               };
               accToolCalls = [...accToolCalls, tc];
               setStreamingToolCalls([...accToolCalls]);
-              // Refresh assets list
-              qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
-
-            } else if (currentEvent === "patch_proposal") {
-              const proposal = data as unknown as PatchProposal;
-              setPendingProposals((prev) => [...prev, proposal]);
-              // Auto-open first proposal
-              setActiveProposal((prev) => prev ?? proposal);
 
             } else if (currentEvent === "done") {
               // Finalize: add assistant message to store
@@ -553,8 +530,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     setIsStreaming(false);
     setStreamingText("");
     setStreamingToolCalls([]);
-    setPendingProposals([]);
-    setActiveProposal(null);
     syncQueue([]);
     createNewSession();
   };
@@ -567,12 +542,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     syncQueue(remaining);
     // Small timeout so React state settles before next send
     setTimeout(() => handleSend(next.content, next.mentionedAssetIds), 50);
-  };
-
-  const handleProposalDone = (proposalId: string) => {
-    setPendingProposals((prev) => prev.filter((p) => p.id !== proposalId));
-    setActiveProposal((prev) => (prev?.id === proposalId ? null : prev));
-    qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
   };
 
   return (
@@ -604,34 +573,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           <MessageSquare size={13} />
         </button>
         <span>AI 助手</span>
-        {pendingProposals.length > 0 && (
-          <span style={{
-            fontSize: 10, padding: "1px 6px", borderRadius: 10,
-            background: "rgba(240,165,0,0.15)", color: "#f0a500",
-            border: "1px solid rgba(240,165,0,0.3)",
-          }}>
-            {pendingProposals.length} 个待确认变更
-          </span>
-        )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
-          {/* Trust mode toggle */}
-          <button
-            onClick={() => trustMutation.mutate(!trustMode)}
-            title={trustMode ? "信任模式已开启（点击关闭）" : "信任模式已关闭（点击开启）"}
-            style={{
-              background: trustMode ? "rgba(82,201,126,0.15)" : "none",
-              color: trustMode ? "#52c97e" : "var(--text-muted)",
-              border: trustMode ? "1px solid rgba(82,201,126,0.3)" : "1px solid transparent",
-              borderRadius: 4,
-              padding: "2px 6px",
-              fontSize: 10,
-              display: "flex", alignItems: "center", gap: 3,
-              cursor: "pointer",
-            }}
-          >
-            <Shield size={10} />
-            {trustMode ? "信任" : "确认"}
-          </button>
           <button
             onClick={handleReset}
             title="新建对话"
@@ -785,18 +727,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       </div>
       </div>{/* end chat column */}
       </div>{/* end body */}
-
-      {/* Patch confirm dialog for active proposal */}
-      {activeProposal && (
-        <PatchConfirmDialog
-          proposal={activeProposal}
-          sessionId={session?.id ?? ""}
-          onDone={() => handleProposalDone(activeProposal.id)}
-          onSkip={() => setActiveProposal(
-            pendingProposals.find((p) => p.id !== activeProposal.id) ?? null
-          )}
-        />
-      )}
     </div>
   );
 }

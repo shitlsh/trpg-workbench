@@ -1,9 +1,8 @@
 """Agent tool functions for the Director Agent.
 
-Read-only tools execute silently and return data.
-Write tools (create_asset, update_asset) do NOT write directly — they raise
-PatchProposalInterrupt which is caught by the SSE layer, which then pauses the
-stream and waits for user confirmation before writing.
+All tools execute and return results directly — read tools return data,
+write tools (create_asset, update_asset, create_skill) write to disk immediately
+and return a result summary. No user confirmation step.
 """
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from agno.tools import tool
-from agno.exceptions import AgentRunException
 
 
 # ─── Context injection ────────────────────────────────────────────────────────
@@ -54,20 +52,6 @@ def _get_model():
     if _model is None:
         raise ValueError("model not configured; call configure() with a model instance first")
     return _model
-
-
-# ─── PatchProposal interrupt ──────────────────────────────────────────────────
-
-class PatchProposalInterrupt(AgentRunException):
-    """Raised by write tools to signal a patch proposal needs user confirmation.
-    
-    Inherits AgentRunException so Agno re-raises it instead of swallowing it
-    as a generic tool error. stop_execution=True halts the agent run.
-    """
-
-    def __init__(self, proposal: dict):
-        self.proposal = proposal
-        super().__init__("patch_proposal", stop_execution=True)
 
 
 # ─── Read-only tools ──────────────────────────────────────────────────────────
@@ -192,48 +176,35 @@ def search_knowledge(query: str = "") -> str:
         return json.dumps({"results": [], "error": str(e)}, ensure_ascii=False)
 
 
-# ─── Write tools (generate PatchProposal, do NOT write directly) ──────────────
+# ─── Write tools (write directly to disk, no confirmation required) ───────────
 
 @tool
 def create_asset(asset_type: str, name: str, content_md: str, change_summary: str = "") -> str:
-    """创建新资产。asset_type 如 "npc"/"stage"/"location" 等，name 为资产名称，
-    content_md 为完整的 Markdown 内容（含 frontmatter）。
-    此操作需要用户确认后才会实际写入磁盘。"""
+    """创建新资产，立即写入磁盘。asset_type 如 "npc"/"stage"/"location" 等，
+    name 为资产名称，content_md 为完整的 Markdown 内容（含 frontmatter）。
+    返回 JSON，含 success/slug/asset_id 字段。"""
+    if _db is None:
+        return json.dumps({"success": False, "error": "数据库未配置"}, ensure_ascii=False)
+    ws_path = _workspace_context.get("workspace_path", "")
     proposal = {
-        "id": f"pp_{uuid.uuid4().hex[:12]}",
-        "tool_call_id": "",  # filled by SSE layer
         "action": "create",
         "asset_type": asset_type,
         "asset_name": name,
         "content_md": content_md,
-        "original_content": "",
         "change_summary": change_summary or f"新建 {asset_type}：{name}",
     }
-    if _workspace_context.get("trust_mode") and _db is not None:
-        ws_path = _workspace_context.get("workspace_path", "")
-        result = execute_patch_proposal(proposal, ws_path, _db)
-        return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
-    raise PatchProposalInterrupt(proposal)
+    result = execute_patch_proposal(proposal, ws_path, _db)
+    return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
 
 
 @tool
 def update_asset(asset_slug: str, content_md: str, change_summary: str = "") -> str:
-    """修改已有资产的内容。asset_slug 是资产标识符，content_md 为新的完整 Markdown 内容。
-    此操作需要用户确认后才会实际写入磁盘。"""
-    # Try to read original content for diff
-    original = ""
+    """修改已有资产的内容，立即写入磁盘。asset_slug 是资产标识符，
+    content_md 为新的完整 Markdown 内容。
+    返回 JSON，含 success/slug/asset_id 字段。"""
+    if _db is None:
+        return json.dumps({"success": False, "error": "数据库未配置"}, ensure_ascii=False)
     ws_path = _workspace_context.get("workspace_path", "")
-    if ws_path:
-        assets_root = Path(ws_path) / "assets"
-        if not assets_root.exists():
-            assets_root = Path(ws_path)
-        for md_file in assets_root.rglob("*.md"):
-            if md_file.stem == asset_slug or md_file.stem.replace("-", "_") == asset_slug:
-                try:
-                    original = md_file.read_text(encoding="utf-8")
-                except Exception:
-                    pass
-                break
 
     # Get asset name from context
     assets = _workspace_context.get("existing_assets", [])
@@ -241,23 +212,18 @@ def update_asset(asset_slug: str, content_md: str, change_summary: str = "") -> 
     asset_name = matched.get("name", asset_slug) if matched else asset_slug
 
     proposal = {
-        "id": f"pp_{uuid.uuid4().hex[:12]}",
-        "tool_call_id": "",  # filled by SSE layer
         "action": "update",
         "asset_type": matched.get("type", "") if matched else "",
         "asset_name": asset_name,
         "asset_slug": asset_slug,
         "content_md": content_md,
-        "original_content": original,
         "change_summary": change_summary or f"修改资产：{asset_name}",
     }
-    if _workspace_context.get("trust_mode") and _db is not None:
-        result = execute_patch_proposal(proposal, ws_path, _db)
-        return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
-    raise PatchProposalInterrupt(proposal)
+    result = execute_patch_proposal(proposal, ws_path, _db)
+    return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
 
 
-# ─── Proposal execution (called after user confirms) ─────────────────────────
+# ─── Proposal execution ───────────────────────────────────────────────────────
 
 def execute_patch_proposal(proposal: dict, workspace_path: str, db) -> dict:
     """Actually write the patch to disk and update DB index. Returns result summary."""
@@ -508,10 +474,13 @@ def consult_rules(question: str, review_mode: bool = False) -> str:
 
 @tool
 def create_skill(user_intent: str) -> str:
-    """根据用户意图创建一个可复用的 Agent Skill（技能模板）。
+    """根据用户意图创建一个可复用的 Agent Skill（技能模板），立即写入磁盘。
     user_intent：描述想要的技能功能，如"COC 探索者人格创建框架"。
-    此操作需要用户确认后才会实际写入磁盘。"""
+    返回 JSON，含 success/slug/asset_id 字段。"""
     from app.agents.skill_agent import run_skill_agent
+
+    if _db is None:
+        return json.dumps({"success": False, "error": "数据库未配置"}, ensure_ascii=False)
 
     model = _get_model()
     library_ids = _workspace_context.get("library_ids", [])
@@ -536,7 +505,7 @@ def create_skill(user_intent: str) -> str:
         model=model,
     )
 
-    # Extract skill name from frontmatter for the proposal
+    # Extract skill name from frontmatter
     skill_name = user_intent[:60]
     try:
         import re
@@ -546,17 +515,16 @@ def create_skill(user_intent: str) -> str:
     except Exception:
         pass
 
+    ws_path = _workspace_context.get("workspace_path", "")
     proposal = {
-        "id": f"pp_{uuid.uuid4().hex[:12]}",
-        "tool_call_id": "",
         "action": "create",
         "asset_type": "skill",
         "asset_name": skill_name,
         "content_md": content_md,
-        "original_content": "",
         "change_summary": f"新建 Skill：{skill_name}",
     }
-    raise PatchProposalInterrupt(proposal)
+    result = execute_patch_proposal(proposal, ws_path, _db)
+    return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
 
 
 @tool

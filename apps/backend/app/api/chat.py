@@ -4,16 +4,12 @@ Messages stored in .trpg/chat/{session-id}.jsonl.
 ChatSessionORM in cache.db is an index only.
 
 POST /chat/sessions/{id}/messages  → SSE stream
-POST /chat/sessions/{id}/confirm/{proposal_id}  → apply PatchProposal
-POST /chat/sessions/{id}/reject/{proposal_id}   → reject PatchProposal
 """
 import asyncio
 import json
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
@@ -30,10 +26,6 @@ from app.services.model_routing import get_llm_for_task, ModelNotConfiguredError
 from app.agents.model_adapter import model_from_profile
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-# In-memory proposal store: {session_id: {proposal_id: proposal_dict}}
-# In production this would be in Redis/DB but for local single-user app this is fine.
-_pending_proposals: dict[str, dict[str, dict]] = {}
 
 
 # ─── Session management ───────────────────────────────────────────────────────
@@ -140,7 +132,7 @@ async def send_message(
     """Send a user message and stream Director response via SSE.
 
     Returns: text/event-stream
-    Events: text_delta, tool_call_start, tool_call_result, patch_proposal, done, error
+    Events: text_delta, tool_call_start, tool_call_result, auto_applied, done, error
     """
     session = db.get(ChatSessionORM, session_id)
     if not session:
@@ -195,11 +187,9 @@ async def send_message(
                 except Exception:
                     pass
 
-    # Also handle create_skill inline (legacy, keep for now)
     async def _event_generator():
         text_buffer = []
         tool_calls_emitted: list[dict] = []
-        patch_proposals: list[dict] = []
 
         # ── Keepalive via asyncio queue ───────────────────────────────────────
         # The director may go silent for 30-60s while LM Studio processes a
@@ -269,25 +259,14 @@ async def send_message(
                             tc["result_summary"] = data.get("summary", "")
                     yield _sse("tool_call_result", data)
 
-                elif event_type == "patch_proposal":
-                    proposal = dict(data)
-                    if not proposal.get("id"):
-                        proposal["id"] = f"pp_{uuid.uuid4().hex[:12]}"
-                    # Link to last tool_call_start
+                elif event_type == "auto_applied":
+                    # Asset written directly — update last tool call status
                     if tool_calls_emitted:
-                        last_tc = tool_calls_emitted[-1]
-                        proposal["tool_call_id"] = last_tc["id"]
-                        last_tc["status"] = "pending_confirm"
-                    patch_proposals.append(proposal)
-                    # Store for confirm/reject
-                    if session_id not in _pending_proposals:
-                        _pending_proposals[session_id] = {}
-                    _pending_proposals[session_id][proposal["id"]] = {
-                        **proposal,
-                        "workspace_path": ws.workspace_path,
-                        "workspace_id": body.workspace_id,
-                    }
-                    yield _sse("patch_proposal", proposal)
+                        tool_calls_emitted[-1]["status"] = "auto_applied"
+                        tool_calls_emitted[-1]["result_summary"] = (
+                            f"{data.get('action', 'written')}: {data.get('slug', '')}"
+                        )
+                    yield _sse("auto_applied", data)
 
                 elif event_type == "done":
                     # Save assistant message
@@ -322,72 +301,6 @@ async def send_message(
                 producer.cancel()
 
     return StreamingResponse(_event_generator(), media_type="text/event-stream")
-
-
-# ─── Confirm / Reject PatchProposal ──────────────────────────────────────────
-
-@router.post("/sessions/{session_id}/confirm/{proposal_id}", response_model=dict)
-def confirm_proposal(session_id: str, proposal_id: str, db: Session = Depends(get_db)):
-    """Apply a PatchProposal after user confirmation."""
-    proposal = _pending_proposals.get(session_id, {}).get(proposal_id)
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found or already processed")
-
-    workspace_path = proposal.get("workspace_path", "")
-    workspace_id = proposal.get("workspace_id", "")
-
-    from app.agents.tools import execute_patch_proposal, configure as configure_tools
-    ws_ctx = get_workspace_context(db, workspace_id)
-    configure_tools(ws_ctx, db)
-
-    result = execute_patch_proposal(proposal, workspace_path, db)
-
-    # Clean up
-    _pending_proposals.get(session_id, {}).pop(proposal_id, None)
-
-    if result.get("success"):
-        # Save confirmation as system message
-        ws = db.get(WorkspaceORM, workspace_id)
-        if ws:
-            chat_service.append_message(
-                workspace_path=ws.workspace_path,
-                session_id=session_id,
-                role="system",
-                content=f"✓ 已应用变更：{proposal.get('change_summary', '')}",
-            )
-
-    return result
-
-
-@router.post("/sessions/{session_id}/reject/{proposal_id}", response_model=dict)
-def reject_proposal(session_id: str, proposal_id: str, db: Session = Depends(get_db)):
-    """Reject a PatchProposal."""
-    proposal = _pending_proposals.get(session_id, {}).get(proposal_id)
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found or already processed")
-
-    # Clean up
-    workspace_path = proposal.get("workspace_path", "")
-    workspace_id = proposal.get("workspace_id", "")
-    _pending_proposals.get(session_id, {}).pop(proposal_id, None)
-
-    ws = db.get(WorkspaceORM, workspace_id)
-    if ws:
-        chat_service.append_message(
-            workspace_path=ws.workspace_path,
-            session_id=session_id,
-            role="system",
-            content=f"✗ 用户拒绝了变更：{proposal.get('change_summary', '')}",
-        )
-
-    return {"success": True, "message": "Proposal rejected"}
-
-
-# ─── Legacy: create_skill inline (keep for backward compat) ──────────────────
-
-class _CreateSkillBody(BaseModel):
-    workspace_id: str
-    user_intent: str
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
