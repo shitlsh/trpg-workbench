@@ -74,7 +74,9 @@ class PatchProposalInterrupt(AgentRunException):
 
 @tool
 def list_assets(asset_type: str = "") -> str:
-    """列出工作空间中的资产。可选 asset_type 过滤（如 "npc", "stage", "location"）。
+    """刷新工作空间资产列表（当前快照已注入 system prompt，无需在对话开始时调用此工具）。
+    仅在需要获取最新状态时调用，例如刚刚创建/修改了资产后。
+    可选 asset_type 过滤（如 "npc", "stage", "location"）。
     返回 JSON 数组，每项含 type/name/slug/summary 字段。"""
     assets = _workspace_context.get("existing_assets", [])
     if asset_type:
@@ -582,6 +584,6 @@ def web_search(query: str = "", max_results: int = 5) -> str:
 
 # ─── Tool list for Director ────────────────────────────────────────────────────
 
-ALL_TOOLS = [list_assets, read_asset, search_assets, read_config, search_knowledge,
+ALL_TOOLS = [list_assets, read_asset, search_assets, search_knowledge,
              create_asset, update_asset, check_consistency, consult_rules, create_skill,
              web_search]

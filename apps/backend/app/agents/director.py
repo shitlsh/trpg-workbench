@@ -26,12 +26,54 @@ def build_director(model, workspace_context: dict, db) -> Agent:
     if style:
         system_prompt = f"[创作风格约束]\n{style}\n\n{system_prompt}"
 
+    # Inject workspace snapshot so model doesn't need to call read_config/list_assets
+    snapshot = _build_workspace_snapshot(workspace_context)
+    system_prompt = f"{system_prompt}\n\n{snapshot}"
+
     return Agent(
         model=model,
         tools=ALL_TOOLS,
         instructions=[system_prompt],
         markdown=False,
     )
+
+
+def _build_workspace_snapshot(workspace_context: dict) -> str:
+    """Build a concise workspace snapshot string to inject into the system prompt.
+    
+    This avoids the model needing to call read_config/list_assets at the start
+    of every request, saving 1-2 tool-call rounds.
+    """
+    name = workspace_context.get("workspace_name", "未命名")
+    rule_set = workspace_context.get("rule_set", "未设置")
+    style = workspace_context.get("style_prompt")
+    custom_types = workspace_context.get("custom_asset_types", [])
+    assets = workspace_context.get("existing_assets", [])
+
+    lines = [
+        "## 当前工作空间快照（请勿重复调用 read_config / list_assets 获取此信息）",
+        f"- 工作空间：{name}",
+        f"- 规则集：{rule_set}",
+    ]
+    if style:
+        lines.append(f"- 创作风格：{style[:80]}{'…' if len(style) > 80 else ''}")
+    if custom_types:
+        type_names = "、".join(t.get("name", "") for t in custom_types[:10])
+        lines.append(f"- 自定义资产类型：{type_names}")
+
+    if not assets:
+        lines.append("- 现有资产：（空，尚无资产）")
+    else:
+        lines.append(f"- 现有资产（共 {len(assets)} 个）：")
+        for a in assets[:30]:  # cap at 30 to avoid token bloat
+            summary = a.get("summary") or ""
+            summary_part = f" — {summary[:60]}" if summary else ""
+            lines.append(f"  - [{a.get('type','')}] {a.get('name','')} (slug: {a.get('slug','')}){summary_part}")
+        if len(assets) > 30:
+            lines.append(f"  - … 还有 {len(assets) - 30} 个资产，可用 list_assets 刷新")
+
+    lines.append("（如需获取最新资产列表，可调用 list_assets 刷新；否则以上快照即为当前状态）")
+    return "\n".join(lines)
 
 
 async def run_director_stream(
