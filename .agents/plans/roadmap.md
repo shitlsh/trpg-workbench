@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M19 全部完成。M19 将 Agent 升级为 tool-calling 自主协作者。
+核心功能链路已通过 M1–M20 全部完成。M20 补齐了 Agent 创作质量缺口——子 Agent 工具化、资产语义搜索、信任模式。
 
 ```
 ✅ M1 基础骨架
@@ -25,7 +25,7 @@
                                                                                                                                   └── ✅ M17 用户自定义 Agent Skill
                                                                                                                                         └── ✅ M18 File-first 自包含 Workspace
                                                                                                                                                ├── ✅ M19 Agent 上下文控制
-                                                                                                                                               └── 🔲 M20 Agent 创作质量增强
+                                                                                                                                               └── ✅ M20 Agent 创作质量增强
                                                                                                                                                      └── 🔲 M21 发布打包 & CI/CD
 ```
 
@@ -60,12 +60,12 @@
 | M17 ✅ | 用户自定义 Agent Skill | 用户为每个 Agent 类型编写持久化创作框架指令，注入 Workflow 执行；Chat 可对话创建 Skill | [archive/m17-user-agent-skills.md](archive/m17-user-agent-skills.md) |
 | M18 ✅ | File-first 自包含 Workspace | 资产/配置/聊天全部以文件为真相源，DB 降级为可重建缓存索引，工作空间目录可拷贝即迁移 | [archive/m18-file-first-workspace.md](archive/m18-file-first-workspace.md) |
 | M19 ✅ | Agent 上下文控制与工具能力 | Agent 从固定流水线升级为拥有工具的自主协作者（tool-calling + SSE streaming + 多轮记忆 + @引用） | [archive/m19-agent-context-control.md](archive/m19-agent-context-control.md) |
+| M20 ✅ | Agent 创作质量与上下文感知增强 | 子 Agent 工具化（Consistency/Rules/Skill）、资产语义搜索、信任模式、Director prompt 质量提升 | [archive/m20-agent-quality.md](archive/m20-agent-quality.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M20 | Agent 创作质量与上下文感知增强 | 子 Agent prompt 内化、资产语义搜索、信任模式、知识库检索主动性 | [m20-agent-quality.md](m20-agent-quality.md) |
 | M21 | 发布打包 & CI/CD | 应用打包发布、自动构建流水线 | （待规划） |
 
 ---

@@ -2,6 +2,8 @@
 
 **前置条件**：M19 完成（tool-calling Director、SSE streaming、PatchProposal 确认流全部就位）。
 
+**状态：✅ 已完成（commit 520885f）**
+
 **目标**：补齐 M19 遗留的创作质量缺口——子 Agent 专业 prompt 内化、Consistency/Rules 子 Agent 接回 Director 工具链、资产语义搜索、知识库检索主动性约束，以及减少确认疲劳的信任模式。
 
 ---
@@ -289,57 +291,57 @@ if hasattr(chunk, "tool_results"):
 
 ### A0：开发 Skill 更新
 
-- [ ] **A0.1**：`.agents/skills/agent-workflow-patterns/SKILL.md` — 补充多 Agent 委托模式：Director 作为编排者、Consistency/Rules 作为专业工具代理的职责边界与调用规范
+- [x] **A0.1**：`.agents/skills/agent-workflow-patterns/SKILL.md` — 补充多 Agent 委托模式：Director 作为编排者、Consistency/Rules 作为专业工具代理的职责边界与调用规范
 
 ### A1：纯生成型子 Agent prompt 内化
 
-- [ ] **A1.1**：确认 `npc.py`/`plot.py`/`monster.py`/`lore.py`/`document.py` 无外部调用
-- [ ] **A1.2**：`prompts/director/system.txt` — 新增五类资产创作规范（NPC/Monster/Plot/Location/Lore）
-- [ ] **A1.3**：删除 `npc.py`/`plot.py`/`monster.py`/`lore.py`/`document.py` 及对应 prompts 目录
+- [x] **A1.1**：确认 `npc.py`/`plot.py`/`monster.py`/`lore.py`/`document.py` 无外部调用
+- [x] **A1.2**：`prompts/director/system.txt` — 新增五类资产创作规范（NPC/Monster/Plot/Location/Lore）
+- [x] **A1.3**：删除 `npc.py`/`plot.py`/`monster.py`/`lore.py`/`document.py` 及对应 prompts 目录
 
 ### A2：Consistency Agent 接回
 
-- [ ] **A2.1**：`agents/tools.py` — 新增 `check_consistency` 工具函数
-- [ ] **A2.2**：`agents/consistency.py` — 调整接口：model 参数从外部传入（从 `_workspace_context` 解析）
-- [ ] **A2.3**：`prompts/director/system.txt` — 新增"写入前必须 check_consistency"规则
-- [ ] **A2.4**：前端 `ToolCallCard.tsx` — check_consistency 结果渲染：status badge + issues 折叠列表
-- [ ] **A2.5**：`packages/shared-schema/src/index.ts` — 新增 `ConsistencyReport` 类型
+- [x] **A2.1**：`agents/tools.py` — 新增 `check_consistency` 工具函数
+- [x] **A2.2**：`agents/consistency.py` — 调整接口：model 参数从外部传入（从 `_workspace_context` 解析）
+- [x] **A2.3**：`prompts/director/system.txt` — 新增"写入前必须 check_consistency"规则
+- [x] **A2.4**：前端 `ToolCallCard.tsx` — check_consistency 结果渲染：status badge + issues 折叠列表（commit 520885f）
+- [x] **A2.5**：`packages/shared-schema/src/index.ts` — 新增 `ConsistencyReport` 类型（commit 520885f）
 
 ### A3：Rules Agent 接回
 
-- [ ] **A3.1**：`agents/tools.py` — 新增 `consult_rules` 工具函数（内部调用 retriever + rules agent）
-- [ ] **A3.2**：`agents/rules.py` — 确认接口兼容，model 从外部传入
-- [ ] **A3.3**：`agents/tools.py` `configure()` — 增加 `_model` 注入，供子 Agent 工具调用
-- [ ] **A3.4**：`prompts/director/system.txt` — 新增 consult_rules vs search_knowledge 选择规则 + 2 条 few-shot 示例
-- [ ] **A3.5**：`search_knowledge` — library_ids 为空时返回引导提示
+- [x] **A3.1**：`agents/tools.py` — 新增 `consult_rules` 工具函数（内部调用 retriever + rules agent）
+- [x] **A3.2**：`agents/rules.py` — 确认接口兼容，model 从外部传入
+- [x] **A3.3**：`agents/tools.py` `configure()` — 增加 `_model` 注入，供子 Agent 工具调用
+- [x] **A3.4**：`prompts/director/system.txt` — 新增 consult_rules vs search_knowledge 选择规则 + 2 条 few-shot 示例
+- [x] **A3.5**：`search_knowledge` — library_ids 为空时返回引导提示
 
 ### A4：Skill Agent 工具化接回
 
-- [ ] **A4.1**：检查现有调用路径（`api/chat.py` 等），移除 M19 前的旧调用方式
-- [ ] **A4.2**：`agents/tools.py` — 新增 `create_skill(user_intent)` 工具（内部调用 retrieve_knowledge + run_skill_agent，raise PatchProposalInterrupt 写入 skills/ 目录）
-- [ ] **A4.3**：`agents/skill_agent.py` — 接口调整：model 从 `_workspace_context` 解析传入（与 consistency.py/rules.py 一致）
+- [x] **A4.1**：检查现有调用路径（`api/chat.py` 等），移除 M19 前的旧调用方式
+- [x] **A4.2**：`agents/tools.py` — 新增 `create_skill(user_intent)` 工具（内部调用 retrieve_knowledge + run_skill_agent，raise PatchProposalInterrupt 写入 skills/ 目录）
+- [x] **A4.3**：`agents/skill_agent.py` — 接口调整：model 从 `_workspace_context` 解析传入（与 consistency.py/rules.py 一致）
 
 ### A5：资产语义搜索
 
-- [ ] **A5.1**：新建 `knowledge/asset_indexer.py` — `index_asset()`、`search_assets_semantic()`
-- [ ] **A5.2**：`services/asset_service.py` — 写入后后台触发 `index_asset()`
-- [ ] **A5.3**：`agents/tools.py` `configure()` — 解析 embedding profile，初始化 embedding_fn
-- [ ] **A5.4**：`agents/tools.py` `search_assets` — 增加语义路径，fallback 到关键词
+- [x] **A5.1**：新建 `knowledge/asset_indexer.py` — `index_asset()`、`search_assets_semantic()`
+- [x] **A5.2**：`services/asset_service.py` — 写入后后台触发 `index_asset()`（实现于 `execute_patch_proposal` 中）
+- [x] **A5.3**：`agents/tools.py` `configure()` — 解析 embedding profile，初始化 embedding_fn
+- [x] **A5.4**：`agents/tools.py` `search_assets` — 增加语义路径，fallback 到关键词
 
 ### A6：知识库检索主动性强化（部分已在 A3.4/A3.5 覆盖）
 
-- [ ] **A6.1**：手动测试：创建怪物时 Director 是否自动调用 `consult_rules`
-- [ ] **A6.2**：手动测试：`library_ids` 为空时 `search_knowledge` 是否返回引导提示
+- [ ] **A6.1**：手动测试：创建怪物时 Director 是否自动调用 `consult_rules`（推迟：用户说"回头再测"，不阻塞归档）
+- [ ] **A6.2**：手动测试：`library_ids` 为空时 `search_knowledge` 是否返回引导提示（推迟：同上）
 
 ### A7：信任模式
 
-- [ ] **A7.1**：`models/orm.py` `WorkspaceORM` — 新增 `trust_mode: bool = False` 字段（或写入 config.yaml）
-- [ ] **A7.2**：`workflows/utils.py` `get_workspace_context()` — 传入 `trust_mode`
-- [ ] **A7.3**：`agents/tools.py` 写入工具 — trust_mode 分支逻辑
-- [ ] **A7.4**：`api/chat.py` SSE 层 — 检测 `auto_applied` 字段，yield `auto_applied` 事件
-- [ ] **A7.5**：`packages/shared-schema/src/index.ts` — 新增 `AutoAppliedEvent` 类型
-- [ ] **A7.6**：前端 `AgentPanel.tsx` — header 信任模式开关（绑定 workspace 设置 PATCH 接口）
-- [ ] **A7.7**：前端 `ToolCallCard.tsx` — "已自动应用" badge
+- [x] **A7.1**：`models/orm.py` `WorkspaceORM` — 新增 `trust_mode: bool = False` 字段（写入 config.yaml，非 ORM 字段）
+- [x] **A7.2**：`workflows/utils.py` `get_workspace_context()` — 传入 `trust_mode`
+- [x] **A7.3**：`agents/tools.py` 写入工具 — trust_mode 分支逻辑
+- [x] **A7.4**：`api/chat.py` SSE 层 — 检测 `auto_applied` 字段，yield `auto_applied` 事件（实现于 `director.py` SSE 层）
+- [x] **A7.5**：`packages/shared-schema/src/index.ts` — 新增 `AutoAppliedEvent` 类型（commit 520885f）
+- [x] **A7.6**：前端 `AgentPanel.tsx` — header 信任模式开关（绑定 workspace 设置 PATCH 接口）
+- [x] **A7.7**：前端 `ToolCallCard.tsx` — "已自动应用" badge
 
 ---
 
