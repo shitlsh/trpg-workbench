@@ -104,7 +104,9 @@ async def run_director_stream(
 
     except PatchProposalInterrupt as pp:
         yield {"event": "patch_proposal", "data": pp.proposal}
-        # Don't yield done yet — SSE connection stays open for confirm/reject
+        # Confirm/reject happen via separate HTTP endpoints, not this stream.
+        yield {"event": "done", "data": {}}
 
     except Exception as e:
         yield {"event": "error", "data": {"message": str(e)}}
+        yield {"event": "done", "data": {}}

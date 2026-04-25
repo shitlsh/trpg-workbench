@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from agno.tools import tool
+from agno.exceptions import AgentRunException
 
 
 # ─── Context injection ────────────────────────────────────────────────────────
@@ -31,12 +32,16 @@ def configure(workspace_context: dict, db) -> None:
 
 # ─── PatchProposal interrupt ──────────────────────────────────────────────────
 
-class PatchProposalInterrupt(Exception):
-    """Raised by write tools to signal a patch proposal needs user confirmation."""
+class PatchProposalInterrupt(AgentRunException):
+    """Raised by write tools to signal a patch proposal needs user confirmation.
+    
+    Inherits AgentRunException so Agno re-raises it instead of swallowing it
+    as a generic tool error. stop_execution=True halts the agent run.
+    """
 
     def __init__(self, proposal: dict):
         self.proposal = proposal
-        super().__init__("patch_proposal")
+        super().__init__("patch_proposal", stop_execution=True)
 
 
 # ─── Read-only tools ──────────────────────────────────────────────────────────
