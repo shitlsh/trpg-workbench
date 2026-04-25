@@ -79,11 +79,21 @@ def search_library(
         if "chunks" not in db.table_names():
             return []
         table = db.open_table("chunks")
-        # Pad/truncate query vector
-        if len(query_vector) < dimensions:
-            query_vector = query_vector + [0.0] * (dimensions - len(query_vector))
-        elif len(query_vector) > dimensions:
-            query_vector = query_vector[:dimensions]
+        # Detect actual vector dimension from table schema to avoid mismatch
+        actual_dim = dimensions
+        try:
+            for field in table.schema:
+                if field.name == "vector":
+                    # pa.list_<float>(N) has list_size attribute
+                    actual_dim = field.type.list_size
+                    break
+        except Exception:
+            actual_dim = len(query_vector)
+        # Pad or truncate query vector to match stored dimension
+        if len(query_vector) < actual_dim:
+            query_vector = query_vector + [0.0] * (actual_dim - len(query_vector))
+        elif len(query_vector) > actual_dim:
+            query_vector = query_vector[:actual_dim]
         results = table.search(query_vector).limit(top_k).to_list()
         return results
     except Exception:

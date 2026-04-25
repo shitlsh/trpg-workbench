@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -192,6 +192,22 @@ function SetPromptModal({
   const [selectedLlmId, setSelectedLlmId] = useState("");
   const [aiModelName, setAiModelName] = useState("");
   const [aiStyleDesc, setAiStyleDesc] = useState("");
+
+  // Probe available models when LLM provider is selected
+  const selectedLlmProfile = llmProfiles.find((p) => p.id === selectedLlmId);
+  const { data: probedModels = [] } = useQuery({
+    queryKey: ["probe-models-prompt", selectedLlmProfile?.base_url],
+    queryFn: async () => {
+      const params = new URLSearchParams({ base_url: selectedLlmProfile!.base_url! });
+      return apiFetch<string[]>(`/settings/model-catalog/probe-models?${params}`);
+    },
+    enabled: !!selectedLlmProfile?.base_url,
+    staleTime: 30_000,
+  });
+  // Auto-select when only one model is returned
+  useEffect(() => {
+    if (probedModels.length === 1 && !aiModelName) setAiModelName(probedModels[0]);
+  }, [probedModels]);
   const [aiName, setAiName] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiNotes, setAiNotes] = useState("");
@@ -217,6 +233,7 @@ function SetPromptModal({
             model_name: aiModelName.trim(),
             style_description: aiStyleDesc.trim() || undefined,
           }),
+          timeoutMs: 120_000,
         }
       );
       setAiName(res.name);
@@ -379,12 +396,19 @@ function SetPromptModal({
             </label>
             <label className={styles.label}>
               模型名称 *
-              <input
-                className={styles.input}
-                value={aiModelName}
-                onChange={(e) => setAiModelName(e.target.value)}
-                placeholder="例：gemini-2.0-flash / llama-3.1-8b"
-              />
+              {probedModels.length > 0 ? (
+                <select className={styles.select} value={aiModelName} onChange={(e) => setAiModelName(e.target.value)}>
+                  <option value="">请选择模型...</option>
+                  {probedModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              ) : (
+                <input
+                  className={styles.input}
+                  value={aiModelName}
+                  onChange={(e) => setAiModelName(e.target.value)}
+                  placeholder="例：gemini-2.0-flash / llama-3.1-8b"
+                />
+              )}
             </label>
             <label className={styles.label}>
               风格描述（可选）
@@ -705,10 +729,10 @@ function SearchTestDialog({
 // ─── Document Row ──────────────────────────────────────────────────────────────
 
 function DocumentRow({
-  doc, expanded, onToggle, onPreview, isPreviewing,
+  doc, expanded, onToggle, onPreview, isPreviewing, onDelete,
 }: {
   doc: KnowledgeDocument; expanded: boolean; onToggle: () => void;
-  onPreview: () => void; isPreviewing: boolean;
+  onPreview: () => void; isPreviewing: boolean; onDelete: () => void;
 }) {
   const { data: summary } = useQuery({
     queryKey: ["knowledge", "doc", doc.id, "summary"],
@@ -746,6 +770,13 @@ function DocumentRow({
             预览
           </button>
         )}
+        <button
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", color: "var(--text-muted)" }}
+          onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除文档「${doc.filename}」？`)) onDelete(); }}
+          title="删除文档"
+        >
+          <Trash2 size={13} />
+        </button>
       </div>
 
       {expanded && (
@@ -842,6 +873,13 @@ function LibraryDetailPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge", "libraries"] });
       setIsRenaming(false);
+    },
+  });
+
+  const deleteDocMutation = useMutation({
+    mutationFn: (docId: string) => apiFetch(`/knowledge/documents/${docId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", library.id] });
     },
   });
 
@@ -965,7 +1003,7 @@ function LibraryDetailPanel({
       {/* Upload area */}
       {(() => {
         const uploadDisabled = isUploading || !!uploadingTaskId || documents.length > 0;
-        const overlayMsg = isUploading ? "上传中..." : uploadingTaskId ? "处理中，请稍候..." : documents.length > 0 ? "已上传文档，如需替换请先删除" : null;
+        const overlayMsg = isUploading ? "上传中..." : uploadingTaskId ? "处理中，请稍候..." : documents.length > 0 ? "已有文档，请先点击文档右侧删除按钮删除后再上传" : null;
         return (
           <div
             className={styles.dropzone}
@@ -1023,6 +1061,7 @@ function LibraryDetailPanel({
             onToggle={() => toggleDocExpand(doc.id)}
             onPreview={() => setPreviewDocId(previewDocId === doc.id ? null : doc.id)}
             isPreviewing={previewDocId === doc.id}
+            onDelete={() => deleteDocMutation.mutate(doc.id)}
           />
         ))}
       </div>

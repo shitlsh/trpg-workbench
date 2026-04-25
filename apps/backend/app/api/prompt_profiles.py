@@ -54,6 +54,9 @@ def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get_db)):
         raw = result.content if hasattr(result, "content") else str(result)
 
         import json, re
+        # Strip thinking tags (e.g., Qwen3 reasoning tokens)
+        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        # Strip markdown code fences
         raw = re.sub(r"^```[a-zA-Z]*\n?|```\s*$", "", raw.strip(), flags=re.MULTILINE).strip()
         data = json.loads(raw)
 

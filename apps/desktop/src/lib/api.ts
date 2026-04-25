@@ -3,15 +3,21 @@ export const BACKEND_URL = BASE_URL;
 
 export async function apiFetch<T>(
   path: string,
-  options?: RequestInit
+  options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
   let res: Response;
+  const { timeoutMs, ...fetchOptions } = options ?? {};
+  const signal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
-      headers: { "Content-Type": "application/json", ...options?.headers },
-      ...options,
+      headers: { "Content-Type": "application/json", ...fetchOptions.headers },
+      signal,
+      ...fetchOptions,
     });
   } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error("请求超时：模型响应时间过长，请稍后重试");
+    }
     throw new Error(`网络错误：无法连接到后端服务（${BASE_URL}）`);
   }
   if (!res.ok) {

@@ -197,3 +197,22 @@ async def _run_ingest_background(
             db.close()
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+router2 = APIRouter(prefix="/knowledge/documents", tags=["knowledge-documents"])
+
+
+@router2.delete("/{document_id}", status_code=204)
+def delete_document(document_id: str, db: Session = Depends(get_db)):
+    doc = db.get(KnowledgeDocumentORM, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    library_id = doc.library_id
+    # Remove from vector index
+    from app.knowledge.vector_index import delete_document_chunks
+    from app.utils.paths import get_data_dir
+    idx_dir = get_data_dir() / "knowledge" / "libraries" / library_id / "index"
+    delete_document_chunks(idx_dir, document_id)
+    # Remove from DB
+    db.delete(doc)
+    db.commit()
