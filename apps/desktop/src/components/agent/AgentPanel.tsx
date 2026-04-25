@@ -335,6 +335,10 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
+    // 10 min timeout — local LLMs need time for prompt processing + multi-tool rounds
+    const timeoutSignal = AbortSignal.timeout(10 * 60 * 1000);
+    const combinedSignal = AbortSignal.any([ctrl.signal, timeoutSignal]);
+
     try {
       const resp = await fetch(`${BACKEND_URL}/chat/sessions/${session.id}/messages`, {
         method: "POST",
@@ -345,7 +349,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           ...(sessionModel ? { model: sessionModel } : {}),
           ...(mentionedAssetIds.length > 0 ? { referenced_asset_ids: mentionedAssetIds } : {}),
         }),
-        signal: ctrl.signal,
+        signal: combinedSignal,
       });
 
       if (!resp.ok || !resp.body) {
