@@ -225,7 +225,6 @@ AgentPanel mount
 M4（ChatSession ORM + /chat/sessions POST + JSONL 消息存储）
 M18（file-first workspace，.trpg/chat/ 目录布局，list_sessions 服务层）
   └── M21（本 milestone）：补全 CRUD 路由 + 补全前端 session 管理 UI
-        └── M22 发布打包 & CI/CD（与本 milestone 无技术依赖，可并行规划）
 ```
 
 ---

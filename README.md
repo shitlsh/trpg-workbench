@@ -2,7 +2,7 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M20 已完成，核心功能链路 M1–M20 全部完成，M21（发布打包 & CI/CD）待规划**
+> **当前状态：M20 已完成，M21（聊天会话管理）进行中**
 
 ---
 
@@ -122,31 +122,6 @@ cargo tauri dev
     libraries/
       <library-id>/    # 知识库索引和解析结果
 ```
-
----
-
-## 里程碑
-
-| 里程碑 | 内容 | 状态 |
-|--------|------|------|
-| M1 基础骨架 | monorepo、后端骨架、Workspace CRUD、模型配置 | ✅ 完成 |
-| M2 知识库 | PDF 导入、切块、向量检索 | ✅ 完成 |
-| M3 资产系统 | NPC/怪物/场景等资产 CRUD、三栏编辑器 | ✅ 完成 |
-| M4 Agent 创作 | Director + 8 个子 Agent、Patch 确认流程 | ✅ 完成 |
-| M5 产品打磨 | 图像生成、导出、Prompt 配置、规则审查 | ✅ 完成 |
-| M6 模型配置管理 | LLM/Embedding Profile、Workspace 路由绑定、usage 埋点 | ✅ 完成 |
-| M7 模型发现与用量观测 | 静态+动态 model catalog、usage 聚合统计、成本估算、context window | ✅ 完成 |
-| M8 知识库预览与 Rerank | 知识库文档预览、分块浏览、Rerank 模型接入 | ✅ 完成 |
-| M9 Smoke Test 与帮助文档 | 前端 smoke 脚本、截图、应用内帮助页、Tauri Help 菜单 | ✅ 完成 |
-| M9a 规则集统一管理 | RuleSet 管理 UI、知识库绑定、PromptProfile 接入 Agent 运行时、工作空间额外知识库 | ✅ 完成 |
-| M10 Agent 编排升级 | 澄清式对话、Workflow 持久化修复、Prompt 模板体系、Agent 升级 | ✅ 完成 |
-| M11 首次配置引导 | Setup Wizard 分步配置、Inline Hint、Gemini/Jina 推荐默认值 | ✅ 完成 |
-| M12 Agent 透明度 | RAG 引用展开查看、Director 意图摘要在确认卡展示 | ✅ 完成 |
-| M13 UI 视觉语言升级 | 彩色资产图标、文字颜色梯度、Active 状态焦点指示 | ✅ 完成 |
-| M14 Help 文档重建 | 重写 Help 文档、嵌入截图、HelpPage 交互增强、维护机制调整 | ✅ 完成 |
-| M15 知识库归属规则集 | 知识库合并进规则集管理页、消除独立路由、统一 1:N 数据模型 | ✅ 完成 |
-
-详细计划见 `.agents/plans/`，架构与约束见 `.agents/skills/`。
 
 ---
 
