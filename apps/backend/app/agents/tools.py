@@ -341,6 +341,19 @@ def execute_patch_proposal(proposal: dict, workspace_path: str, db) -> dict:
             daemon=True,
         ).start()
 
+        # Log the write
+        from app.utils.logger import log_asset_write
+        log_asset_write(
+            workspace_path=workspace_path,
+            asset_id=asset_id,
+            asset_name=asset_name,
+            asset_type=asset_type,
+            revision_version=1,
+            source_type="agent",
+            action="create",
+            change_summary=proposal.get("change_summary", ""),
+        )
+
         return {"success": True, "asset_id": asset_id, "slug": slug, "action": "created"}
 
     elif action == "update":
@@ -380,6 +393,19 @@ def execute_patch_proposal(proposal: dict, workspace_path: str, db) -> dict:
             args=(asset.id, asset_slug, asset.name, asset.type, content_md),
             daemon=True,
         ).start()
+
+        # Log the write
+        from app.utils.logger import log_asset_write
+        log_asset_write(
+            workspace_path=workspace_path,
+            asset_id=asset.id,
+            asset_name=asset.name,
+            asset_type=asset.type,
+            revision_version=result["revision_version"],
+            source_type="agent",
+            action="update",
+            change_summary=proposal.get("change_summary", "Agent 修改"),
+        )
 
         return {"success": True, "asset_id": asset.id, "slug": asset_slug, "action": "updated"}
 

@@ -117,6 +117,12 @@ function LogEntry({ entry }: { entry: Record<string, unknown> }) {
     model_call: "🤖", retrieval: "🔍", asset_write: "💾",
   };
 
+  const ACTION_LABELS: Record<string, { label: string; color: string }> = {
+    create: { label: "新增", color: "#3fb950" },
+    update: { label: "修改", color: "#d29922" },
+    delete: { label: "删除", color: "#f85149" },
+  };
+
   let summary = "";
   if (type === "model_call") {
     summary = `${entry.provider}/${entry.model} · ${entry.total_tokens} tokens`;
@@ -124,7 +130,34 @@ function LogEntry({ entry }: { entry: Record<string, unknown> }) {
   } else if (type === "retrieval") {
     summary = `检索 ${entry.result_count} 条 · ${(entry.query as string)?.slice(0, 40)}`;
   } else if (type === "asset_write") {
-    summary = `${entry.asset_type} "${entry.asset_name}" v${entry.revision_version}`;
+    const actionInfo = ACTION_LABELS[(entry.action as string) ?? "create"];
+    const badge = actionInfo
+      ? <span style={{ color: actionInfo.color, fontWeight: 600, marginRight: 4 }}>[{actionInfo.label}]</span>
+      : null;
+    return (
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{ padding: "4px 0", borderBottom: "1px solid var(--border)", cursor: "pointer", fontSize: 11 }}
+      >
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span>{LOG_ICONS[type] ?? "📝"}</span>
+          <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{time}</span>
+          <span style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {badge}{entry.asset_type as string} &quot;{entry.asset_name as string}&quot; v{entry.revision_version as number}
+          </span>
+        </div>
+        {expanded && (
+          <pre style={{
+            marginTop: 4, padding: 6,
+            background: "var(--bg)", border: "1px solid var(--border)",
+            borderRadius: 3, fontSize: 10, whiteSpace: "pre-wrap",
+            color: "var(--text-muted)", maxHeight: 120, overflowY: "auto",
+          }}>
+            {JSON.stringify(entry, null, 2)}
+          </pre>
+        )}
+      </div>
+    );
   }
 
   return (

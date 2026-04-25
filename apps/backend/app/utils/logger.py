@@ -80,12 +80,14 @@ def log_asset_write(
     asset_type: str,
     revision_version: int,
     source_type: str,
+    action: str = "create",
     change_summary: str = "",
 ) -> None:
-    """Log an asset write (create or update with new revision)."""
+    """Log an asset write. action is one of: create, update, delete."""
     _append(workspace_path, {
         "type": "asset_write",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "action": action,
         "asset_id": asset_id,
         "asset_name": asset_name,
         "asset_type": asset_type,
