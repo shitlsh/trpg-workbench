@@ -381,7 +381,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     setActiveSession(s, []);
     localStorage.setItem(`last_session_${workspaceId}`, s.id);
     try {
-      const msgs = await apiFetch<ChatMessage[]>(`/chat/sessions/${s.id}/messages`);
+      const msgs = await apiFetch<ChatMessage[]>(`/chat/sessions/${s.id}/messages?workspace_id=${workspaceId}`);
       setActiveSession(s, msgs);
     } catch (e) {
       setSessionError((e as Error)?.message ?? "加载消息失败");
@@ -580,6 +580,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               setStreamingEvents([...accEvents]);
 
             } else if (currentEvent === "done") {
+              // Fallback refresh: ensure asset tree is up-to-date even if
+              // auto_applied events were missed or not emitted.
+              qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
               // Derive accText and accToolCalls from events for stored message
               const accText = accEvents
                 .filter((e): e is { kind: "text_chunk"; text: string } => e.kind === "text_chunk")

@@ -156,15 +156,32 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[ChatMessageSchema])
-def get_messages(session_id: str, db: Session = Depends(get_db)):
-    """Read messages from JSONL file on disk."""
+def get_messages(
+    session_id: str,
+    workspace_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Read messages from JSONL file on disk.
+
+    workspace_id query param is preferred over session.workspace_id so that
+    sessions created under an old workspace record (removed + re-added) can
+    still be loaded via the current workspace.
+    """
     session = db.get(ChatSessionORM, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    ws = db.get(WorkspaceORM, session.workspace_id)
+    # Prefer the caller-supplied workspace_id (current, valid) over the one
+    # stored on the session (may point to a deleted workspace record).
+    effective_workspace_id = workspace_id or session.workspace_id
+    ws = db.get(WorkspaceORM, effective_workspace_id)
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Heal the session record so future lookups work without the query param.
+    if workspace_id and session.workspace_id != workspace_id:
+        session.workspace_id = workspace_id
+        db.commit()
 
     return chat_service.read_messages(ws.workspace_path, session_id)
 

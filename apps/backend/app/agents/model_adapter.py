@@ -40,6 +40,9 @@ def model_from_profile(profile, model_name: str) -> Any:
             kwargs["api_key"] = api_key
         if base_url:
             kwargs["base_url"] = base_url
+        # Disable parallel tool calls so the Director executes tools sequentially
+        # and in the order the model decides (respects system-prompt priority rules).
+        kwargs["request_params"] = {"parallel_tool_calls": False}
         return OpenAIChat(**kwargs)
 
     elif provider == "anthropic":
@@ -61,6 +64,7 @@ def model_from_profile(profile, model_name: str) -> Any:
         if api_key:
             kwargs["api_key"] = api_key
         kwargs["base_url"] = base_url or "https://openrouter.ai/api/v1"
+        kwargs["request_params"] = {"parallel_tool_calls": False}
         return OpenAIChat(**kwargs)
 
     elif provider == "openai_compatible":
@@ -69,6 +73,7 @@ def model_from_profile(profile, model_name: str) -> Any:
             kwargs["api_key"] = api_key
         if base_url:
             kwargs["base_url"] = base_url
+        kwargs["request_params"] = {"parallel_tool_calls": False}
         return OpenAIChat(**kwargs)
 
     else:
