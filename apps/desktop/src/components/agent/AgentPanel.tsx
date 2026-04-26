@@ -181,7 +181,21 @@ function StreamingBubble({
           <ThinkingBlock content={thinking} streaming={isStreaming} />
         )}
         {events.length === 0 && !thinking && (
-          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>思考中...</span>
+          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            思考中
+            <span style={{ display: "inline-flex", gap: 3, marginLeft: 3 }}>
+              {[0, 1, 2].map((i) => (
+                <span key={i} style={{
+                  display: "inline-block",
+                  width: 4,
+                  height: 4,
+                  borderRadius: "50%",
+                  background: "var(--text-muted)",
+                  animation: `thinking-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
+                }} />
+              ))}
+            </span>
+          </span>
         )}
         {events.map((e, i) => {
           if (e.kind === "tool_call") {

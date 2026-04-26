@@ -94,7 +94,7 @@ export function MentionInput({ workspaceId, disabled = false, isStreaming = fals
 
   // Suggestion state managed by tiptap's renderer pattern
   const [suggestionProps, setSuggestionProps] = useState<SuggestionProps | null>(null);
-  const [suggestionPos, setSuggestionPos] = useState<{ top: number; left: number } | null>(null);
+  const [suggestionPos, setSuggestionPos] = useState<{ bottom: number; left: number } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -121,12 +121,12 @@ export function MentionInput({ workspaceId, disabled = false, isStreaming = fals
               onStart: (props: SuggestionProps) => {
                 setSuggestionProps(props);
                 setSelectedIndex(0);
-                // Calculate position relative to container
+                // Position dropdown ABOVE the cursor (input is at panel bottom)
                 const rect = props.clientRect?.();
                 if (rect && containerRef.current) {
                   const containerRect = containerRef.current.getBoundingClientRect();
                   setSuggestionPos({
-                    top: rect.bottom - containerRect.top,
+                    bottom: containerRect.bottom - rect.top,
                     left: rect.left - containerRect.left,
                   });
                 }
@@ -138,7 +138,7 @@ export function MentionInput({ workspaceId, disabled = false, isStreaming = fals
                 if (rect && containerRef.current) {
                   const containerRect = containerRef.current.getBoundingClientRect();
                   setSuggestionPos({
-                    top: rect.bottom - containerRect.top,
+                    bottom: containerRect.bottom - rect.top,
                     left: rect.left - containerRect.left,
                   });
                 }
@@ -296,11 +296,11 @@ export function MentionInput({ workspaceId, disabled = false, isStreaming = fals
         </button>
       </div>
 
-      {/* Suggestion dropdown */}
+      {/* Suggestion dropdown — anchored above cursor */}
       {suggestionProps && suggestionPos && filteredItems.length > 0 && (
         <div style={{
           position: "absolute",
-          top: suggestionPos.top,
+          bottom: suggestionPos.bottom,
           left: suggestionPos.left,
           zIndex: 500,
         }}>

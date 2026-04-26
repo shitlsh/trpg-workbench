@@ -115,6 +115,12 @@ async def run_director_stream(
     input_messages.append(Message(role="user", content=prompt))
 
     try:
+        # State machine for parsing inline <think>...</think> blocks from models
+        # like Qwen3 that embed reasoning in the main content stream rather than
+        # emitting a dedicated ReasoningContentDelta event.
+        _in_think = False   # True while inside a <think> block
+        _think_buf = ""     # Accumulates partial tag chars across chunk boundaries
+
         async for chunk in agent.arun(
             input_messages,
             stream=True,
@@ -122,11 +128,43 @@ async def run_director_stream(
         ):
             event_type = getattr(chunk, "event", None)
 
-            # Text delta
+            # Text delta — may contain inline <think>...</think> from Qwen3
             if event_type == "RunContent" and getattr(chunk, "content", None):
-                yield {"event": "text_delta", "data": {"content": chunk.content}}
+                raw = _think_buf + chunk.content
+                _think_buf = ""
 
-            # Reasoning/thinking delta
+                while raw:
+                    if _in_think:
+                        end = raw.find("</think>")
+                        if end == -1:
+                            # Check if a partial </think> tag is split at the boundary
+                            # Keep up to 8 chars at the end as a potential partial tag
+                            safe = max(0, len(raw) - 8)
+                            if safe > 0:
+                                yield {"event": "thinking_delta", "data": {"content": raw[:safe]}}
+                            _think_buf = raw[safe:]
+                            raw = ""
+                        else:
+                            if end > 0:
+                                yield {"event": "thinking_delta", "data": {"content": raw[:end]}}
+                            _in_think = False
+                            raw = raw[end + len("</think>"):]
+                    else:
+                        start = raw.find("<think>")
+                        if start == -1:
+                            # Check for a partial <think> tag at the end
+                            safe = max(0, len(raw) - 7)
+                            if safe > 0:
+                                yield {"event": "text_delta", "data": {"content": raw[:safe]}}
+                            _think_buf = raw[safe:]
+                            raw = ""
+                        else:
+                            if start > 0:
+                                yield {"event": "text_delta", "data": {"content": raw[:start]}}
+                            _in_think = True
+                            raw = raw[start + len("<think>"):]
+
+            # Reasoning/thinking delta (Claude extended thinking, etc.)
             elif event_type == "ReasoningContentDelta" and getattr(chunk, "reasoning_content", None):
                 yield {"event": "thinking_delta", "data": {"content": chunk.reasoning_content}}
 
