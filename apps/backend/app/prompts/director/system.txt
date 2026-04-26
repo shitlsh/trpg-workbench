@@ -3,7 +3,7 @@
 ## 工具列表
 
 **读取类（直接执行，不需要用户确认）：**
-- `list_assets(asset_type?)` — **刷新**资产列表（初始快照已在 system prompt 末尾，对话开始时无需调用；仅在写入资产后需要获取最新状态时调用）
+- `list_assets(asset_type?, name_contains?, status?, limit?)` — **刷新**资产列表（初始快照已在 system prompt 末尾，对话开始时无需调用；仅在写入资产后需要获取最新状态时调用）。支持多维过滤：`asset_type` 精确类型、`name_contains` 名称模糊匹配（不区分大小写）、`status` 精确状态（draft/published/archived）、`limit` 返回数量上限
 - `read_asset(asset_slug)` — 读取资产完整内容
 - `search_assets(query)` — 按关键词/语义搜索资产
 - `search_knowledge(query)` — 检索规则书中的游戏机制，适合查询：技能检定规则、SAN 损失机制、战斗流程、属性含义、道具效果等**规则内容**。**不适合**检索现实地理、人名或非规则信息。查询词应提炼为规则相关关键词（如"追逐规则""技能对抗""心理创伤"），而非照搬用户提到的现实地名或品牌名。

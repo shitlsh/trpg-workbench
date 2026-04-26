@@ -57,14 +57,25 @@ def _get_model():
 # ─── Read-only tools ──────────────────────────────────────────────────────────
 
 @tool
-def list_assets(asset_type: str = "") -> str:
+def list_assets(asset_type: str = "", name_contains: str = "", status: str = "", limit: int = 0) -> str:
     """刷新工作空间资产列表（当前快照已注入 system prompt，无需在对话开始时调用此工具）。
     仅在需要获取最新状态时调用，例如刚刚创建/修改了资产后。
-    可选 asset_type 过滤（如 "npc", "stage", "location"）。
+    可选过滤参数：
+    - asset_type: 精确类型匹配（如 "npc", "stage", "location"）
+    - name_contains: 名称模糊匹配（不区分大小写）
+    - status: 精确状态匹配（"draft" / "published" / "archived"）
+    - limit: 返回数量上限（0 表示不限制，默认不限制）
     返回 JSON 数组，每项含 type/name/slug/summary 字段。"""
     assets = _workspace_context.get("existing_assets", [])
     if asset_type:
         assets = [a for a in assets if a.get("type") == asset_type]
+    if name_contains:
+        q = name_contains.lower()
+        assets = [a for a in assets if q in (a.get("name") or "").lower()]
+    if status:
+        assets = [a for a in assets if a.get("status") == status]
+    if limit and limit > 0:
+        assets = assets[:limit]
     return json.dumps(assets, ensure_ascii=False)
 
 
@@ -312,10 +323,24 @@ def execute_patch_proposal(proposal: dict, workspace_path: str, db) -> dict:
     if not workspace_id:
         return {"success": False, "error": "Workspace not found"}
 
-    # Parse summary from frontmatter (if present) to store in DB index
-    summary = _extract_frontmatter_field(content_md, "summary")
-    # Strip frontmatter to get body for service call
-    body = _strip_frontmatter_block(content_md)
+    # Parse content_md using python-frontmatter so body is properly separated
+    # from the YAML front matter the Agent generated.
+    try:
+        import frontmatter as _fm
+        _parsed_post = _fm.loads(content_md)
+        body = _parsed_post.content  # text body without frontmatter block
+        _fm_meta: dict = dict(_parsed_post.metadata)
+    except Exception:
+        _fm_meta = {}
+        body = _strip_frontmatter_block(content_md)  # regex fallback
+
+    summary: str | None = _fm_meta.get("summary") or _extract_frontmatter_field(content_md, "summary")
+
+    # Fields safe to carry over from Agent-generated frontmatter into meta_updates.
+    # We never override version/updated_at (managed by asset_service) or
+    # slug/type (structural fields that should not change via content rewrite).
+    _PROTECTED_FIELDS = {"version", "updated_at", "slug", "type", "id"}
+    fm_meta_updates: dict = {k: v for k, v in _fm_meta.items() if k not in _PROTECTED_FIELDS}
 
     def _trigger_index(asset_id: str, slug: str, name: str, atype: str, cmd: str) -> None:
         """Background thread: embed and index the asset."""
@@ -351,7 +376,8 @@ def execute_patch_proposal(proposal: dict, workspace_path: str, db) -> dict:
             name=asset_name,
             slug=slug,
             summary=summary,
-            body=content_md,  # write full content_md as body (includes frontmatter if any)
+            body=body,  # stripped body; frontmatter is rebuilt by asset_service
+            extra_meta=fm_meta_updates if fm_meta_updates else None,
         )
 
         # Create DB index row
@@ -402,17 +428,17 @@ def execute_patch_proposal(proposal: dict, workspace_path: str, db) -> dict:
         from app.utils.paths import asset_type_dir
         file_path = asset_type_dir(workspace_path, asset.type) / f"{asset_slug}.md"
         if not file_path.exists():
-            # Fallback: scan
+            # Fallback: scan (same matching logic as patch_asset)
             for md_file in Path(workspace_path).rglob("*.md"):
-                if md_file.stem == asset_slug:
+                if md_file.stem == asset_slug or md_file.stem.replace("-", "_") == asset_slug:
                     file_path = md_file
                     break
 
         result = asset_service.update_asset(
             workspace_path=workspace_path,
             file_path=file_path,
-            body=content_md,
-            meta_updates={"summary": summary} if summary else None,
+            body=body,  # stripped body; frontmatter merged via meta_updates
+            meta_updates=fm_meta_updates if fm_meta_updates else None,
             change_summary=proposal.get("change_summary", "Agent 修改"),
             source_type="agent",
         )
