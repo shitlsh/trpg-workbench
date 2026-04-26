@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: completed
 date: 2026-04-26
 source: Inscriptor, OpenPawz, Playwright DOM Audit
 theme: 三栏布局 + 聊天体验全面打磨
