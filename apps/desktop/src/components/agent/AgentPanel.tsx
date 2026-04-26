@@ -706,15 +706,35 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             } else if (currentEvent === "auto_applied") {
               // Asset written directly — refresh assets list
               qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
-              const tc: ToolCall = {
-                id: (data.slug as string) ?? `aa_${Date.now()}`,
-                name: (data.action as string) === "updated" ? "update_asset" : "create_asset",
-                arguments: JSON.stringify({ slug: data.slug, asset_id: data.asset_id }),
-                status: "auto_applied" as ToolCall["status"],
-                result_summary: null,
-              };
-              accToolCallsById[tc.id] = tc;
-              accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
+              // Find the last "running" tool_call and upgrade it to auto_applied in-place,
+              // rather than adding a redundant second card.
+              const lastRunningIdx = accEvents.reduce(
+                (found, e, i) => (e.kind === "tool_call" && e.toolCall.status === "running" ? i : found),
+                -1,
+              );
+              if (lastRunningIdx !== -1) {
+                const existing = (accEvents[lastRunningIdx] as { kind: "tool_call"; toolCall: ToolCall }).toolCall;
+                const upgraded: ToolCall = {
+                  ...existing,
+                  status: "auto_applied" as ToolCall["status"],
+                  result_summary: `${data.action ?? "created"}: ${data.slug ?? ""}`,
+                };
+                accToolCallsById[upgraded.id] = upgraded;
+                accEvents = accEvents.map((e, i) =>
+                  i === lastRunningIdx ? { kind: "tool_call" as const, toolCall: upgraded } : e
+                );
+              } else {
+                // Fallback: no prior running card (e.g. direct auto_applied without tool_call_start)
+                const tc: ToolCall = {
+                  id: (data.slug as string) ?? `aa_${Date.now()}`,
+                  name: (data.action as string) === "updated" ? "update_asset" : "create_asset",
+                  arguments: JSON.stringify({ slug: data.slug, asset_id: data.asset_id }),
+                  status: "auto_applied" as ToolCall["status"],
+                  result_summary: null,
+                };
+                accToolCallsById[tc.id] = tc;
+                accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
+              }
               setStreamingEvents([...accEvents]);
 
             } else if (currentEvent === "done") {
