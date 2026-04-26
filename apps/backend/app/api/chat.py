@@ -168,10 +168,22 @@ async def send_message(
 
     # Multi-turn history
     history = chat_service.read_recent_messages(ws.workspace_path, session_id, limit=20)
-    history = chat_service.trim_to_budget(history)
+    history, truncated = chat_service.trim_to_budget(history)
     # Remove the just-appended user message (it's already the `body.content` we pass)
     if history and history[-1]["role"] == "user":
         history = history[:-1]
+
+    # If history was truncated, persist a system notice and prepend to history
+    # so the LLM knows context was trimmed (and the user sees it in the chat).
+    if truncated:
+        truncation_notice = "[系统提示：对话历史较长，部分早期内容已移出上下文窗口]"
+        chat_service.append_message(
+            workspace_path=ws.workspace_path,
+            session_id=session_id,
+            role="system",
+            content=truncation_notice,
+        )
+        history = [{"role": "system", "content": truncation_notice}] + history
 
     # Handle @mention referenced assets
     referenced_assets: list[dict] = []

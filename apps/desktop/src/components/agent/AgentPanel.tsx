@@ -20,6 +20,25 @@ import { apiFetch } from "@/lib/api";
 
 function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === "user";
+
+  // System messages (e.g. truncation notices) render as a centered divider
+  if (msg.role === "system") {
+    return (
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBlock: 12,
+        color: "var(--text-subtle)",
+        fontSize: 11,
+      }}>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        <span>{msg.content}</span>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      </div>
+    );
+  }
+
   let toolCalls: ToolCall[] = [];
   if (msg.tool_calls_json) {
     try { toolCalls = JSON.parse(msg.tool_calls_json); } catch {}
@@ -36,15 +55,11 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
         maxWidth: "88%",
         padding: "8px 12px",
         borderRadius: isUser ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-        background: isUser
-          ? "var(--accent)"
-          : msg.role === "system"
-          ? "var(--bg)"
-          : "var(--bg-surface)",
+        background: isUser ? "var(--accent)" : "var(--bg-surface)",
         border: isUser ? "none" : "1px solid var(--border)",
         fontSize: 13,
         lineHeight: 1.6,
-        color: msg.role === "system" ? "var(--text-muted)" : "var(--text)",
+        color: "var(--text)",
       }}>
         {!isUser && msg.thinking_json && (
           <ThinkingBlock content={msg.thinking_json} />

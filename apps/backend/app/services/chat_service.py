@@ -142,13 +142,23 @@ def read_recent_messages(workspace_path: str | Path, session_id: str, limit: int
     return result
 
 
-def trim_to_budget(messages: list[dict], max_rounds: int = 10, max_chars: int = 8000) -> list[dict]:
+def trim_to_budget(
+    messages: list[dict],
+    max_rounds: int = 10,
+    max_chars: int = 8000,
+) -> tuple[list[dict], bool]:
     """Trim message history to fit token budget.
 
     Keeps the most recent messages, always preserving the last user message.
+
+    Returns:
+        (trimmed_messages, truncated) — truncated is True when any messages
+        were dropped, so callers can surface a notice to the user.
     """
     if not messages:
-        return []
+        return [], False
+
+    original_len = len(messages)
 
     # Take at most max_rounds * 2 messages (each round = user + assistant)
     trimmed = messages[-(max_rounds * 2):]
@@ -159,7 +169,8 @@ def trim_to_budget(messages: list[dict], max_rounds: int = 10, max_chars: int = 
         trimmed = trimmed[1:]
         total = sum(len(m.get("content", "")) for m in trimmed)
 
-    return trimmed
+    truncated = len(trimmed) < original_len
+    return trimmed, truncated
 
 
 def create_session(

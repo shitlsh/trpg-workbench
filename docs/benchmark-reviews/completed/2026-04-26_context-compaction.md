@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: completed
 date: 2026-04-26
 source: OpenCode Desktop
 theme: 上下文窗口管理与 Compaction
