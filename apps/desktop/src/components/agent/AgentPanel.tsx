@@ -61,7 +61,10 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
           </div>
         )}
       </div>
-      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, paddingInline: 4 }}>
+      <div
+        title={new Date(msg.created_at).toLocaleString("zh-CN")}
+        style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 2, paddingInline: 4, cursor: "default" }}
+      >
         {new Date(msg.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
       </div>
     </div>

@@ -177,31 +177,31 @@ color: drawerOpen ? "var(--accent, #6366f1)" : "var(--text-muted)",
 
 ### Phase 1 — Bug 修复（直接影响可用性，优先执行）
 
-- [ ] **修复 SessionDrawer 主题色**（F-1）：将所有 `--color-surface-2` → `--bg-surface`，`--color-border` → `--border`，`--color-text` → `--text`，`--color-primary` → `--accent`，删除 `#e2e8f0` 硬编码（`SessionDrawer.tsx` 第 93/108/112/177/249/280/295 行共 8 处）。
-- [ ] **修复 SessionDrawer 架构**（F-3，最高优先级）：改为绝对定位覆盖层。打开时用 `position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; background: var(--bg-surface)` 覆盖聊天区，关闭时 `display: none`。删除 200px 硬编码宽度。
-- [ ] **修复 accent 色硬编码**（F-2）：`AgentPanel.tsx:563` 的 `rgba(99,102,241,0.1)` 改为 `color-mix(in srgb, var(--accent) 12%, transparent)`。
-- [ ] **对齐 leftWidth 默认值**（F-4）：`editorStore` 中 `leftWidth` 默认值改为 `280`。
-- [ ] **面板持久化**（F-7）：`ThreePanelLayout.tsx` 在 `onWidthChange`/`onCollapse` 回调中写 `localStorage`，初始值从 `localStorage` 读取（key 含 `wsId`）。
-- [ ] **Markdown 渲染**：`AgentPanel.tsx` 中 assistant 消息文本接入 `MarkdownPreview`。
-- [ ] **`ToolCallCard` 类型修复**：ToolCallStatus union 添加 `"auto_applied"`，删除 `as string`。
-- [ ] **Tab 超限改 Toast**：`EditorCenter.tsx` 的 `alert()` 改为 `sonner` / shadcn Toast。
-- [ ] **修复非 NPC 类型无法创建**：`AssetTree.tsx:61` 在 `handleNameChange` 中，当 `slugify(v)` 返回空字符串时回退到 `${type}-${Date.now().toString(36)}`，保证 slug 不为空（`AssetTree.tsx` 约第 59-62 行）。
-- [ ] **修复删除：同时删除磁盘文件**：`assets.py:204` 删除操作需在 `asset.status = "deleted"` 之后，额外调用 `os.remove(workspace_path / asset.file_path)`（需先拼完整路径）；若需保留文件，至少应将文件 frontmatter 中 `status` 改为 `deleted` 以防 sync 复活。
-- [ ] **`workspaceStore` 同步**：`WorkspacePage` 添加 `useEffect(() => setActiveWorkspaceId(id), [id])`。
+- [x] **修复 SessionDrawer 主题色**（F-1）：将所有 `--color-surface-2` → `--bg-surface`，`--color-border` → `--border`，`--color-text` → `--text`，`--color-primary` → `--accent`，删除 `#e2e8f0` 硬编码（`SessionDrawer.tsx` 第 93/108/112/177/249/280/295 行共 8 处）。
+- [x] **修复 SessionDrawer 架构**（F-3，最高优先级）：改为绝对定位覆盖层。打开时用 `position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; background: var(--bg-surface)` 覆盖聊天区，关闭时 `display: none`。删除 200px 硬编码宽度。
+- [x] **修复 accent 色硬编码**（F-2）：`AgentPanel.tsx:563` 的 `rgba(99,102,241,0.1)` 改为 `color-mix(in srgb, var(--accent) 12%, transparent)`。
+- [x] **对齐 leftWidth 默认值**（F-4）：`editorStore` 中 `leftWidth` 默认值改为 `280`。
+- [x] **面板持久化**（F-7）：`editorStore` 通过 `zustand/middleware persist` + `partialize` 持久化 layout 四键（leftWidth/rightWidth/leftCollapsed/rightCollapsed）。
+- [x] **Markdown 渲染**：`AgentPanel.tsx` 中 assistant 消息文本接入 `react-markdown + remark-gfm`，`.agent-md` CSS class。
+- [x] **`ToolCallCard` 类型修复**：ToolCallStatus union 添加 `"auto_applied"`，删除 `as string`。
+- [x] **Tab 超限改 Toast**：`EditorCenter.tsx` 的 `alert()` 改为 `sonner` Toast。
+- [x] **修复非 NPC 类型无法创建**：`AssetTree.tsx` `slugify()` 结果为空时回退到 `${type}-${Date.now().toString(36)}`。
+- [x] **修复删除：同时删除磁盘文件**：`assets.py` 删除操作调用 `file_path.unlink(missing_ok=True)` 后再软删除 DB 行。
+- [x] **`workspaceStore` 同步**：`WorkspacePage` 添加 `useEffect(() => setActiveWorkspaceId(id), [id])`。
 
 ### Phase 2 — 折叠条 UX + 聊天打磨
 
-- [ ] **折叠条 UX 重设计**（F-5）：宽度 12px，`padding: 0 4px`，hover 背景高亮，折叠/展开加 `transition: width 150ms ease`，用 `onClick`（短按）触发折叠、`onMouseDown` + `mousemove` 判断拖拽（移动 > 4px 认定为拖拽）。
-- [ ] **ToolCallCard 结构化展示**：展开后用 `<pre>{JSON.stringify(args, null, 2)}</pre>`，运行/完成阶段展示 result（截断超 500 字符，附"展开"按钮）。
-- [ ] **消息时间戳**：每条消息下方显示 `--text-subtle` 色的 `HH:mm`，hover 显示完整日期。
-- [ ] **`window.confirm` → AlertDialog**：`AssetTree.tsx` 删除操作改用 shadcn/ui `AlertDialog`。
+- [x] **折叠条 UX 重设计**（F-5）：宽度 12px，`padding: 0 4px`，hover 背景高亮，折叠/展开加 `transition: width 150ms ease`，`hasMoved` ref 区分单击折叠 vs 拖拽 resize。
+- [x] **ToolCallCard 结构化展示**：展开后格式化 JSON 参数，result 截断 500 字符附"展开全部"按钮。
+- [x] **消息时间戳**：每条消息下方显示 `--text-subtle` 色的 `HH:mm`，hover（`title` 属性）显示完整日期时间。
+- [x] **`window.confirm` → AlertDialog**：`AssetTree.tsx` 删除操作改用自定义深色主题 AlertDialog。
 
 ### Phase 3 — 资产树动作 + 面板增强
 
-- [ ] **资产树 rename / duplicate / inline 新建**。
-- [ ] **挂载 `AssetMetaPanel`**：在 `EditorCenter` Tab bar 下方折叠展示 slug、status、version。
-- [ ] **Panel maximize（Zen Mode）**：快捷键 `Cmd+Shift+\` 同时折叠左右栏。
-- [ ] **资产树虚拟化**：`@tanstack/react-virtual`。
+- [x] **资产树 rename / duplicate / inline 新建**：右键菜单支持重命名/复制；每个 section header 右侧加 `+` 按钮预设类型直接新建。
+- [x] **挂载 `AssetMetaPanel`**：在 `EditorCenter` Tab bar 下方折叠展示 slug、status、version。
+- [x] **Panel maximize（Zen Mode）**：快捷键 `Cmd+Shift+\` 同时折叠/展开左右栏。
+- [x] **资产树虚拟化**：`@tanstack/react-virtual`，拍平分组树为一维行数组，`useVirtualizer` 只渲染可见区域。
 
 ---
 

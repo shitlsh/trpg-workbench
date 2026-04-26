@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronRight, ChevronDown, Plus, Search, Trash2 } from "lucide-react";
 import type { Asset, AssetWithContent, CreateAssetRequest, CustomAssetTypeConfig } from "@trpg-workbench/shared-schema";
 import { useEditorStore } from "@/stores/editorStore";
@@ -31,12 +32,13 @@ function slugify(name: string): string {
 interface NewAssetFormProps {
   workspaceId: string;
   customConfigs: CustomAssetTypeConfig[];
+  presetType?: string;
   onClose: () => void;
 }
 
-function NewAssetForm({ workspaceId, customConfigs, onClose }: NewAssetFormProps) {
+function NewAssetForm({ workspaceId, customConfigs, presetType, onClose }: NewAssetFormProps) {
   const qc = useQueryClient();
-  const [type, setType] = useState<string>("npc");
+  const [type, setType] = useState<string>(presetType ?? "npc");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
@@ -155,6 +157,7 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showNewForm, setShowNewForm] = useState(false);
+  const [newFormPresetType, setNewFormPresetType] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; asset: Asset } | null>(null);
   const [hoverAssetId, setHoverAssetId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Asset | null>(null);
@@ -238,6 +241,46 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
     openTab(full);
   };
 
+  // ── Flatten tree into virtual rows ──────────────────────────────────────────
+  type HeaderRow = { kind: "header"; type: string; typeLabel: string; typeColor: string; emoji: string | null; TypeIcon: ReturnType<typeof getAssetTypeIcon> | null; isOther: boolean; count: number };
+  type AssetRow  = { kind: "asset";  asset: Asset; type: string; typeColor: string; emoji: string | null; RowIcon: ReturnType<typeof getAssetTypeIcon> };
+  type TreeRow   = HeaderRow | AssetRow;
+
+  const flatRows: TreeRow[] = [];
+  for (const [type, items] of Object.entries(byType)) {
+    const isOther = type === "__other__";
+    flatRows.push({
+      kind: "header",
+      type,
+      typeLabel: isOther ? "其他" : getAssetTypeLabel(type, customConfigs),
+      typeColor: isOther ? "var(--text-muted)" : getAssetTypeColor(type),
+      emoji: isOther ? null : getCustomTypeEmoji(type, customConfigs),
+      TypeIcon: isOther ? null : getAssetTypeIcon(type),
+      isOther,
+      count: items.length,
+    });
+    if (!collapsed.has(type)) {
+      for (const asset of items) {
+        flatRows.push({
+          kind: "asset",
+          asset,
+          type,
+          typeColor: getAssetTypeColor(asset.type),
+          emoji: getCustomTypeEmoji(asset.type, customConfigs),
+          RowIcon: getAssetTypeIcon(asset.type),
+        });
+      }
+    }
+  }
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: flatRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => flatRows[i].kind === "header" ? 26 : 30,
+    overscan: 5,
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* Header */}
@@ -276,120 +319,124 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
 
       {/* New asset form */}
       {showNewForm && (
-        <NewAssetForm workspaceId={workspaceId} customConfigs={customConfigs} onClose={() => setShowNewForm(false)} />
+        <NewAssetForm
+          workspaceId={workspaceId}
+          customConfigs={customConfigs}
+          presetType={newFormPresetType ?? undefined}
+          onClose={() => { setShowNewForm(false); setNewFormPresetType(null); }}
+        />
       )}
 
-      {/* Tree */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
-        {Object.entries(byType).map(([type, items]) => {
-          const isOther = type === "__other__";
-          const emoji = isOther ? null : getCustomTypeEmoji(type, customConfigs);
-          const TypeIcon = isOther ? null : getAssetTypeIcon(type);
-          const typeColor = isOther ? "var(--text-muted)" : getAssetTypeColor(type);
-          const typeLabel = isOther ? "其他" : getAssetTypeLabel(type, customConfigs);
-
-          return (
-            <div key={type}>
-              {/* Section header */}
-              <button
-                onClick={() => toggleCollapse(type)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                  width: "100%",
-                  padding: "4px 12px",
-                  background: "none",
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.5,
-                }}
-              >
-                {collapsed.has(type)
-                  ? <ChevronRight size={11} />
-                  : <ChevronDown size={11} />
-                }
-                {emoji
-                  ? <span style={{ fontSize: 11, color: typeColor }}>{emoji}</span>
-                  : TypeIcon && <TypeIcon size={11} color={typeColor} />
-                }
-                <span style={{ color: typeColor }}>{typeLabel}</span>
-                <span style={{ marginLeft: "auto", color: "var(--text-subtle)" }}>{items.length}</span>
-              </button>
-
-              {/* Asset rows */}
-              {!collapsed.has(type) && items.map((asset) => {
-                const isActive = activeTabId === asset.id;
-                const isHovered = hoverAssetId === asset.id;
-                const rowEmoji = getCustomTypeEmoji(asset.type, customConfigs);
-                const RowIcon = getAssetTypeIcon(asset.type);
-                const rowColor = getAssetTypeColor(asset.type);
-
-                return (
-                  <div
-                    key={asset.id}
-                    onClick={() => openAsset(asset)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({ x: e.clientX, y: e.clientY, asset });
-                    }}
-                    onMouseEnter={() => setHoverAssetId(asset.id)}
-                    onMouseLeave={() => setHoverAssetId(null)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "5px 12px 5px 0",
-                      paddingLeft: 0,
-                      cursor: "pointer",
-                      borderRadius: 4,
-                      margin: "1px 4px",
-                      background: isActive
-                        ? `color-mix(in srgb, ${rowColor} 10%, transparent)`
-                        : isHovered
-                          ? "var(--bg-hover)"
-                          : "none",
-                      borderLeft: isActive
-                        ? `var(--active-bar-width) solid ${rowColor}`
-                        : "var(--active-bar-width) solid transparent",
-                    }}
-                  >
-                    {/* indent after the border */}
-                    <span style={{ width: 20, flexShrink: 0 }} />
-                    {rowEmoji
-                      ? <span style={{ fontSize: 13, color: isActive ? rowColor : "var(--text-muted)" }}>{rowEmoji}</span>
-                      : <RowIcon size={13} color={isActive ? rowColor : "var(--text-muted)"} />
-                    }
-                    <span style={{
-                      flex: 1,
-                      fontSize: 13,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      color: isActive ? "var(--text)" : undefined,
-                    }}>
-                      {asset.name}
-                    </span>
-                    <span
-                      style={{
-                        width: 7, height: 7, borderRadius: "50%",
-                        background: STATUS_COLORS[asset.status] ?? "#888",
-                        flexShrink: 0,
-                      }}
-                      title={asset.status}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
-
-        {filtered.length === 0 && (
+      {/* Tree — virtualized */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
+        {filtered.length === 0 ? (
           <div style={{ padding: "12px", color: "var(--text-muted)", fontSize: 12, textAlign: "center" }}>
             {search ? "无匹配资产" : "暂无资产，点击 + 新建"}
+          </div>
+        ) : (
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {virtualizer.getVirtualItems().map((vitem) => {
+              const row = flatRows[vitem.index];
+              return (
+                <div
+                  key={vitem.key}
+                  data-index={vitem.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: vitem.start,
+                    left: 0,
+                    right: 0,
+                  }}
+                >
+                  {row.kind === "header" ? (
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <button
+                        onClick={() => toggleCollapse(row.type)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 5,
+                          flex: 1, padding: "4px 6px 4px 12px",
+                          background: "none", color: "var(--text-muted)",
+                          fontSize: 11, fontWeight: 600,
+                          textTransform: "uppercase", letterSpacing: 0.5,
+                        }}
+                      >
+                        {collapsed.has(row.type) ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                        {row.emoji
+                          ? <span style={{ fontSize: 11, color: row.typeColor }}>{row.emoji}</span>
+                          : row.TypeIcon && <row.TypeIcon size={11} color={row.typeColor} />
+                        }
+                        <span style={{ color: row.typeColor }}>{row.typeLabel}</span>
+                        <span style={{ marginLeft: "auto", color: "var(--text-subtle)" }}>{row.count}</span>
+                      </button>
+                      {!row.isOther && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNewFormPresetType(row.type);
+                            setShowNewForm(true);
+                          }}
+                          title={`新建 ${row.typeLabel}`}
+                          style={{
+                            padding: "2px 6px", background: "none",
+                            color: "var(--text-subtle)", fontSize: 12,
+                            lineHeight: 1, borderRadius: 3,
+                          }}
+                        >
+                          <Plus size={11} />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    (() => {
+                      const { asset, typeColor, emoji, RowIcon } = row;
+                      const isActive = activeTabId === asset.id;
+                      const isHovered = hoverAssetId === asset.id;
+                      return (
+                        <div
+                          onClick={() => openAsset(asset)}
+                          onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, asset }); }}
+                          onMouseEnter={() => setHoverAssetId(asset.id)}
+                          onMouseLeave={() => setHoverAssetId(null)}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            padding: "5px 12px 5px 0", paddingLeft: 0,
+                            cursor: "pointer", borderRadius: 4, margin: "1px 4px",
+                            background: isActive
+                              ? `color-mix(in srgb, ${typeColor} 10%, transparent)`
+                              : isHovered ? "var(--bg-hover)" : "none",
+                            borderLeft: isActive
+                              ? `var(--active-bar-width) solid ${typeColor}`
+                              : "var(--active-bar-width) solid transparent",
+                          }}
+                        >
+                          <span style={{ width: 20, flexShrink: 0 }} />
+                          {emoji
+                            ? <span style={{ fontSize: 13, color: isActive ? typeColor : "var(--text-muted)" }}>{emoji}</span>
+                            : <RowIcon size={13} color={isActive ? typeColor : "var(--text-muted)"} />
+                          }
+                          <span style={{
+                            flex: 1, fontSize: 13,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            color: isActive ? "var(--text)" : undefined,
+                          }}>
+                            {asset.name}
+                          </span>
+                          <span
+                            style={{
+                              width: 7, height: 7, borderRadius: "50%",
+                              background: STATUS_COLORS[asset.status] ?? "#888",
+                              flexShrink: 0,
+                            }}
+                            title={asset.status}
+                          />
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
