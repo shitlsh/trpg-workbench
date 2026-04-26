@@ -12,6 +12,7 @@ const TOOL_LABELS: Record<string, string> = {
   check_consistency: "一致性检查",
   consult_rules: "规则咨询",
   create_skill: "新建 Skill",
+  web_search: "网络搜索",
 };
 
 interface ToolCallCardProps {
@@ -144,7 +145,7 @@ function KnowledgeResultView({ raw, args }: { raw: string; args: Record<string, 
 
 // Build a short inline description of args for display in the card header
 function argsSummary(name: string, args: Record<string, unknown>): string | null {
-  if (name === "search_knowledge" || name === "consult_rules") {
+  if (name === "search_knowledge" || name === "consult_rules" || name === "web_search") {
     const q = args.query as string;
     return q ? `"${q}"` : null;
   }
@@ -236,29 +237,29 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
         }}
       >
         {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-        {statusIcon()}
-        <span style={{ color: "var(--text)", fontWeight: 500 }}>{label}</span>
+        <span style={{ flexShrink: 0 }}>{statusIcon()}</span>
+        <span style={{ color: "var(--text)", fontWeight: 500, flexShrink: 0 }}>{label}</span>
         {inlineArgsSummary && (
-          <span style={{ color: "var(--text-muted)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 10, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {inlineArgsSummary}
           </span>
         )}
         {isAutoApplied && (
           <span style={{
-            fontSize: 9, padding: "1px 5px", borderRadius: 8,
+            fontSize: 9, padding: "1px 5px", borderRadius: 8, flexShrink: 0,
             background: "rgba(82,201,126,0.15)", color: "#52c97e",
-            border: "1px solid rgba(82,201,126,0.3)", flexShrink: 0,
+            border: "1px solid rgba(82,201,126,0.3)",
           }}>
             已自动应用
           </span>
         )}
         {toolCall.result_summary && !isAutoApplied && !consistencyReport && !knowledgeSummary && (
-          <span style={{ color: "var(--text-subtle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ color: "var(--text-subtle)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             — {toolCall.result_summary}
           </span>
         )}
         {knowledgeSummary && (
-          <span style={{ color: "var(--text-muted)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 10, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             — {knowledgeSummary}
           </span>
         )}
