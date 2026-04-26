@@ -28,6 +28,54 @@ from app.agents.model_adapter import model_from_profile
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+# ─── History compaction helper ────────────────────────────────────────────────
+
+async def _summarize_dropped_messages(
+    dropped: list[dict],
+    profile,
+    model_name: str,
+) -> str | None:
+    """Generate a ≤200-char summary of dropped messages via a one-shot LLM call.
+
+    Returns None on any failure so callers fall back to the generic Phase-1 notice.
+    """
+    if not dropped:
+        return None
+    try:
+        from openai import AsyncOpenAI
+        from app.agents.model_adapter import _decrypt_key
+
+        api_key = _decrypt_key(profile) or "dummy"
+        base_url = profile.base_url or None
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+        lines = []
+        for m in dropped:
+            role = m.get("role", "user")
+            content = (m.get("content", "") or "")[:300]
+            lines.append(f"{role}: {content}")
+        transcript = "\n".join(lines)
+
+        resp = await client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "用一两句中文（不超过150字）概括以下对话历史的要点，"
+                        "供后续对话参考。只输出摘要，不加任何前缀或解释。"
+                    ),
+                },
+                {"role": "user", "content": transcript},
+            ],
+            max_tokens=150,
+            temperature=0.3,
+        )
+        summary = (resp.choices[0].message.content or "").strip()
+        return summary[:300] if summary else None
+    except Exception:
+        return None
+
 # ─── Session management ───────────────────────────────────────────────────────
 
 @router.post("/sessions", response_model=ChatSessionSchema, status_code=201)
@@ -168,22 +216,29 @@ async def send_message(
 
     # Multi-turn history
     history = chat_service.read_recent_messages(ws.workspace_path, session_id, limit=20)
-    history, truncated = chat_service.trim_to_budget(history)
+    trimmed, truncated = chat_service.trim_to_budget(history)
     # Remove the just-appended user message (it's already the `body.content` we pass)
-    if history and history[-1]["role"] == "user":
-        history = history[:-1]
+    if trimmed and trimmed[-1]["role"] == "user":
+        trimmed = trimmed[:-1]
 
-    # If history was truncated, persist a system notice and prepend to history
-    # so the LLM knows context was trimmed (and the user sees it in the chat).
+    # If history was truncated, try to generate a summary of dropped messages (Phase 2).
+    # Fall back to a generic notice if the LLM call fails (Phase 1 behaviour).
     if truncated:
-        truncation_notice = "[系统提示：对话历史较长，部分早期内容已移出上下文窗口]"
+        dropped = history[: len(history) - len(trimmed)]
+        summary = await _summarize_dropped_messages(dropped, profile, model_name)
+        if summary:
+            truncation_notice = f"[上下文摘要：{summary}]"
+        else:
+            truncation_notice = "[系统提示：对话历史较长，部分早期内容已移出上下文窗口]"
         chat_service.append_message(
             workspace_path=ws.workspace_path,
             session_id=session_id,
             role="system",
             content=truncation_notice,
         )
-        history = [{"role": "system", "content": truncation_notice}] + history
+        history = [{"role": "system", "content": truncation_notice}] + trimmed
+    else:
+        history = trimmed
 
     # Handle @mention referenced assets
     referenced_assets: list[dict] = []
