@@ -6,11 +6,12 @@ disk and return results immediately — no user confirmation step.
 """
 from __future__ import annotations
 import json
+import uuid
 from agno.agent import Agent
 from agno.models.message import Message
 from app.agents.model_adapter import strip_code_fence
 from app.agents.tools import (
-    ALL_TOOLS, configure as configure_tools,
+    ALL_TOOLS, configure as configure_tools, AgentQuestionInterrupt,
 )
 from app.prompts import load_prompt
 
@@ -164,6 +165,11 @@ async def run_director_stream(
                         },
                     }
 
+        yield {"event": "done", "data": {}}
+
+    except AgentQuestionInterrupt as e:
+        q_id = f"q_{uuid.uuid4().hex[:12]}"
+        yield {"event": "agent_question", "data": {"id": q_id, "questions": e.questions}}
         yield {"event": "done", "data": {}}
 
     except Exception as e:

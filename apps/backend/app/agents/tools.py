@@ -773,6 +773,54 @@ def web_search(query: str = "", max_results: int = 5) -> str:
 
 # ─── Tool list for Director ────────────────────────────────────────────────────
 
+# ─── Question Interrupt ───────────────────────────────────────────────────────
+
+class AgentQuestionInterrupt(Exception):
+    """Raised by ask_user to interrupt the Director stream and surface a structured
+    question card to the user.  The SSE layer catches this and emits an
+    ``agent_question`` event, then terminates the current stream.  The user's
+    answer arrives as the next chat message, giving the Director full context to
+    continue in the following arun() call.
+    """
+
+    def __init__(self, questions: list[dict]) -> None:
+        self.questions = questions
+        super().__init__("agent_question")
+
+
+@tool
+def ask_user(questions: list[dict]) -> str:
+    """向用户提出结构化选择问题，在收到答复后继续当前任务。
+
+    当任务方向存在**关键分叉**且无法从现有上下文或对话历史推断时调用。
+    每次调用最多提 2 个问题，每个问题 2-4 个选项。
+    调用后当前推理流程将暂停，等待用户点选答复后在下一轮继续。
+
+    questions 格式（list，每项为一个问题）：
+    [
+        {
+            "header": "简短标题（10 字以内）",
+            "question": "完整问题描述",
+            "options": [
+                {"label": "选项标签（2-5 字）", "description": "一句话解释这个选项的含义"}
+            ],
+            "multiple": false   // true 时允许多选，默认 false
+        }
+    ]
+
+    禁止调用场景：
+    - 仅为"礼貌确认"（"我准备创建 NPC，你确认吗？"）
+    - 对话历史中已有足够信息可推断答案
+    - 规则集/工作空间配置已能决定方向
+    - 每次超过 2 个问题
+    """
+    if not questions or not isinstance(questions, list):
+        return json.dumps({"error": "questions 必须是非空列表"}, ensure_ascii=False)
+    if len(questions) > 2:
+        questions = questions[:2]  # 强制限制，不报错
+    raise AgentQuestionInterrupt(questions)
+
+
 ALL_TOOLS = [list_assets, read_asset, grep_asset, read_asset_section, search_assets, search_knowledge,
              create_asset, patch_asset, update_asset, check_consistency, consult_rules, create_skill,
-             web_search]
+             web_search, ask_user]

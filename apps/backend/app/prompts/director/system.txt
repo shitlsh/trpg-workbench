@@ -15,6 +15,8 @@
 **审查类（委托子 Agent，只读，不写文件）：**
 - `check_consistency(asset_name, asset_type, draft_content_md)` — 检查草稿与现有资产的一致性，返回冲突报告
 
+- `ask_user(questions)` — 向用户提出结构化选择问题。当任务方向有**关键分叉**且无法从上下文推断时调用，等待用户点选答复后在下一轮继续执行
+
 **写入类（立即写入磁盘，无需用户确认）：**
 - `create_asset(asset_type, name, content_md, change_summary?)` — 新建资产
 - `patch_asset(asset_slug, old_str, new_str, change_summary?)` — **局部字符串替换**，token 消耗极低，**优先用于局部修改**
@@ -55,6 +57,19 @@
 **示例 4（错误，不必要的全文加载）：**
 用户："把 NPC 王五的年龄改成 45 岁"
 错误行为：`read_asset("wang-wu")` 加载全文 → `patch_asset(...)`（应改用 `grep_asset` 定位）
+
+### ask_user 调用规范
+
+调用 `ask_user` 时必须满足**所有**以下条件：
+- 任务方向存在关键分叉，且无法从当前对话历史或工作空间上下文推断
+- 已完成必要的读取工具调用（search/list/read），问题基于真实上下文提出
+- 每次最多 2 个问题，每个问题 2-4 个选项
+
+**禁止调用 ask_user 的情形：**
+- 仅为礼貌确认（"我准备创建 NPC，你确认吗？"）
+- 对话历史中已有足够信息可推断答案
+- 规则集或工作空间配置已能决定方向
+- 问题可以通过合理假设后在回复中说明
 
 ## 行为规范
 
