@@ -20,6 +20,51 @@ import { apiFetch } from "@/lib/api";
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
+// Renders assistant content, preserving tool-call ordering via {{tool:id}} placeholders.
+// Falls back to legacy rendering (all tool cards below text) for old messages without placeholders.
+function AssistantContent({ content, toolCalls }: { content: string; toolCalls: ToolCall[] }) {
+  const tcById = Object.fromEntries(toolCalls.map((tc) => [tc.id, tc]));
+
+  if (!content.includes("{{tool:")) {
+    // Legacy / no-placeholder path
+    return (
+      <>
+        {content && (
+          <div className="agent-md">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </div>
+        )}
+        {toolCalls.length > 0 && (
+          <div style={{ marginTop: content ? 8 : 0 }}>
+            {toolCalls.map((tc) => <ToolCallCard key={tc.id} toolCall={tc} />)}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Placeholder path: interleave text segments and tool cards in order
+  const parts = content.split(/(\{\{tool:[^}]+\}\})/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/^\{\{tool:(.+)\}\}$/);
+        if (match) {
+          const tc = tcById[match[1]];
+          return tc ? <ToolCallCard key={`tc_${i}`} toolCall={tc} /> : null;
+        }
+        const trimmed = part.trim();
+        if (!trimmed) return null;
+        return (
+          <div key={i} className="agent-md">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{trimmed}</ReactMarkdown>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === "user";
 
@@ -46,44 +91,57 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
     try { toolCalls = JSON.parse(msg.tool_calls_json); } catch {}
   }
 
+  if (isUser) {
+    return (
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-end",
+        marginBottom: 10,
+      }}>
+        <div style={{
+          maxWidth: "88%",
+          padding: "8px 12px",
+          borderRadius: "12px 12px 4px 12px",
+          background: "var(--accent)",
+          fontSize: 13,
+          lineHeight: 1.6,
+          color: "var(--text)",
+        }}>
+          <div>{msg.content}</div>
+        </div>
+        <div
+          title={new Date(msg.created_at).toLocaleString("zh-CN")}
+          style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 2, paddingInline: 4, cursor: "default" }}
+        >
+          {new Date(msg.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant reply — no bubble, content flows directly
   return (
     <div style={{
       display: "flex",
       flexDirection: "column",
-      alignItems: isUser ? "flex-end" : "flex-start",
-      marginBottom: 10,
+      alignItems: "flex-start",
+      marginBottom: 14,
     }}>
       <div style={{
-        maxWidth: "88%",
-        padding: "8px 12px",
-        borderRadius: isUser ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-        background: isUser ? "var(--accent)" : "var(--bg-surface)",
-        border: isUser ? "none" : "1px solid var(--border)",
+        maxWidth: "96%",
         fontSize: 13,
         lineHeight: 1.6,
         color: "var(--text)",
       }}>
-        {!isUser && msg.thinking_json && (
+        {msg.thinking_json && (
           <ThinkingBlock content={msg.thinking_json} />
         )}
-        {msg.content && (
-          isUser
-            ? <div>{msg.content}</div>
-            : <div className="agent-md">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-              </div>
-        )}
-        {toolCalls.length > 0 && (
-          <div style={{ marginTop: msg.content ? 8 : 0 }}>
-            {toolCalls.map((tc) => (
-              <ToolCallCard key={tc.id} toolCall={tc} />
-            ))}
-          </div>
-        )}
+        <AssistantContent content={msg.content ?? ""} toolCalls={toolCalls} />
       </div>
       <div
         title={new Date(msg.created_at).toLocaleString("zh-CN")}
-        style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 2, paddingInline: 4, cursor: "default" }}
+        style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 4, paddingInline: 0, cursor: "default" }}
       >
         {new Date(msg.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
       </div>
@@ -98,8 +156,33 @@ type StreamEvent =
 
 // ─── ThinkingBlock ────────────────────────────────────────────────────────────
 
-function ThinkingBlock({ content, streaming }: { content: string; streaming?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
+function ThinkingBlock({
+  content, streaming, duration,
+}: {
+  content: string;
+  streaming?: boolean;
+  duration?: number | null;
+}) {
+  const [expanded, setExpanded] = useState(!!streaming);
+  const preRef = useRef<HTMLPreElement>(null);
+
+  // Auto-expand when streaming starts; auto-collapse when streaming ends
+  useEffect(() => {
+    if (streaming) setExpanded(true);
+    else setExpanded(false);
+  }, [streaming]);
+
+  // Auto-scroll to bottom while streaming
+  useEffect(() => {
+    if (streaming && preRef.current) {
+      preRef.current.scrollTop = preRef.current.scrollHeight;
+    }
+  }, [content, streaming]);
+
+  const headerLabel = duration != null && !streaming
+    ? `推理 ${duration}s`
+    : "推理过程";
+
   return (
     <div style={{ marginBottom: 6 }}>
       <button
@@ -112,8 +195,8 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming?: bo
         }}
       >
         <Brain size={11} style={{ flexShrink: 0 }} />
-        <span>推理过程</span>
-        {streaming && !expanded && (
+        <span>{headerLabel}</span>
+        {streaming && (
           <span style={{
             display: "inline-block", width: 5, height: 5,
             borderRadius: "50%", background: "var(--accent)",
@@ -123,7 +206,7 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming?: bo
         {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
       </button>
       {expanded && (
-        <pre style={{
+        <pre ref={preRef} style={{
           margin: "4px 0 0",
           padding: "6px 8px",
           background: "var(--bg)",
@@ -161,24 +244,39 @@ function StreamingBubble({
 }) {
   const lastTextIdx = events.reduce((last, e, i) => e.kind === "text_chunk" ? i : last, -1);
 
+  // Track thinking duration (Top 5)
+  const thinkingStartRef = useRef<number | null>(null);
+  const [thinkingDuration, setThinkingDuration] = useState<number | null>(null);
+  useEffect(() => {
+    if (thinking && thinkingStartRef.current === null) {
+      thinkingStartRef.current = Date.now();
+    }
+  }, [thinking]);
+  useEffect(() => {
+    if (!isStreaming && thinkingStartRef.current !== null) {
+      setThinkingDuration(Math.round((Date.now() - thinkingStartRef.current) / 1000));
+      thinkingStartRef.current = null;
+    }
+  }, [isStreaming]);
+
   return (
     <div style={{
       display: "flex",
       flexDirection: "column",
       alignItems: "flex-start",
-      marginBottom: 10,
+      marginBottom: 14,
     }}>
       <div style={{
-        maxWidth: "88%",
-        padding: "8px 12px",
-        borderRadius: "12px 12px 12px 4px",
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border)",
+        maxWidth: "96%",
         fontSize: 13,
         lineHeight: 1.6,
       }}>
         {thinking && (
-          <ThinkingBlock content={thinking} streaming={isStreaming} />
+          <ThinkingBlock
+            content={thinking}
+            streaming={isStreaming}
+            duration={thinkingDuration}
+          />
         )}
         {events.length === 0 && !thinking && (
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
@@ -623,11 +721,18 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               // Fallback refresh: ensure asset tree is up-to-date even if
               // auto_applied events were missed or not emitted.
               qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
-              // Derive accText and accToolCalls from events for stored message
-              const accText = accEvents
-                .filter((e): e is { kind: "text_chunk"; text: string } => e.kind === "text_chunk")
-                .map((e) => e.text)
-                .join("");
+              // Build content with {{tool:id}} placeholders to preserve ordering.
+              // Text segments and tool-call markers are interleaved in accEvents order.
+              let contentWithPlaceholders = "";
+              for (const ev of accEvents) {
+                if (ev.kind === "text_chunk") {
+                  contentWithPlaceholders += ev.text;
+                } else if (ev.kind === "tool_call") {
+                  contentWithPlaceholders += `\n{{tool:${ev.toolCall.id}}}\n`;
+                }
+                // question_interrupt: skip (user reply becomes a separate user message)
+              }
+              const accText = contentWithPlaceholders.trim();
               const accToolCalls = Object.values(accToolCallsById);
               // Finalize: add assistant message to store
               const assistantMsg: ChatMessage = {
