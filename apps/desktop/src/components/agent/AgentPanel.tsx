@@ -71,7 +71,13 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
-function StreamingBubble({ content, toolCalls }: { content: string; toolCalls: ToolCall[] }) {
+type StreamEvent =
+  | { kind: "text_chunk"; text: string }
+  | { kind: "tool_call"; toolCall: ToolCall };
+
+function StreamingBubble({ events }: { events: StreamEvent[] }) {
+  const lastTextIdx = events.reduce((last, e, i) => e.kind === "text_chunk" ? i : last, -1);
+
   return (
     <div style={{
       display: "flex",
@@ -88,26 +94,32 @@ function StreamingBubble({ content, toolCalls }: { content: string; toolCalls: T
         fontSize: 13,
         lineHeight: 1.6,
       }}>
-        {toolCalls.map((tc) => (
-          <ToolCallCard key={tc.id} toolCall={tc} />
-        ))}
-        {content && (
-          <div style={{ marginTop: toolCalls.length > 0 ? 8 : 0 }} className="agent-md">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-            <span style={{
-              display: "inline-block",
-              width: 6,
-              height: 13,
-              background: "var(--text-muted)",
-              marginLeft: 2,
-              verticalAlign: "text-bottom",
-              animation: "blink 1s step-end infinite",
-            }} />
-          </div>
-        )}
-        {!content && toolCalls.length === 0 && (
+        {events.length === 0 && (
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>思考中...</span>
         )}
+        {events.map((e, i) => {
+          if (e.kind === "tool_call") {
+            return <ToolCallCard key={e.toolCall.id} toolCall={e.toolCall} />;
+          }
+          // text_chunk
+          const isLast = i === lastTextIdx;
+          return (
+            <div key={i} className="agent-md">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{e.text}</ReactMarkdown>
+              {isLast && (
+                <span style={{
+                  display: "inline-block",
+                  width: 6,
+                  height: 13,
+                  background: "var(--text-muted)",
+                  marginLeft: 2,
+                  verticalAlign: "text-bottom",
+                  animation: "blink 1s step-end infinite",
+                }} />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -216,8 +228,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   });
 
   // SSE streaming state
-  const [streamingText, setStreamingText] = useState("");
-  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
+  const [streamingEvents, setStreamingEvents] = useState<StreamEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
   // Queue for messages sent while a stream is in progress
@@ -286,7 +297,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isStreaming, streamingText, streamingToolCalls]);
+  }, [messages, isStreaming, streamingEvents]);
 
   // Switch to a session and load its messages
   const switchToSession = useCallback(async (s: ChatSession) => {
@@ -370,8 +381,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     addMessage(fakeUserMsg);
 
     setIsStreaming(true);
-    setStreamingText("");
-    setStreamingToolCalls([]);
+    setStreamingEvents([]);
     setTyping(true);
 
     const ctrl = new AbortController();
@@ -402,8 +412,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       const decoder = new TextDecoder();
       let buf = "";
 
-      let accText = "";
-      let accToolCalls: ToolCall[] = [];
+      let accEvents: StreamEvent[] = [];
+      let accToolCallsById: Record<string, ToolCall> = {};
       let currentEvent = "";
 
       while (true) {
@@ -428,8 +438,17 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
             if (currentEvent === "text_delta") {
               const chunk = (data.content as string) ?? "";
-              accText += chunk;
-              setStreamingText(accText);
+              // Append to last text_chunk or push new one
+              const last = accEvents[accEvents.length - 1];
+              if (last && last.kind === "text_chunk") {
+                accEvents = [
+                  ...accEvents.slice(0, -1),
+                  { kind: "text_chunk", text: last.text + chunk },
+                ];
+              } else {
+                accEvents = [...accEvents, { kind: "text_chunk", text: chunk }];
+              }
+              setStreamingEvents([...accEvents]);
 
             } else if (currentEvent === "tool_call_start") {
               const tc: ToolCall = {
@@ -439,17 +458,26 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 status: "running",
                 result_summary: null,
               };
-              accToolCalls = [...accToolCalls, tc];
-              setStreamingToolCalls([...accToolCalls]);
+              accToolCallsById[tc.id] = tc;
+              accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
+              setStreamingEvents([...accEvents]);
 
             } else if (currentEvent === "tool_call_result") {
               const tcId = data.id as string;
-              accToolCalls = accToolCalls.map((tc) =>
-                tc.id === tcId
-                  ? { ...tc, status: "done" as const, result_summary: (data.summary as string) ?? null }
-                  : tc
-              );
-              setStreamingToolCalls([...accToolCalls]);
+              if (accToolCallsById[tcId]) {
+                const updated = {
+                  ...accToolCallsById[tcId],
+                  status: "done" as const,
+                  result_summary: (data.summary as string) ?? null,
+                };
+                accToolCallsById[tcId] = updated;
+                accEvents = accEvents.map((e) =>
+                  e.kind === "tool_call" && e.toolCall.id === tcId
+                    ? { kind: "tool_call", toolCall: updated }
+                    : e
+                );
+                setStreamingEvents([...accEvents]);
+              }
 
             } else if (currentEvent === "auto_applied") {
               // Asset written directly — refresh assets list
@@ -461,10 +489,17 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 status: "auto_applied" as ToolCall["status"],
                 result_summary: null,
               };
-              accToolCalls = [...accToolCalls, tc];
-              setStreamingToolCalls([...accToolCalls]);
+              accToolCallsById[tc.id] = tc;
+              accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
+              setStreamingEvents([...accEvents]);
 
             } else if (currentEvent === "done") {
+              // Derive accText and accToolCalls from events for stored message
+              const accText = accEvents
+                .filter((e): e is { kind: "text_chunk"; text: string } => e.kind === "text_chunk")
+                .map((e) => e.text)
+                .join("");
+              const accToolCalls = Object.values(accToolCallsById);
               // Finalize: add assistant message to store
               const assistantMsg: ChatMessage = {
                 id: `assistant_${Date.now()}`,
@@ -480,8 +515,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               };
               addMessage(assistantMsg);
               setIsStreaming(false);
-              setStreamingText("");
-              setStreamingToolCalls([]);
+              setStreamingEvents([]);
               setTyping(false);
               flushQueue();
 
@@ -497,8 +531,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               };
               addMessage(errMsg);
               setIsStreaming(false);
-              setStreamingText("");
-              setStreamingToolCalls([]);
+              setStreamingEvents([]);
               setTyping(false);
               flushQueue();
             }
@@ -507,8 +540,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       }
       // Guard: if stream closed without a `done` SSE event, clear streaming state
       setIsStreaming(false);
-      setStreamingText("");
-      setStreamingToolCalls([]);
+      setStreamingEvents([]);
       setTyping(false);
       flushQueue();
     } catch (e) {
@@ -524,8 +556,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         });
       }
       setIsStreaming(false);
-      setStreamingText("");
-      setStreamingToolCalls([]);
+      setStreamingEvents([]);
       setTyping(false);
       // Don't flush on abort — user intentionally stopped; discard queue too
       if ((e as Error).name === "AbortError") {
@@ -539,8 +570,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const handleReset = () => {
     abortRef.current?.abort();
     setIsStreaming(false);
-    setStreamingText("");
-    setStreamingToolCalls([]);
+    setStreamingEvents([]);
     syncQueue([]);
     createNewSession();
   };
@@ -624,7 +654,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           ))}
 
           {isStreaming && (
-            <StreamingBubble content={streamingText} toolCalls={streamingToolCalls} />
+            <StreamingBubble events={streamingEvents} />
           )}
 
           <div ref={bottomRef} />

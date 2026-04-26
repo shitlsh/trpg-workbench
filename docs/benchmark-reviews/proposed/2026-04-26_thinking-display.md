@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: partial
 date: 2026-04-26
 source: OpenPawz, 用户实测反馈
 theme: Thinking/Reasoning 过程展示 + 工具调用 UX 打磨
@@ -77,43 +77,22 @@ Agent 开始写文字...（流式追加）
 
 ---
 
-## 建议落地方式
+## 实现进度
 
-### Phase 1 — 工具调用顺序感（纯前端，无需后端）
+### Phase 1 — 工具调用顺序感（纯前端）✅ 已完成
 
-将 streaming state 从"两个独立列表"改为"统一时序事件序列"：
+- [x] 将 streaming state 从两个独立列表（`streamingText` + `streamingToolCalls`）改为统一时序事件序列 `StreamEvent[]`
+- [x] `text_delta` → 追加到最后一个 `text_chunk` 或新建
+- [x] `tool_call_start` / `auto_applied` → push `{ kind: "tool_call" }`
+- [x] `tool_call_result` → 用 id 更新对应 tool_call 的 status/result_summary
+- [x] `StreamingBubble` 按 `events` 顺序渲染，blinking cursor 在最后一个 text_chunk 末尾
+- [x] TypeScript 零错误（`pnpm tsc --noEmit`）
 
-```typescript
-// 当前
-streamingContent: string
-streamingToolCalls: ToolCall[]
+### Phase 2 — Thinking Token 折叠展示（需后端配合）⏳ 待实现
 
-// 目标
-type StreamEvent =
-  | { kind: "text_chunk"; text: string }
-  | { kind: "tool_call"; toolCall: ToolCall }
-
-streamingEvents: StreamEvent[]
-```
-
-- `text_delta` SSE 事件 → `push({ kind: "text_chunk", text })`（追加到最后一个 text_chunk 或新建）
-- `tool_call` SSE 事件 → `push({ kind: "tool_call", toolCall })`
-- `tool_result` SSE 事件 → 更新对应 toolCall 的 status/result_summary
-- `StreamingBubble` 按 `streamingEvents` 顺序渲染：text_chunk 用 `<ReactMarkdown>`，tool_call 用 `<ToolCallCard>`
-
-**效果**：用户看到工具调用与文字按实际发生顺序交替出现。
-
-### Phase 2 — Thinking Token 折叠展示（需后端配合）
+前置验证：agno 版本（2.5.x）对 thinking token 的事件类型需要确认，实现 Phase 2 前需验证 agno 是否透传 thinking 事件。如 agno 不支持，则需要通过 model_adapter 层直接捕获原始 API 响应。
 
 1. **后端** `apps/backend/app/agents/director.py`：在 agno event 处理循环中捕获 `ThinkingContent` / `ReasoningContent` 类型事件，emit 新 SSE 类型 `thinking_delta`（`{"content": "..."}` 增量流）
 2. **前端** `AgentPanel.tsx`：新增 `thinkingText` 累积 state，处理 `thinking_delta` 事件；在 `streamingEvents` 序列最前方插入 thinking block
 3. **UI**：在助手气泡最顶部显示折叠块"💭 推理过程"，默认收起，点击展开显示 thinking 内容（monospace 小字，`var(--text-subtle)` 色）
 4. **持久化**：thinking 内容在 `done` 事件后随消息存入新字段（DB schema 扩展或 `tool_calls_json` 旁新增 `thinking_json`）
-
----
-
-## 前置验证
-
-当前 agno 版本（2.5.x）对 thinking token 的事件类型需要确认，实现 Phase 2 前需验证 agno 是否透传 thinking 事件。如 agno 不支持，则需要通过 model_adapter 层直接捕获原始 API 响应。
-
-Phase 1 无此依赖，可独立先行。
