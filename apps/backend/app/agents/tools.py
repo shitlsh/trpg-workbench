@@ -82,34 +82,154 @@ def list_assets(asset_type: str = "", name_contains: str = "", status: str = "",
 @tool
 def read_asset(asset_slug: str) -> str:
     """读取指定资产的完整 Markdown 内容。asset_slug 是资产的 slug 标识符。
-    返回 Markdown 文本，如果未找到则返回错误信息。"""
+    返回 Markdown 文本，如果未找到则返回错误信息。
+    注意：仅在需要理解资产完整结构时使用；若只需查找特定文本请用 grep_asset，
+    若只需读取某个章节请用 read_asset_section。"""
+    file_path = _resolve_asset_file(asset_slug)
+    if file_path is None:
+        return f"错误：未找到 slug 为 '{asset_slug}' 的资产"
+    try:
+        return file_path.read_text(encoding="utf-8")
+    except Exception as e:
+        return f"错误：读取文件失败 — {e}"
+
+
+def _resolve_asset_file(asset_slug: str) -> "Path | None":
+    """Shared helper: resolve an asset slug to its file path.
+
+    Searches the workspace assets directory recursively. Handles both
+    hyphen-slug and underscore-slug variants (e.g. "wang-wu" matches
+    file "wang_wu.md"). Returns None if not found.
+    """
     ws_path = _workspace_context.get("workspace_path", "")
     if not ws_path:
-        return "错误：未找到工作空间路径"
-
-    # Search asset files across all subdirectories
+        return None
     assets_root = Path(ws_path) / "assets"
     if not assets_root.exists():
         assets_root = Path(ws_path)
-
-    # Try to find by slug
     for md_file in assets_root.rglob("*.md"):
-        if md_file.stem == asset_slug or md_file.stem.replace("-", "_") == asset_slug:
-            try:
-                return md_file.read_text(encoding="utf-8")
-            except Exception as e:
-                return f"错误：读取文件失败 — {e}"
-
-    # Also try DB lookup if available
+        stem = md_file.stem
+        if stem == asset_slug or stem.replace("-", "_") == asset_slug or stem.replace("_", "-") == asset_slug:
+            return md_file
+    # DB fallback
     if _db is not None:
         from app.models.orm import AssetORM
-        assets_list = _workspace_context.get("existing_assets", [])
-        # match by slug
-        matched = next((a for a in assets_list if a.get("slug") == asset_slug), None)
-        if matched is None:
-            return f"错误：未找到 slug 为 '{asset_slug}' 的资产"
+        workspace_id = _get_workspace_id_from_path(ws_path, _db)
+        if workspace_id:
+            asset = _db.query(AssetORM).filter_by(workspace_id=workspace_id, slug=asset_slug).first()
+            if asset:
+                from app.utils.paths import asset_type_dir
+                candidate = asset_type_dir(ws_path, asset.type) / f"{asset_slug}.md"
+                if candidate.exists():
+                    return candidate
+    return None
 
-    return f"错误：未找到 slug 为 '{asset_slug}' 的资产"
+
+@tool
+def grep_asset(asset_slug: str, pattern: str, context_lines: int = 2) -> str:
+    """在单个资产文件内搜索文本，返回匹配行及上下文，不加载全文。
+    这是局部修改前定位精确 old_str 的首选工具（token 消耗极低）。
+    asset_slug：资产标识符。
+    pattern：要搜索的字面量字符串（大小写敏感）。
+    context_lines：匹配行上下各保留几行上下文（默认 2）。
+    返回 JSON，含 matches 列表，每项有 line（行号）和 context（上下文文本）。
+    若无匹配则 matches 为空列表并附带提示信息。"""
+    if not pattern:
+        return json.dumps({"error": "pattern 不能为空"}, ensure_ascii=False)
+
+    file_path = _resolve_asset_file(asset_slug)
+    if file_path is None:
+        return json.dumps({"error": f"未找到 slug 为 '{asset_slug}' 的资产文件"}, ensure_ascii=False)
+
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except Exception as e:
+        return json.dumps({"error": f"读取文件失败：{e}"}, ensure_ascii=False)
+
+    lines = text.splitlines()
+    matching_line_indices = [i for i, ln in enumerate(lines) if pattern in ln]
+
+    if not matching_line_indices:
+        return json.dumps({
+            "asset_slug": asset_slug,
+            "pattern": pattern,
+            "matches": [],
+            "message": "未找到匹配内容，请检查 pattern 是否精确（大小写敏感）",
+        }, ensure_ascii=False)
+
+    MAX_MATCHES = 10
+    truncated = len(matching_line_indices) > MAX_MATCHES
+    matching_line_indices = matching_line_indices[:MAX_MATCHES]
+
+    matches = []
+    for idx in matching_line_indices:
+        start = max(0, idx - context_lines)
+        end = min(len(lines), idx + context_lines + 1)
+        context_text = "\n".join(lines[start:end])
+        matches.append({"line": idx + 1, "context": context_text})
+
+    result: dict = {"asset_slug": asset_slug, "pattern": pattern, "matches": matches}
+    if truncated:
+        result["message"] = f"匹配结果超过 {MAX_MATCHES} 条，已截断，请使用更精确的 pattern"
+    return json.dumps(result, ensure_ascii=False)
+
+
+@tool
+def read_asset_section(asset_slug: str, heading: str) -> str:
+    """按 Markdown 标题名加载资产的单个章节内容，避免大型资产全文加载。
+    适合大型资产（Stage/Location/Lore）的章节级读取，比 read_asset 节省 60%~80% token。
+    asset_slug：资产标识符。
+    heading：章节标题文本（模糊匹配，不区分大小写；不需要带 # 号）。
+    返回从匹配标题到下一个同级或更高级标题之间的全部文本。
+    找不到标题时返回错误，不回退到全文加载。"""
+    if not heading:
+        return json.dumps({"error": "heading 不能为空"}, ensure_ascii=False)
+
+    file_path = _resolve_asset_file(asset_slug)
+    if file_path is None:
+        return json.dumps({"error": f"未找到 slug 为 '{asset_slug}' 的资产文件"}, ensure_ascii=False)
+
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except Exception as e:
+        return json.dumps({"error": f"读取文件失败：{e}"}, ensure_ascii=False)
+
+    import re
+    lines = text.splitlines(keepends=True)
+    heading_lower = heading.strip().lower()
+
+    # Find the matching heading line
+    heading_pattern = re.compile(r"^(#{1,6})\s+(.+)$")
+    match_idx = None
+    match_level = None
+    for i, line in enumerate(lines):
+        m = heading_pattern.match(line.rstrip())
+        if m and heading_lower in m.group(2).lower():
+            match_idx = i
+            match_level = len(m.group(1))
+            break
+
+    if match_idx is None:
+        return json.dumps({
+            "asset_slug": asset_slug,
+            "heading": heading,
+            "error": f"未找到标题 '{heading}'，请检查标题文本是否正确",
+        }, ensure_ascii=False)
+
+    # Collect lines from match_idx to the next heading of same or higher level
+    section_lines = [lines[match_idx]]
+    for line in lines[match_idx + 1:]:
+        m = heading_pattern.match(line.rstrip())
+        if m and len(m.group(1)) <= match_level:
+            break
+        section_lines.append(line)
+
+    section_text = "".join(section_lines).rstrip()
+    return json.dumps({
+        "asset_slug": asset_slug,
+        "heading": heading,
+        "content": section_text,
+    }, ensure_ascii=False)
 
 
 @tool
@@ -222,29 +342,7 @@ def patch_asset(asset_slug: str, old_str: str, new_str: str, change_summary: str
         return json.dumps({"success": False, "error": "old_str 不能为空"}, ensure_ascii=False)
 
     ws_path = _workspace_context.get("workspace_path", "")
-
-    # Resolve file path
-    file_path = None
-    assets_root = Path(ws_path) / "assets"
-    if not assets_root.exists():
-        assets_root = Path(ws_path)
-    for md_file in assets_root.rglob("*.md"):
-        if md_file.stem == asset_slug or md_file.stem.replace("-", "_") == asset_slug:
-            file_path = md_file
-            break
-
-    if file_path is None:
-        # Also check via asset type dir from DB
-        from app.models.orm import AssetORM, WorkspaceORM
-        workspace_id = _get_workspace_id_from_path(ws_path, _db)
-        if workspace_id:
-            asset = _db.query(AssetORM).filter_by(workspace_id=workspace_id, slug=asset_slug).first()
-            if asset:
-                from app.utils.paths import asset_type_dir
-                candidate = asset_type_dir(ws_path, asset.type) / f"{asset_slug}.md"
-                if candidate.exists():
-                    file_path = candidate
-
+    file_path = _resolve_asset_file(asset_slug)
     if file_path is None:
         return json.dumps({"success": False, "error": f"未找到 slug 为 '{asset_slug}' 的资产文件"}, ensure_ascii=False)
 
@@ -675,6 +773,6 @@ def web_search(query: str = "", max_results: int = 5) -> str:
 
 # ─── Tool list for Director ────────────────────────────────────────────────────
 
-ALL_TOOLS = [list_assets, read_asset, search_assets, search_knowledge,
+ALL_TOOLS = [list_assets, read_asset, grep_asset, read_asset_section, search_assets, search_knowledge,
              create_asset, patch_asset, update_asset, check_consistency, consult_rules, create_skill,
              web_search]
