@@ -116,9 +116,9 @@ function KnowledgeResultView({ raw, args }: { raw: string; args: Record<string, 
 
   return (
     <div>
-      {args.query && (
+      {args.query !== undefined && (
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
-          <span style={{ fontWeight: 600 }}>查询：</span>{args.query as string}
+          <span style={{ fontWeight: 600 }}>查询：</span>{String(args.query)}
         </div>
       )}
       {message && <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>{message}</div>}
