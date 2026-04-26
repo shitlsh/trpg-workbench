@@ -173,13 +173,23 @@ def _sync_chat_sessions(
                 row.updated_at = _now()
                 changed += 1
         else:
-            row = ChatSessionORM(
-                id=sid,
-                workspace_id=workspace_id,
-                title=meta.get("title"),
-                message_count=meta["message_count"],
-            )
-            db.add(row)
+            # Check if session exists under a different workspace_id (e.g. after
+            # workspace re-registration) and reuse the row rather than inserting a
+            # duplicate PK.
+            stale = db.query(ChatSessionORM).filter(ChatSessionORM.id == sid).first()
+            if stale:
+                stale.workspace_id = workspace_id
+                stale.title = meta.get("title")
+                stale.message_count = meta["message_count"]
+                stale.updated_at = _now()
+            else:
+                row = ChatSessionORM(
+                    id=sid,
+                    workspace_id=workspace_id,
+                    title=meta.get("title"),
+                    message_count=meta["message_count"],
+                )
+                db.add(row)
             changed += 1
 
     # Delete sessions whose JSONL files no longer exist
