@@ -516,6 +516,7 @@ export type SSEEventType =
   | "tool_call_result"
   | "patch_proposal"
   | "auto_applied"
+  | "agent_question"
   | "done"
   | "error";
 
@@ -554,12 +555,37 @@ export interface SSEError {
   data: { message: string };
 }
 
+// ─── M23: Agent Question Interrupt ───────────────────────────────────────────
+
+export interface AgentQuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface AgentQuestionItem {
+  header: string;
+  question: string;
+  options: AgentQuestionOption[];
+  multiple?: boolean;
+}
+
+export interface AgentQuestion {
+  id: string;
+  questions: AgentQuestionItem[];
+}
+
+export interface SSEAgentQuestion {
+  event: "agent_question";
+  data: AgentQuestion;
+}
+
 export type SSEEvent =
   | SSETextDelta
   | SSEToolCallStart
   | SSEToolCallResult
   | SSEPatchProposal
   | SSEAutoApplied
+  | SSEAgentQuestion
   | SSEDone
   | SSEError;
 

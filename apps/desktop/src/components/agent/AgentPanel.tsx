@@ -8,7 +8,9 @@ import {
 import type {
   ChatSession, ChatMessage, ToolCall,
   LLMProfile, ModelCatalogEntry, WorkspaceConfigResponse,
+  AgentQuestion,
 } from "@trpg-workbench/shared-schema";
+import { QuestionCard } from "./QuestionCard";
 import { useAgentStore } from "@/stores/agentStore";
 import ContextUsageBadge from "./ContextUsageBadge";
 import { ToolCallCard } from "./ToolCallCard";
@@ -91,7 +93,8 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
 
 type StreamEvent =
   | { kind: "text_chunk"; text: string }
-  | { kind: "tool_call"; toolCall: ToolCall };
+  | { kind: "tool_call"; toolCall: ToolCall }
+  | { kind: "question_interrupt"; question: AgentQuestion };
 
 // ─── ThinkingBlock ────────────────────────────────────────────────────────────
 
@@ -148,7 +151,14 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming?: bo
   );
 }
 
-function StreamingBubble({ events, thinking, isStreaming }: { events: StreamEvent[]; thinking: string; isStreaming: boolean }) {
+function StreamingBubble({
+  events, thinking, isStreaming, onQuestionSubmit,
+}: {
+  events: StreamEvent[];
+  thinking: string;
+  isStreaming: boolean;
+  onQuestionSubmit: (answers: Record<string, string[]>) => void;
+}) {
   const lastTextIdx = events.reduce((last, e, i) => e.kind === "text_chunk" ? i : last, -1);
 
   return (
@@ -176,6 +186,15 @@ function StreamingBubble({ events, thinking, isStreaming }: { events: StreamEven
         {events.map((e, i) => {
           if (e.kind === "tool_call") {
             return <ToolCallCard key={e.toolCall.id} toolCall={e.toolCall} />;
+          }
+          if (e.kind === "question_interrupt") {
+            return (
+              <QuestionCard
+                key={`qi_${i}`}
+                question={e.question}
+                onSubmit={onQuestionSubmit}
+              />
+            );
           }
           // text_chunk
           const isLast = i === lastTextIdx;
@@ -565,6 +584,13 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 setStreamingEvents([...accEvents]);
               }
 
+            } else if (currentEvent === "agent_question") {
+              // Director wants to ask the user a question before continuing
+              const q = data as unknown as AgentQuestion;
+              accEvents = [...accEvents, { kind: "question_interrupt", question: q }];
+              setStreamingEvents([...accEvents]);
+              // Stream ends after this (backend emits done next); keep isStreaming=true until done
+
             } else if (currentEvent === "auto_applied") {
               // Asset written directly — refresh assets list
               qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
@@ -753,7 +779,19 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           ))}
 
           {isStreaming && (
-            <StreamingBubble events={streamingEvents} thinking={streamingThinking} isStreaming={isStreaming} />
+            <StreamingBubble
+              events={streamingEvents}
+              thinking={streamingThinking}
+              isStreaming={isStreaming}
+              onQuestionSubmit={(answers) => {
+                // Format answers as a structured reply and send
+                const lines = Object.entries(answers).map(
+                  ([header, labels]) => `- ${header}：${labels.join("、")}`
+                );
+                const reply = `[问题答复]\n${lines.join("\n")}`;
+                handleSend(reply);
+              }}
+            />
           )}
 
           <div ref={bottomRef} />
