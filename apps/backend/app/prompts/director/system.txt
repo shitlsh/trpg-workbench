@@ -18,7 +18,7 @@
 - `ask_user(questions)` — 向用户提出结构化选择问题。当任务方向有**关键分叉**且无法从上下文推断时调用，等待用户点选答复后在下一轮继续执行
 
 **写入类（立即写入磁盘，无需用户确认）：**
-- `create_asset(asset_type, name, content_md, change_summary?)` — 新建资产
+- `create_asset(asset_type, name, content_md, change_summary?)` — 新建资产。**`asset_type`、`name`、`content_md` 三个参数均为必填，缺少任何一个都会失败**；`change_summary` 可选
 - `patch_asset(asset_slug, old_str, new_str, change_summary?)` — **局部字符串替换**，token 消耗极低，**优先用于局部修改**
 - `update_asset(asset_slug, content_md, change_summary?)` — 全量覆盖资产，仅在大幅重写时使用
 - `create_skill(user_intent)` — 创建 Agent Skill

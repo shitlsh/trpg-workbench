@@ -310,10 +310,23 @@ def search_knowledge(query: str = "") -> str:
 # ─── Write tools (write directly to disk, no confirmation required) ───────────
 
 @tool
-def create_asset(asset_type: str, name: str, content_md: str, change_summary: str = "") -> str:
-    """创建新资产，立即写入磁盘。asset_type 如 "npc"/"stage"/"location" 等，
-    name 为资产名称，content_md 为完整的 Markdown 内容（含 frontmatter）。
+def create_asset(
+    asset_type: str,
+    name: str | None = None,
+    content_md: str | None = None,
+    change_summary: str = "",
+) -> str:
+    """创建新资产，立即写入磁盘。
+    必填：asset_type（如 "npc"/"stage"/"location"/"lore_note"/"monster"）、
+    name（资产名称）、content_md（完整 Markdown 内容，含 frontmatter）。
+    缺少任意必填参数时返回错误，请补充后重试。
     返回 JSON，含 success/slug/asset_id 字段。"""
+    if not name or not content_md:
+        missing = [f for f, v in [("name", name), ("content_md", content_md)] if not v]
+        return json.dumps(
+            {"success": False, "error": f"create_asset 缺少必填参数：{', '.join(missing)}。请补充后重新调用。"},
+            ensure_ascii=False,
+        )
     if _db is None:
         return json.dumps({"success": False, "error": "数据库未配置"}, ensure_ascii=False)
     ws_path = _workspace_context.get("workspace_path", "")
