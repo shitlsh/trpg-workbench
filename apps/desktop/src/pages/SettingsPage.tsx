@@ -281,7 +281,7 @@ function LLMSection() {
                       className={styles.input}
                       value={testModelName}
                       onChange={(e) => setTestModelName(e.target.value)}
-                      placeholder="例：gemini-2.0-flash / llama-3.1-8b"
+                       placeholder="例：gemini-2.0-flash / qwen3.5-35b-a3b"
                     />
                   )}
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>

@@ -494,7 +494,7 @@ export default function WorkspaceSettingsPage() {
                     style={{ flex: 1 }}
                     value={defaultLlmModel}
                     onChange={(e) => setDefaultLlmModel(e.target.value)}
-                    placeholder="例：gemini-2.0-flash"
+                    placeholder={selectedLlmProfile?.provider_type === "openai_compatible" ? "例：qwen3.5-35b-a3b" : "例：gemini-2.0-flash"}
                   />
                 )}
                 {selectedLlmProfile?.base_url && (
