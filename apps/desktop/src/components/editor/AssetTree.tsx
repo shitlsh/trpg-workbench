@@ -158,6 +158,7 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; asset: Asset } | null>(null);
   const [hoverAssetId, setHoverAssetId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Asset | null>(null);
+  const [renameState, setRenameState] = useState<{ asset: Asset; name: string } | null>(null);
 
   const openTab = useEditorStore((s) => s.openTab);
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -174,6 +175,30 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
       await apiFetch(`/assets/${assetId}`, { method: "DELETE" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["assets", workspaceId] }),
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async ({ assetId, name }: { assetId: string; name: string }) => {
+      return apiFetch<AssetWithContent>(`/assets/${assetId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name, change_summary: "重命名" }),
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["assets", workspaceId] }),
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: async (asset: Asset) => {
+      const newSlug = `${asset.slug}-copy-${Date.now().toString(36)}`;
+      return apiFetch<AssetWithContent>(`/workspaces/${workspaceId}/assets`, {
+        method: "POST",
+        body: JSON.stringify({ type: asset.type, name: `${asset.name} 副本`, slug: newSlug }),
+      });
+    },
+    onSuccess: (newAsset) => {
+      qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
+      openTab(newAsset);
+    },
   });
 
   const filtered = assets.filter(
@@ -390,6 +415,33 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
             <button
               onClick={() => {
                 setContextMenu(null);
+                setRenameState({ asset: contextMenu.asset, name: contextMenu.asset.name });
+              }}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                width: "100%", padding: "6px 12px",
+                background: "none", color: "var(--text)", fontSize: 13,
+              }}
+            >
+              ✏️ 重命名
+            </button>
+            <button
+              onClick={() => {
+                duplicateMutation.mutate(contextMenu.asset);
+                setContextMenu(null);
+              }}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                width: "100%", padding: "6px 12px",
+                background: "none", color: "var(--text)", fontSize: 13,
+              }}
+            >
+              📋 复制
+            </button>
+            <div style={{ height: 1, background: "var(--border)", margin: "3px 0" }} />
+            <button
+              onClick={() => {
+                setContextMenu(null);
                 setDeleteConfirm(contextMenu.asset);
               }}
               style={{
@@ -400,6 +452,59 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
             >
               <Trash2 size={13} /> 删除
             </button>
+          </div>
+        </>
+      )}
+
+      {/* Rename dialog */}
+      {renameState && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.5)" }}
+            onClick={() => setRenameState(null)}
+          />
+          <div style={{
+            position: "fixed",
+            top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 201,
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "20px 24px",
+            minWidth: 280,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>重命名资产</div>
+            <input
+              autoFocus
+              value={renameState.name}
+              onChange={(e) => setRenameState({ ...renameState, name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && renameState.name.trim()) {
+                  renameMutation.mutate({ assetId: renameState.asset.id, name: renameState.name.trim() });
+                  setRenameState(null);
+                } else if (e.key === "Escape") {
+                  setRenameState(null);
+                }
+              }}
+              style={{ ...inputStyle, marginBottom: 16 }}
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setRenameState(null)} style={btnSecondaryStyle}>取消</button>
+              <button
+                onClick={() => {
+                  if (renameState.name.trim()) {
+                    renameMutation.mutate({ assetId: renameState.asset.id, name: renameState.name.trim() });
+                    setRenameState(null);
+                  }
+                }}
+                disabled={!renameState.name.trim()}
+                style={btnPrimaryStyle}
+              >
+                确认
+              </button>
+            </div>
           </div>
         </>
       )}

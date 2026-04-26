@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Workspace, RuleSet, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
+import { useEditorStore } from "@/stores/editorStore";
 import { ThreePanelLayout } from "@/components/editor/ThreePanelLayout";
 import { AssetTree } from "@/components/editor/AssetTree";
 import { EditorCenter } from "@/components/editor/EditorCenter";
@@ -14,11 +15,26 @@ export function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { setActiveWorkspace } = useWorkspaceStore();
+  const { leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed } = useEditorStore();
 
   useEffect(() => {
     setActiveWorkspace(id ?? null);
     return () => setActiveWorkspace(null);
   }, [id, setActiveWorkspace]);
+
+  // Zen Mode: Cmd+Shift+\ toggles both panels
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "\\") {
+        e.preventDefault();
+        const zen = !leftCollapsed || !rightCollapsed;
+        setLeftCollapsed(zen);
+        setRightCollapsed(zen);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed]);
 
   const { data: workspace, isLoading } = useQuery<Workspace>({
     queryKey: ["workspace", id],

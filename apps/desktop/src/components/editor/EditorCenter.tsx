@@ -7,6 +7,7 @@ import { useEditorStore, EditorTab, EditorView } from "@/stores/editorStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { AssetMetaPanel } from "./AssetMetaPanel";
 import { apiFetch } from "@/lib/api";
 
 // ─── Tab Bar ─────────────────────────────────────────────────────────────────
@@ -325,10 +326,50 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
 export function EditorCenter() {
   const { tabs, activeTabId } = useEditorStore();
   const activeTab = tabs.find((t) => t.assetId === activeTabId);
+  const [metaOpen, setMetaOpen] = useState(false);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <TabBar />
+      {/* Meta panel strip */}
+      {activeTab && (
+        <div style={{ borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+          <button
+            onClick={() => setMetaOpen((v) => !v)}
+            style={{
+              width: "100%", padding: "4px 12px",
+              display: "flex", alignItems: "center", gap: 6,
+              background: "none", border: "none", cursor: "pointer",
+              color: "var(--text-muted)", fontSize: 11, textAlign: "left",
+            }}
+          >
+            {metaOpen ? "▾" : "▸"}
+            <span style={{ fontFamily: "monospace" }}>{activeTab.asset.slug}</span>
+            <span style={{
+              fontSize: 10, padding: "1px 5px", borderRadius: 3,
+              marginLeft: 4,
+              background: activeTab.asset.status === "final" ? "rgba(82,201,126,0.15)"
+                : activeTab.asset.status === "review" ? "rgba(240,165,0,0.15)"
+                : "rgba(136,136,136,0.15)",
+              color: activeTab.asset.status === "final" ? "#52c97e"
+                : activeTab.asset.status === "review" ? "#f0a500"
+                : "#888",
+            }}>
+              {activeTab.asset.status === "final" ? "定稿"
+                : activeTab.asset.status === "review" ? "审查中"
+                : "草稿"}
+            </span>
+            <span style={{ marginLeft: "auto", color: "var(--text-subtle)", fontSize: 10 }}>
+              v{activeTab.asset.version}
+            </span>
+          </button>
+          {metaOpen && (
+            <div style={{ maxHeight: 280, overflowY: "auto", borderTop: "1px solid var(--border)" }}>
+              <AssetMetaPanel />
+            </div>
+          )}
+        </div>
+      )}
       {activeTab ? (
         <AssetEditor key={activeTab.assetId} tab={activeTab} />
       ) : (
