@@ -39,3 +39,4 @@ accepted/ → completed/  （milestone 完成后移入）
 - **OpenCode Desktop** — 桌面端启动/恢复、模型配置、prompt 输入体验、help/onboarding
 - **Inscriptor** — 创作型 workspace UI 信息架构、内容组织方式
 - **OpenPawz** — 本地优先桌面 AI 产品骨架、provider/model 抽象
+- **leaked-system-prompts** — 工业级 system prompt 工程参考，学习如何写更好的 Agent system prompt（[jujumilk3/leaked-system-prompts](https://github.com/jujumilk3/leaked-system-prompts)）
