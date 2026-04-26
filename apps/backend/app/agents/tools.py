@@ -198,9 +198,80 @@ def create_asset(asset_type: str, name: str, content_md: str, change_summary: st
 
 
 @tool
+def patch_asset(asset_slug: str, old_str: str, new_str: str, change_summary: str = "") -> str:
+    """对已有资产做局部字符串替换，立即写入磁盘。
+    优先使用此工具进行局部修改（比 update_asset 节省大量 token）。
+    asset_slug：资产标识符。
+    old_str：要被替换的原始文本片段（必须在文件中唯一存在，精确匹配包括空白符）。
+    new_str：替换后的新文本。
+    返回 JSON，含 success/slug/asset_id 字段；若 old_str 未找到或有多处匹配则返回错误。"""
+    if _db is None:
+        return json.dumps({"success": False, "error": "数据库未配置"}, ensure_ascii=False)
+    if not old_str:
+        return json.dumps({"success": False, "error": "old_str 不能为空"}, ensure_ascii=False)
+
+    ws_path = _workspace_context.get("workspace_path", "")
+
+    # Resolve file path
+    file_path = None
+    assets_root = Path(ws_path) / "assets"
+    if not assets_root.exists():
+        assets_root = Path(ws_path)
+    for md_file in assets_root.rglob("*.md"):
+        if md_file.stem == asset_slug or md_file.stem.replace("-", "_") == asset_slug:
+            file_path = md_file
+            break
+
+    if file_path is None:
+        # Also check via asset type dir from DB
+        from app.models.orm import AssetORM, WorkspaceORM
+        workspace_id = _get_workspace_id_from_path(ws_path, _db)
+        if workspace_id:
+            asset = _db.query(AssetORM).filter_by(workspace_id=workspace_id, slug=asset_slug).first()
+            if asset:
+                from app.utils.paths import asset_type_dir
+                candidate = asset_type_dir(ws_path, asset.type) / f"{asset_slug}.md"
+                if candidate.exists():
+                    file_path = candidate
+
+    if file_path is None:
+        return json.dumps({"success": False, "error": f"未找到 slug 为 '{asset_slug}' 的资产文件"}, ensure_ascii=False)
+
+    try:
+        original = file_path.read_text(encoding="utf-8")
+    except Exception as e:
+        return json.dumps({"success": False, "error": f"读取文件失败：{e}"}, ensure_ascii=False)
+
+    count = original.count(old_str)
+    if count == 0:
+        return json.dumps({"success": False, "error": "old_str 在文件中未找到，请检查文本是否精确匹配（包括空白符和换行符）"}, ensure_ascii=False)
+    if count > 1:
+        return json.dumps({"success": False, "error": f"old_str 在文件中出现了 {count} 次，请提供更多上下文使其唯一"}, ensure_ascii=False)
+
+    new_content = original.replace(old_str, new_str, 1)
+
+    # Get asset info from context
+    assets = _workspace_context.get("existing_assets", [])
+    matched = next((a for a in assets if a.get("slug") == asset_slug), None)
+    asset_name = matched.get("name", asset_slug) if matched else asset_slug
+
+    proposal = {
+        "action": "update",
+        "asset_type": matched.get("type", "") if matched else "",
+        "asset_name": asset_name,
+        "asset_slug": asset_slug,
+        "content_md": new_content,
+        "change_summary": change_summary or f"局部修改资产：{asset_name}",
+    }
+    result = execute_patch_proposal(proposal, ws_path, _db)
+    return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
+
+
+@tool
 def update_asset(asset_slug: str, content_md: str, change_summary: str = "") -> str:
-    """修改已有资产的内容，立即写入磁盘。asset_slug 是资产标识符，
-    content_md 为新的完整 Markdown 内容。
+    """全文替换已有资产内容，立即写入磁盘。
+    仅在需要大幅重写时使用；局部修改请优先使用 patch_asset（节省 token）。
+    asset_slug 是资产标识符，content_md 为新的完整 Markdown 内容。
     返回 JSON，含 success/slug/asset_id 字段。"""
     if _db is None:
         return json.dumps({"success": False, "error": "数据库未配置"}, ensure_ascii=False)
@@ -579,5 +650,5 @@ def web_search(query: str = "", max_results: int = 5) -> str:
 # ─── Tool list for Director ────────────────────────────────────────────────────
 
 ALL_TOOLS = [list_assets, read_asset, search_assets, search_knowledge,
-             create_asset, update_asset, check_consistency, consult_rules, create_skill,
+             create_asset, patch_asset, update_asset, check_consistency, consult_rules, create_skill,
              web_search]
