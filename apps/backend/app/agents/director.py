@@ -129,8 +129,13 @@ async def run_director_stream(
             event_type = getattr(chunk, "event", None)
 
             # Text delta — may contain inline <think>...</think> from Qwen3
-            if event_type == "RunContent" and getattr(chunk, "content", None):
-                raw = _think_buf + chunk.content
+            if event_type == "RunContent":
+                # Gemini separates thinking into reasoning_content on the same RunContent event
+                gemini_thinking = getattr(chunk, "reasoning_content", None)
+                if gemini_thinking:
+                    yield {"event": "thinking_delta", "data": {"content": gemini_thinking}}
+
+                raw = _think_buf + (getattr(chunk, "content", None) or "")
                 _think_buf = ""
 
                 while raw:
