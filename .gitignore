@@ -73,3 +73,6 @@ htmlcov/
 
 # ── UI snapshot screenshots (binary, for human review only) ──────
 docs/ui-snapshots/**/screenshots/
+
+# ── Playwright-cli ───────────────────────────────────────────────
+.playwright-cli

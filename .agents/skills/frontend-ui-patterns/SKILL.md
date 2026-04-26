@@ -37,16 +37,18 @@ description: 约束 trpg-workbench 前端的布局结构、组件选型、状态
 │  ─ 对话区         │  ─ 资产 .md      │  ─ Workspace   │
 │  ─ 快捷动作       │  ─ Diff 视图     │  ─ 知识库       │
 │  ─ 执行日志       │  ─ 引用预览      │  ─ 资产树       │
-│  ─ patch 摘要    │  ─ 编辑器        │  ─ 搜索         │
+│                  │  ─ 编辑器        │  ─ 搜索         │
 │                  │                  │                │
 └─────────────────────────────────────────────────────┘
 ```
 
 **约束**：
-- 左栏宽度可拖拽调整，最小 280px，最大 480px
+- 左栏宽度可拖拽调整，最小 280px，最大 480px（**`ThreePanelLayout.tsx` 实现与 `editorStore` 约束必须一致**，当前有冲突需修复）
 - 右栏宽度可拖拽调整，最小 180px，最大 360px
 - 中栏始终 flex-1，不可隐藏
 - 左栏和右栏可折叠（collapse），但不可完全消失（保留折叠条）
+- **面板宽度和折叠状态必须持久化到 localStorage**（key 格式 `panel_${side}_width_${workspaceId}`，折叠态 `panel_${side}_collapsed_${workspaceId}`），刷新后恢复上次状态
+- 拖拽 handle 视觉宽度 4px，但 hover 触发区域 ≥ 8px（用 padding 实现，不扩大视觉宽度）
 
 ---
 
@@ -238,19 +240,25 @@ config.yaml 中的模型引用是 **名称字符串**（如 `"gemini-2.5-flash"`
 
 ```
 ┌─────────────────────────┐
-│  对话区（可滚动）          │
+│  对话区（可滚动，全宽）    │
 │  ─ 用户消息               │
 │  ─ AI 流式响应气泡         │
-│    ├── 流式文本（打字机）   │
+│    ├── 流式文本（Markdown）│
 │    └── ToolCallCard[]    │
-│  ─ PatchConfirmDialog    │
-│    （patch_proposal 时弹出）│
 ├─────────────────────────┤
 │  输入框（MentionInput）   │
 │  ─ @mention 资产支持      │
 │  ─ Enter 发送             │
+│  ─ 发送/停止按钮           │
 └─────────────────────────┘
 ```
+
+**SessionDrawer（会话历史）约束**：
+- SessionDrawer **不得**渲染为聊天列的 flex 兄弟节点（否则竞争宽度，导致消息被压缩到 ~100px）
+- 打开历史时，以**覆盖视图**方式展示：在 AgentPanel 内用绝对定位覆盖聊天区，或切换渲染内容（聊天视图 ↔ 历史列表视图）
+- 聊天列永远占满左栏全宽，不与任何侧边元素分割宽度
+
+> **注意**：`PatchConfirmDialog` 已删除（M19 后期废弃）。所有资产写入均直接执行，无需用户逐条确认。
 
 ### SSE 流式响应消费规范
 
@@ -279,12 +287,21 @@ while (true) {
 
 | SSE event type    | UI 动作 |
 |-------------------|---------|
-| `text_delta`      | 追加到流式消息气泡的文本 |
+| `text_delta`      | 追加到流式消息气泡的文本（Markdown 渲染，见下方规范） |
 | `tool_call`       | 追加 `ToolCallCard`（状态: running） |
-| `tool_result`     | 更新对应 `ToolCallCard`（状态: done/error） |
-| `patch_proposal`  | 将 proposal 存入 `pendingProposals` 列表，渲染 `PatchConfirmDialog` |
+| `tool_result`     | 更新对应 `ToolCallCard`（状态: done/auto_applied/error） |
 | `done`            | 关闭流，finalizing message |
 | `error`           | 显示错误提示，关闭流 |
+
+> `patch_proposal` 事件已废弃，`PatchConfirmDialog` 已删除。所有资产写入直接执行。
+
+### 聊天消息 Markdown 渲染规范
+
+Assistant 消息文本**必须经过 Markdown 渲染**，不得以纯文本显示：
+- 使用 `@uiw/react-md-editor` 的 `<MarkdownPreview>` 组件（项目已安装），或等效 Markdown 渲染库
+- 代码块显示语法高亮
+- 流式文本更新时每次 `text_delta` 触发重渲染（React 状态更新即可，无需手动 DOM 操作）
+- 禁止用 `<pre>` 或 `<p>` 裸展示 assistant 消息文本
 
 ### ToolCallCard 规范
 
@@ -299,8 +316,10 @@ while (true) {
 ```
 
 - 默认折叠，点击展开参数和结果详情
-- 状态图标：`running` → spinner；`done` → ✓；`error` → ✗
-- 显示 `tool_name` + 关键参数（不显示全部 args，只显示最重要的 1-2 个字段）
+- 状态图标：`running` → spinner；`done` → ✓；`auto_applied` → ✓（绿色）；`error` → ✗
+- 展开后显示格式化 JSON 参数（不是 `JSON.stringify` 裸字符串），结构化字段展示
+- 展开后也显示 tool result（截断超长内容，提供"展开全部"）
+- **禁止用 `toolCall.status === ("auto_applied" as string)` 这类类型 hack**；`auto_applied` 应作为合法 union 类型成员定义在 ToolCallStatus 类型中
 
 ### MentionInput 规范
 
@@ -320,16 +339,12 @@ while (true) {
 - Enter（无 Shift）提交，Shift+Enter 换行
 - 提交时提取所有 mention 节点的 `id` 属性，传入 `mentionedAssetIds`
 - 发送后清空编辑器
+- **样式通过 CSS module 或 `src/styles/globals.css` 定义，禁止在组件 render 内通过 `document.head` 注入 `<style>` 标签**
 
 ### PatchConfirmDialog 规范
 
-组件路径：`src/components/agent/PatchConfirmDialog.tsx`
-
-- 收到 `patch_proposal` SSE 事件时弹出
-- 展示 `diff_summary`（人类可读变更摘要）+ `content_preview`（折叠展示）
-- **确认**：`POST /workspaces/{ws_id}/chat/confirm { session_id, proposal_id }`
-- **拒绝**：`POST /workspaces/{ws_id}/chat/reject { session_id, proposal_id }`
-- 每次只显示一个 proposal（逐条处理），队列中剩余 proposal 在确认/拒绝后依次弹出
+> **已废弃（M19 后期删除）**。`patch_proposal` SSE 事件已不再发出，所有资产写入直接执行。
+> 禁止重建此组件。
 
 ### agentStore 状态（精简后）
 
@@ -356,9 +371,11 @@ interface AgentStore {
 - 禁止在组件内随手裸 fetch 后端 API（SSE 流式消费除外，封装在 AgentPanel 内）
 - 禁止用 Context + useReducer 替代 Zustand 管理全局状态
 - 禁止引入 Quill 等富文本编辑器作为资产主编辑器（TipTap 仅限 MentionInput）
-- 禁止 AI 响应以纯文本块展示（必须有 ToolCallCard 结构和流式气泡）
-- **禁止重建 WorkflowProgress、ClarificationCard 组件**（M19 已废弃）
+- 禁止 AI 响应以纯文本块展示（必须有 ToolCallCard 结构和流式气泡 + Markdown 渲染）
+- **禁止重建 WorkflowProgress、ClarificationCard、PatchConfirmDialog 组件**（M19 已废弃）
 - **禁止用 TanStack Query 消费 SSE 流**（SSE 流必须用 fetch + ReadableStream）
+- **禁止用 `alert()` / `window.alert()` 弹框**（统一用 shadcn/ui Toast 或 Dialog）
+- **禁止在组件 render 内通过 `document.head` 注入 `<style>` 标签**（用 CSS module 或 globals.css）
 
 ---
 
@@ -427,7 +444,7 @@ interface TaskProgress {
 - **单例原则**：同一个 asset 只能有一个 Tab，再次点击时激活已有 Tab，不重复打开
 - **脏状态标识**：有未保存改动的 Tab，标题后显示 `●` 标记
 - **关闭确认**：关闭脏状态 Tab 时弹出确认对话框（"有未保存的改动，确认关闭？"）
-- **Tab 上限**：最多同时打开 10 个 Tab，超出时提示用户关闭部分 Tab
+- **Tab 上限**：最多同时打开 10 个 Tab，超出时用 shadcn/ui `Toast` 提示用户关闭部分 Tab（**禁止用 `alert()` 或 `window.alert()`**）
 - **恢复策略**：应用重启后不恢复上次打开的 Tab，从空白状态开始（避免加载失败的空 Tab）
 
 ### Tab 与路由的关系
