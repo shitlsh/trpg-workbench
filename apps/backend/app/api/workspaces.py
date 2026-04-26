@@ -109,6 +109,8 @@ def open_workspace(body: WorkspaceOpen, db: Session = Depends(get_db)):
         existing.status = "ok"
         db.commit()
         db.refresh(existing)
+        # Sync any files added/changed since last open
+        incremental_sync(str(ws_path), existing.id, db)
         return existing
 
     # Read name from config.yaml
@@ -121,6 +123,8 @@ def open_workspace(body: WorkspaceOpen, db: Session = Depends(get_db)):
     db.add(ws)
     db.commit()
     db.refresh(ws)
+    # Index all existing files on first registration
+    incremental_sync(str(ws_path), ws.id, db)
     return ws
 
 
