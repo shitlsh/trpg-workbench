@@ -28,6 +28,7 @@
                                                                                                                                                        └── ✅ M20 Agent 创作质量增强
                                                                                                                                                               └── ✅ M21 聊天会话管理
                                                                                                                                                                     └── ✅ M22 规则集 UX 打磨
+                                                                                                                                                                          └── M23 Agent 澄清问题机制
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -70,6 +71,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
+| M23 | Agent 澄清问题机制 | Director 在推理中途向用户提出结构化选项问题，减少猜错方向的来回成本 | [m23-agent-question-interrupt.md](m23-agent-question-interrupt.md) |
 
 ---
 
