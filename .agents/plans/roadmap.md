@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M22 全部完成。M22 完成了规则集管理 UX 打磨——移除内置规则集、Setup Wizard 补充规则集步骤、展示内置 AssetType、三标签提示词弹窗。
+核心功能链路已通过 M1–M23 全部完成。M23 完成了 Agent 澄清问题机制——Director 可在推理中途调用 `ask_user` 向用户提出结构化选项问题，前端渲染 `QuestionCard`，用户点选后自动回复，Director 在下一轮继续执行。
 
 ```
 ✅ M1 基础骨架
@@ -28,7 +28,7 @@
                                                                                                                                                        └── ✅ M20 Agent 创作质量增强
                                                                                                                                                               └── ✅ M21 聊天会话管理
                                                                                                                                                                     └── ✅ M22 规则集 UX 打磨
-                                                                                                                                                                          └── M23 Agent 澄清问题机制
+                                                                                                                                                                           └── ✅ M23 Agent 澄清问题机制
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -66,12 +66,12 @@
 | M21 ✅ | 聊天会话管理 | 多会话列表、切换、历史浏览、重命名删除；SessionDrawer + 刷新自动恢复上次会话 | [archive/m21-chat-sessions.md](archive/m21-chat-sessions.md) |
 
 | M22 ✅ | 规则集 UX 打磨 | 移除内置规则集限制、Setup Wizard 补充规则集步骤、展示内置 AssetType、三标签提示词弹窗 | [archive/m22-ruleset-ux-polish.md](archive/m22-ruleset-ux-polish.md) |
+| M23 ✅ | Agent 澄清问题机制 | Director 在推理中途向用户提出结构化选项问题，减少猜错方向的来回成本 | [archive/m23-agent-question-interrupt.md](archive/m23-agent-question-interrupt.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M23 | Agent 澄清问题机制 | Director 在推理中途向用户提出结构化选项问题，减少猜错方向的来回成本 | [m23-agent-question-interrupt.md](m23-agent-question-interrupt.md) |
 
 ---
 
