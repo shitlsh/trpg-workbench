@@ -16,6 +16,7 @@ import RuleSetPage from "./pages/RuleSetPage";
 import SetupWizardPage from "./pages/SetupWizardPage";
 import DisconnectedBanner from "./components/DisconnectedBanner";
 import { useSettingsStore } from "./stores/settingsStore";
+import { Toaster } from "sonner";
 
 const POLL_INTERVAL = 500;
 const STARTUP_TIMEOUT = 30_000;
@@ -98,6 +99,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <Toaster position="bottom-right" theme="dark" richColors />
       {status === "disconnected" && <DisconnectedBanner />}
       <Routes>
         <Route path="/setup" element={<SetupWizardPage />} />

@@ -196,11 +196,18 @@ def patch_asset(asset_id: str, body: AssetUpdate, db: Session = Depends(get_db))
     return _build_asset_with_content(ws, asset)
 
 
-# ─── Delete asset (soft delete — mark status) ────────────────────────────────
+# ─── Delete asset (hard delete — remove file + mark status) ──────────────────
 
 @asset_router.delete("/{asset_id}", status_code=204)
 def delete_asset(asset_id: str, db: Session = Depends(get_db)):
     asset = _get_asset(asset_id, db)
+    ws = db.get(WorkspaceORM, asset.workspace_id)
+    if ws and asset.file_path:
+        file_path = Path(ws.workspace_path) / asset.file_path
+        try:
+            file_path.unlink(missing_ok=True)
+        except OSError:
+            pass  # best-effort — don't block deletion if file is already gone
     asset.status = "deleted"
     db.commit()
 

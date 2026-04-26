@@ -179,7 +179,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
     args = JSON.parse(toolCall.arguments);
   } catch {}
 
-  const isAutoApplied = toolCall.status === ("auto_applied" as string);
+  const isAutoApplied = toolCall.status === "auto_applied";
 
   // Parse consistency report from result_summary if applicable
   let consistencyReport: ConsistencyReport | null = null;

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { toast } from "sonner";
 import type { AssetWithContent } from "@trpg-workbench/shared-schema";
 
 export type EditorView = "markdown" | "json" | "diff" | "preview";
@@ -44,7 +45,7 @@ interface EditorState {
 export const useEditorStore = create<EditorState>((set, get) => ({
   tabs: [],
   activeTabId: null,
-  leftWidth: 240,
+  leftWidth: 280,
   leftCollapsed: false,
   rightWidth: 320,
   rightCollapsed: false,
@@ -57,7 +58,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     if (tabs.length >= 10) {
-      alert("最多同时打开 10 个标签页，请先关闭部分标签。");
+      toast.warning("最多同时打开 10 个标签页，请先关闭部分标签。");
       return;
     }
     const tab: EditorTab = {
@@ -134,8 +135,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
 
-  setLeftWidth: (w) => set({ leftWidth: Math.max(180, Math.min(360, w)) }),
+  setLeftWidth: (w) => set({ leftWidth: Math.max(280, Math.min(480, w)) }),
   setLeftCollapsed: (v) => set({ leftCollapsed: v }),
-  setRightWidth: (w) => set({ rightWidth: Math.max(280, Math.min(480, w)) }),
+  setRightWidth: (w) => set({ rightWidth: Math.max(180, Math.min(480, w)) }),
   setRightCollapsed: (v) => set({ rightCollapsed: v }),
 }));

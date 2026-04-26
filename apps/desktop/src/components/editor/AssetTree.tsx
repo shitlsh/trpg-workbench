@@ -58,8 +58,14 @@ function NewAssetForm({ workspaceId, customConfigs, onClose }: NewAssetFormProps
 
   const handleNameChange = (v: string) => {
     setName(v);
-    if (!slugEdited) setSlug(slugify(v));
+    if (!slugEdited) {
+      const s = slugify(v);
+      setSlug(s || "");
+    }
   };
+
+  // Derive effective slug: fall back to `{type}-{timestamp}` only at submit time if still empty
+  const effectiveSlug = slug || `${type}-${Date.now().toString(36)}`;
 
   const emoji = getCustomTypeEmoji(type, customConfigs);
   const TypeIcon = getAssetTypeIcon(type);
@@ -132,8 +138,8 @@ function NewAssetForm({ workspaceId, customConfigs, onClose }: NewAssetFormProps
 
       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
         <button
-          onClick={() => mutation.mutate({ type, name, slug })}
-          disabled={!name || !slug || mutation.isPending}
+          onClick={() => mutation.mutate({ type, name, slug: effectiveSlug })}
+          disabled={!name || mutation.isPending}
           style={btnPrimaryStyle}
         >
           {mutation.isPending ? "创建中..." : "创建"}

@@ -1,6 +1,8 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Workspace, RuleSet, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { ThreePanelLayout } from "@/components/editor/ThreePanelLayout";
 import { AssetTree } from "@/components/editor/AssetTree";
 import { EditorCenter } from "@/components/editor/EditorCenter";
@@ -11,6 +13,12 @@ import { apiFetch } from "@/lib/api";
 export function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { setActiveWorkspace } = useWorkspaceStore();
+
+  useEffect(() => {
+    setActiveWorkspace(id ?? null);
+    return () => setActiveWorkspace(null);
+  }, [id, setActiveWorkspace]);
 
   const { data: workspace, isLoading } = useQuery<Workspace>({
     queryKey: ["workspace", id],

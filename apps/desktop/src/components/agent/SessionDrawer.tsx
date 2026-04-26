@@ -86,12 +86,13 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
   return (
     <div
       style={{
-        width: 200,
-        flexShrink: 0,
+        position: "absolute",
+        inset: 0,
+        zIndex: 10,
         display: "flex",
         flexDirection: "column",
-        borderRight: "1px solid var(--color-border, #e2e8f0)",
-        background: "var(--color-surface-2, #f8fafc)",
+        background: "var(--bg-surface)",
+        borderRight: "1px solid var(--border)",
         overflow: "hidden",
       }}
     >
@@ -105,11 +106,11 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
           margin: "8px 8px 4px",
           padding: "6px 10px",
           borderRadius: 6,
-          border: "1px solid var(--color-border, #e2e8f0)",
+          border: "1px solid var(--border)",
           background: "transparent",
           cursor: "pointer",
           fontSize: 13,
-          color: "var(--color-text, #1e293b)",
+          color: "var(--text)",
           whiteSpace: "nowrap",
         }}
       >
@@ -120,10 +121,10 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
       {/* Session list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0 4px 8px" }}>
         {isLoading && (
-          <div style={{ padding: "8px 12px", fontSize: 12, color: "#94a3b8" }}>加载中...</div>
+          <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-muted)" }}>加载中...</div>
         )}
         {!isLoading && sessions.length === 0 && (
-          <div style={{ padding: "8px 12px", fontSize: 12, color: "#94a3b8" }}>暂无历史对话</div>
+          <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-muted)" }}>暂无历史对话</div>
         )}
         {sessions.map((s) => {
           const isActive = s.id === activeSessionId;
@@ -138,7 +139,7 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                 borderRadius: 6,
                 marginBottom: 2,
                 background: isActive
-                  ? "var(--color-primary-subtle, #eff6ff)"
+                  ? "color-mix(in srgb, var(--accent) 12%, transparent)"
                   : "transparent",
                 cursor: "pointer",
               }}
@@ -161,11 +162,12 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                     style={{
                       width: "100%",
                       fontSize: 13,
-                      border: "1px solid #93c5fd",
+                      border: "1px solid var(--accent)",
                       borderRadius: 4,
                       padding: "1px 4px",
                       outline: "none",
-                      background: "white",
+                      background: "var(--bg)",
+                      color: "var(--text)",
                     }}
                     onClick={(e) => e.stopPropagation()}
                   />
@@ -174,7 +176,7 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                     style={{
                       fontSize: 13,
                       fontWeight: isActive ? 500 : 400,
-                      color: isActive ? "var(--color-primary, #2563eb)" : "var(--color-text, #1e293b)",
+                      color: isActive ? "var(--accent)" : "var(--text)",
                       overflow: "hidden",
                       display: "-webkit-box",
                       WebkitLineClamp: 2,
@@ -194,15 +196,15 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                     marginTop: 2,
                   }}
                 >
-                  <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                     {relativeTime(s.updated_at)}
                   </span>
                   {s.message_count > 0 && (
                     <span
                       style={{
                         fontSize: 10,
-                        color: "#94a3b8",
-                        background: "#f1f5f9",
+                        color: "var(--text-muted)",
+                        background: "var(--bg)",
                         borderRadius: 8,
                         padding: "0 5px",
                         lineHeight: "16px",
@@ -224,11 +226,11 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                     padding: "2px 6px 4px",
                   }}
                 >
-                  <span style={{ fontSize: 11, color: "#ef4444", flex: 1 }}>确认删除?</span>
+                  <span style={{ fontSize: 11, color: "var(--danger)", flex: 1 }}>确认删除?</span>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
                     style={{
-                      background: "#ef4444",
+                      background: "var(--danger)",
                       color: "white",
                       border: "none",
                       borderRadius: 3,
@@ -246,13 +248,14 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                     onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
                     style={{
                       background: "transparent",
-                      border: "1px solid #e2e8f0",
+                      border: "1px solid var(--border)",
                       borderRadius: 3,
                       padding: "2px 4px",
                       cursor: "pointer",
                       fontSize: 11,
                       display: "flex",
                       alignItems: "center",
+                      color: "var(--text-muted)",
                     }}
                   >
                     <X size={10} />
@@ -276,13 +279,14 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                     title="重命名"
                     onClick={(e) => { e.stopPropagation(); startRename(s); }}
                     style={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--bg-surface)",
+                      border: "1px solid var(--border)",
                       borderRadius: 4,
                       padding: "2px 4px",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
+                      color: "var(--text-muted)",
                     }}
                   >
                     <Pencil size={11} />
@@ -291,14 +295,14 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                     title="删除"
                     onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(s.id); }}
                     style={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--bg-surface)",
+                      border: "1px solid var(--border)",
                       borderRadius: 4,
                       padding: "2px 4px",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      color: "#ef4444",
+                      color: "var(--danger)",
                     }}
                   >
                     <Trash2 size={11} />

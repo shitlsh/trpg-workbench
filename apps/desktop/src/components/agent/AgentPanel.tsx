@@ -560,8 +560,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           }}
           title="会话历史"
           style={{
-            background: drawerOpen ? "rgba(99,102,241,0.1)" : "none",
-            color: drawerOpen ? "var(--accent, #6366f1)" : "var(--text-muted)",
+            background: drawerOpen ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "none",
+            color: drawerOpen ? "var(--accent)" : "var(--text-muted)",
             border: "none",
             borderRadius: 4,
             padding: "2px 4px",
@@ -585,7 +585,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       </div>
 
       {/* Body: optional drawer + chat area */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         {drawerOpen && (
           <SessionDrawer
             workspaceId={workspaceId}
