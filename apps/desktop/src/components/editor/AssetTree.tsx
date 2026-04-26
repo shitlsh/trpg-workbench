@@ -157,6 +157,7 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
   const [showNewForm, setShowNewForm] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; asset: Asset } | null>(null);
   const [hoverAssetId, setHoverAssetId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Asset | null>(null);
 
   const openTab = useEditorStore((s) => s.openTab);
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -369,8 +370,7 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
       </div>
 
       {/* Context menu */}
-      {contextMenu && (
-        <>
+      {contextMenu && (        <>
           <div
             style={{ position: "fixed", inset: 0, zIndex: 99 }}
             onClick={() => setContextMenu(null)}
@@ -389,10 +389,8 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
           }}>
             <button
               onClick={() => {
-                if (confirm(`删除资产「${contextMenu.asset.name}」？`)) {
-                  deleteMutation.mutate(contextMenu.asset.id);
-                }
                 setContextMenu(null);
+                setDeleteConfirm(contextMenu.asset);
               }}
               style={{
                 display: "flex", alignItems: "center", gap: 8,
@@ -402,6 +400,53 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
             >
               <Trash2 size={13} /> 删除
             </button>
+          </div>
+        </>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirm && (
+        <>
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 200,
+              background: "rgba(0,0,0,0.5)",
+            }}
+            onClick={() => setDeleteConfirm(null)}
+          />
+          <div style={{
+            position: "fixed",
+            top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 201,
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "20px 24px",
+            minWidth: 280,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>确认删除</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>
+              删除资产「{deleteConfirm.name}」？此操作将同时删除磁盘文件，不可恢复。
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                style={btnSecondaryStyle}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  deleteMutation.mutate(deleteConfirm.id);
+                  setDeleteConfirm(null);
+                }}
+                style={{ ...btnPrimaryStyle, background: "var(--danger)" }}
+              >
+                删除
+              </button>
+            </div>
           </div>
         </>
       )}

@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, AlertCircle, CheckCircle } from "lucide-react";
+import { useState } from "react";import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, AlertCircle, CheckCircle } from "lucide-react";
 import type { ToolCall, ConsistencyReport, ConsistencyIssue } from "@trpg-workbench/shared-schema";
 
 const TOOL_LABELS: Record<string, string> = {
@@ -173,6 +172,7 @@ function knowledgeResultSummary(raw: string): string | null {
 
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [resultExpanded, setResultExpanded] = useState(false);
 
   let args: Record<string, unknown> = {};
   try {
@@ -294,14 +294,43 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           ) : knowledgeSummary && toolCall.result_summary ? (
             <KnowledgeResultView raw={toolCall.result_summary} args={args} />
           ) : (
-            <pre style={{
-              fontSize: 10, margin: 0,
-              color: "var(--text-muted)",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}>
-              {JSON.stringify(args, null, 2)}
-            </pre>
+            <>
+              <pre style={{
+                fontSize: 10, margin: 0,
+                color: "var(--text-muted)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}>
+                {JSON.stringify(args, null, 2)}
+              </pre>
+              {toolCall.result_summary && (
+                <div style={{ marginTop: 6, borderTop: "1px solid var(--border)", paddingTop: 6 }}>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3, fontWeight: 600 }}>结果</div>
+                  <pre style={{
+                    fontSize: 10, margin: 0,
+                    color: "var(--text)",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}>
+                    {resultExpanded || toolCall.result_summary.length <= 500
+                      ? toolCall.result_summary
+                      : toolCall.result_summary.slice(0, 500) + "…"}
+                  </pre>
+                  {toolCall.result_summary.length > 500 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setResultExpanded(!resultExpanded); }}
+                      style={{
+                        marginTop: 4, fontSize: 10,
+                        background: "none", border: "none", cursor: "pointer",
+                        color: "var(--accent)", padding: 0,
+                      }}
+                    >
+                      {resultExpanded ? "收起" : "展开全部"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

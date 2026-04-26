@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   RefreshCw, FileText, ChevronDown, ChevronUp, MessageSquare,
 } from "lucide-react";
@@ -44,7 +46,13 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
         lineHeight: 1.6,
         color: msg.role === "system" ? "var(--text-muted)" : "var(--text)",
       }}>
-        {msg.content && <div>{msg.content}</div>}
+        {msg.content && (
+          isUser
+            ? <div>{msg.content}</div>
+            : <div className="agent-md">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+              </div>
+        )}
         {toolCalls.length > 0 && (
           <div style={{ marginTop: msg.content ? 8 : 0 }}>
             {toolCalls.map((tc) => (
@@ -81,8 +89,8 @@ function StreamingBubble({ content, toolCalls }: { content: string; toolCalls: T
           <ToolCallCard key={tc.id} toolCall={tc} />
         ))}
         {content && (
-          <div style={{ marginTop: toolCalls.length > 0 ? 8 : 0 }}>
-            {content}
+          <div style={{ marginTop: toolCalls.length > 0 ? 8 : 0 }} className="agent-md">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             <span style={{
               display: "inline-block",
               width: 6,

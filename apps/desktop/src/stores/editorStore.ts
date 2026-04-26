@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { toast } from "sonner";
 import type { AssetWithContent } from "@trpg-workbench/shared-schema";
 
@@ -42,7 +43,9 @@ interface EditorState {
   setRightCollapsed: (v: boolean) => void;
 }
 
-export const useEditorStore = create<EditorState>((set, get) => ({
+export const useEditorStore = create<EditorState>()(
+  persist(
+    (set, get) => ({
   tabs: [],
   activeTabId: null,
   leftWidth: 280,
@@ -139,4 +142,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setLeftCollapsed: (v) => set({ leftCollapsed: v }),
   setRightWidth: (w) => set({ rightWidth: Math.max(180, Math.min(480, w)) }),
   setRightCollapsed: (v) => set({ rightCollapsed: v }),
-}));
+}),
+{
+  name: "trpg-editor-layout",
+  partialize: (s) => ({
+    leftWidth: s.leftWidth,
+    leftCollapsed: s.leftCollapsed,
+    rightWidth: s.rightWidth,
+    rightCollapsed: s.rightCollapsed,
+  }),
+}
+));

@@ -1,5 +1,7 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState } from "react";
 import { useEditorStore } from "@/stores/editorStore";
+
+const HANDLE_WIDTH = 12;
 
 interface ResizablePanelProps {
   direction: "left" | "right";
@@ -22,81 +24,124 @@ export function ResizablePanel({
   minWidth = 180,
   maxWidth = 480,
 }: ResizablePanelProps) {
-  const dragging = useRef(false);
+  const [hovered, setHovered] = useState(false);
+  const hasMoved = useRef(false);
   const startX = useRef(0);
   const startW = useRef(0);
 
-  const onMouseDown = useCallback(
+  // Single mousedown handler: distinguishes click (collapse) from drag (resize)
+  const onHandleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      dragging.current = true;
+      e.preventDefault();
+      hasMoved.current = false;
       startX.current = e.clientX;
       startW.current = width;
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
 
       const onMove = (ev: MouseEvent) => {
-        if (!dragging.current) return;
-        const delta = direction === "left" ? ev.clientX - startX.current : startX.current - ev.clientX;
-        onWidthChange(Math.max(minWidth, Math.min(maxWidth, startW.current + delta)));
+        const delta =
+          direction === "left"
+            ? ev.clientX - startX.current
+            : startX.current - ev.clientX;
+        if (Math.abs(delta) > 4) {
+          hasMoved.current = true;
+          onWidthChange(Math.max(minWidth, Math.min(maxWidth, startW.current + delta)));
+        }
       };
+
       const onUp = () => {
-        dragging.current = false;
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
+        // No significant drag → treat as click → toggle collapse
+        if (!hasMoved.current) {
+          onCollapse(!collapsed);
+        }
       };
+
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [direction, width, onWidthChange, minWidth, maxWidth]
+    [direction, width, onWidthChange, onCollapse, collapsed, minWidth, maxWidth]
   );
 
   return (
     <div
       style={{
-        width: collapsed ? 28 : width,
-        minWidth: collapsed ? 28 : minWidth,
-        maxWidth: collapsed ? 28 : maxWidth,
+        width: collapsed ? HANDLE_WIDTH : width,
+        minWidth: collapsed ? HANDLE_WIDTH : minWidth,
+        maxWidth: collapsed ? HANDLE_WIDTH : maxWidth,
         flexShrink: 0,
         display: "flex",
         flexDirection: "row",
         position: "relative",
+        transition: "width 150ms ease",
         overflow: "hidden",
         background: "var(--bg-surface)",
         borderRight: direction === "left" ? "1px solid var(--border)" : "none",
         borderLeft: direction === "right" ? "1px solid var(--border)" : "none",
       }}
     >
-      {/* Content */}
+      {/* Content — hidden when collapsed; leaves room for handle */}
       {!collapsed && (
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div
+          style={{
+            flex: 1,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            // Shrink content so the handle doesn't overlap it
+            [direction === "left" ? "marginRight" : "marginLeft"]: HANDLE_WIDTH,
+          }}
+        >
           {children}
         </div>
       )}
 
-      {/* Collapse strip */}
+      {/* Resize / collapse handle strip */}
       <div
-        onClick={() => onCollapse(!collapsed)}
+        onMouseDown={onHandleMouseDown}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        title={collapsed ? "展开" : "拖拽调整宽度 · 单击折叠"}
         style={{
-          width: collapsed ? "100%" : 4,
-          cursor: "pointer",
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          [direction === "left" ? "right" : "left"]: 0,
+          width: HANDLE_WIDTH,
+          cursor: "col-resize",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: collapsed ? "var(--bg-hover)" : "transparent",
-          borderLeft: direction === "left" && !collapsed ? "1px solid var(--border)" : "none",
-          borderRight: direction === "right" && !collapsed ? "1px solid var(--border)" : "none",
-          flexShrink: 0,
+          background: hovered
+            ? "color-mix(in srgb, var(--border) 80%, transparent)"
+            : "transparent",
+          transition: "background 120ms ease",
+          zIndex: 1,
           userSelect: "none",
-          color: "var(--text-muted)",
-          fontSize: 10,
-          writingMode: "vertical-lr",
+          flexShrink: 0,
         }}
-        onMouseDown={collapsed ? undefined : onMouseDown}
-        title={collapsed ? "展开" : "折叠/拖拽调整"}
       >
-        {collapsed ? (direction === "left" ? "▶" : "◀") : ""}
+        {/* Visual indicator: thin pill on hover; arrow when collapsed */}
+        {collapsed ? (
+          <span style={{ fontSize: 8, color: "var(--text-muted)", pointerEvents: "none" }}>
+            {direction === "left" ? "▶" : "◀"}
+          </span>
+        ) : (
+          <div
+            style={{
+              width: 3,
+              height: 20,
+              borderRadius: 2,
+              background: hovered ? "var(--text-muted)" : "transparent",
+              transition: "background 120ms ease",
+              pointerEvents: "none",
+            }}
+          />
+        )}
       </div>
     </div>
   );
