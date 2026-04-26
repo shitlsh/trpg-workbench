@@ -423,6 +423,8 @@ export interface ChatMessage {
   references_json: string | null;
   /** JSON-serialised ToolCall[] stored per message */
   tool_calls_json: string | null;
+  /** Raw reasoning/thinking text from the model (plain string, not JSON) */
+  thinking_json: string | null;
   created_at: string;
 }
 

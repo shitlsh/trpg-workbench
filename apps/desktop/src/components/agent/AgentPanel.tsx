@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  RefreshCw, FileText, ChevronDown, ChevronUp, MessageSquare,
+  RefreshCw, FileText, ChevronDown, ChevronUp, MessageSquare, Brain,
 } from "lucide-react";
 import type {
   ChatSession, ChatMessage, ToolCall,
@@ -46,6 +46,9 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
         lineHeight: 1.6,
         color: msg.role === "system" ? "var(--text-muted)" : "var(--text)",
       }}>
+        {!isUser && msg.thinking_json && (
+          <ThinkingBlock content={msg.thinking_json} />
+        )}
         {msg.content && (
           isUser
             ? <div>{msg.content}</div>
@@ -75,7 +78,62 @@ type StreamEvent =
   | { kind: "text_chunk"; text: string }
   | { kind: "tool_call"; toolCall: ToolCall };
 
-function StreamingBubble({ events }: { events: StreamEvent[] }) {
+// ─── ThinkingBlock ────────────────────────────────────────────────────────────
+
+function ThinkingBlock({ content, streaming }: { content: string; streaming?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: "flex", alignItems: "center", gap: 5,
+          background: "none", border: "none", cursor: "pointer",
+          padding: "2px 0",
+          color: "var(--text-muted)", fontSize: 11,
+        }}
+      >
+        <Brain size={11} style={{ flexShrink: 0 }} />
+        <span>推理过程</span>
+        {streaming && !expanded && (
+          <span style={{
+            display: "inline-block", width: 5, height: 5,
+            borderRadius: "50%", background: "var(--accent)",
+            marginLeft: 2, animation: "blink 1s step-end infinite",
+          }} />
+        )}
+        {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+      </button>
+      {expanded && (
+        <pre style={{
+          margin: "4px 0 0",
+          padding: "6px 8px",
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          borderRadius: 4,
+          fontSize: 11,
+          lineHeight: 1.5,
+          color: "var(--text-subtle, var(--text-muted))",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          maxHeight: 300,
+          overflowY: "auto",
+        }}>
+          {content}
+          {streaming && (
+            <span style={{
+              display: "inline-block", width: 5, height: 11,
+              background: "var(--text-muted)", marginLeft: 2,
+              verticalAlign: "text-bottom", animation: "blink 1s step-end infinite",
+            }} />
+          )}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function StreamingBubble({ events, thinking, isStreaming }: { events: StreamEvent[]; thinking: string; isStreaming: boolean }) {
   const lastTextIdx = events.reduce((last, e, i) => e.kind === "text_chunk" ? i : last, -1);
 
   return (
@@ -94,7 +152,10 @@ function StreamingBubble({ events }: { events: StreamEvent[] }) {
         fontSize: 13,
         lineHeight: 1.6,
       }}>
-        {events.length === 0 && (
+        {thinking && (
+          <ThinkingBlock content={thinking} streaming={isStreaming} />
+        )}
+        {events.length === 0 && !thinking && (
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>思考中...</span>
         )}
         {events.map((e, i) => {
@@ -229,6 +290,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
   // SSE streaming state
   const [streamingEvents, setStreamingEvents] = useState<StreamEvent[]>([]);
+  const [streamingThinking, setStreamingThinking] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
 
   // Queue for messages sent while a stream is in progress
@@ -297,7 +359,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isStreaming, streamingEvents]);
+  }, [messages, isStreaming, streamingEvents, streamingThinking]);
 
   // Switch to a session and load its messages
   const switchToSession = useCallback(async (s: ChatSession) => {
@@ -376,12 +438,14 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       content,
       references_json: null,
       tool_calls_json: null,
+      thinking_json: null,
       created_at: new Date().toISOString(),
     };
     addMessage(fakeUserMsg);
 
     setIsStreaming(true);
     setStreamingEvents([]);
+    setStreamingThinking("");
     setTyping(true);
 
     const ctrl = new AbortController();
@@ -414,11 +478,13 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
       let accEvents: StreamEvent[] = [];
       let accToolCallsById: Record<string, ToolCall> = {};
+      let accThinking = "";
       let currentEvent = "";
+      let streamDone = false;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done || streamDone) break;
 
         buf += decoder.decode(value, { stream: true });
         const lines = buf.split("\n");
@@ -449,6 +515,11 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 accEvents = [...accEvents, { kind: "text_chunk", text: chunk }];
               }
               setStreamingEvents([...accEvents]);
+
+            } else if (currentEvent === "thinking_delta") {
+              const chunk = (data.content as string) ?? "";
+              accThinking += chunk;
+              setStreamingThinking(accThinking);
 
             } else if (currentEvent === "tool_call_start") {
               const tc: ToolCall = {
@@ -511,12 +582,15 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                   accToolCalls.length > 0
                     ? JSON.stringify(accToolCalls)
                     : null,
+                thinking_json: accThinking || null,
                 created_at: new Date().toISOString(),
               };
               addMessage(assistantMsg);
               setIsStreaming(false);
               setStreamingEvents([]);
+              setStreamingThinking("");
               setTyping(false);
+              streamDone = true;
               flushQueue();
 
             } else if (currentEvent === "error") {
@@ -527,12 +601,15 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 content: `⚠ 错误：${(data.message as string) ?? "未知错误"}`,
                 references_json: null,
                 tool_calls_json: null,
+                thinking_json: null,
                 created_at: new Date().toISOString(),
               };
               addMessage(errMsg);
               setIsStreaming(false);
               setStreamingEvents([]);
+              setStreamingThinking("");
               setTyping(false);
+              streamDone = true;
               flushQueue();
             }
           }
@@ -541,6 +618,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       // Guard: if stream closed without a `done` SSE event, clear streaming state
       setIsStreaming(false);
       setStreamingEvents([]);
+      setStreamingThinking("");
       setTyping(false);
       flushQueue();
     } catch (e) {
@@ -552,11 +630,13 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           content: `⚠ 发送失败：${(e as Error).message}`,
           references_json: null,
           tool_calls_json: null,
+          thinking_json: null,
           created_at: new Date().toISOString(),
         });
       }
       setIsStreaming(false);
       setStreamingEvents([]);
+      setStreamingThinking("");
       setTyping(false);
       // Don't flush on abort — user intentionally stopped; discard queue too
       if ((e as Error).name === "AbortError") {
@@ -571,6 +651,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     abortRef.current?.abort();
     setIsStreaming(false);
     setStreamingEvents([]);
+    setStreamingThinking("");
     syncQueue([]);
     createNewSession();
   };
@@ -654,7 +735,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           ))}
 
           {isStreaming && (
-            <StreamingBubble events={streamingEvents} />
+            <StreamingBubble events={streamingEvents} thinking={streamingThinking} isStreaming={isStreaming} />
           )}
 
           <div ref={bottomRef} />

@@ -125,6 +125,10 @@ async def run_director_stream(
             if event_type == "RunContent" and getattr(chunk, "content", None):
                 yield {"event": "text_delta", "data": {"content": chunk.content}}
 
+            # Reasoning/thinking delta
+            elif event_type == "ReasoningContentDelta" and getattr(chunk, "reasoning_content", None):
+                yield {"event": "thinking_delta", "data": {"content": chunk.reasoning_content}}
+
             # Tool call started
             elif event_type == "ToolCallStarted":
                 tool = getattr(chunk, "tool", None)

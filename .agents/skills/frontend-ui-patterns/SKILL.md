@@ -302,7 +302,7 @@ while (true) {
 
 **禁止**将 `streamingText` 和 `streamingToolCalls` 分开存储为两个独立 state——这会导致 ToolCallCard 永远被渲染在文字上方，丢失"顺序感"。
 
-**必须**使用统一事件序列：
+**必须**使用统一事件序列 + 独立 thinking state：
 
 ```typescript
 type StreamEvent =
@@ -310,16 +310,27 @@ type StreamEvent =
   | { kind: "tool_call"; toolCall: ToolCall }
 
 const [streamingEvents, setStreamingEvents] = useState<StreamEvent[]>([]);
+const [streamingThinking, setStreamingThinking] = useState("");
 ```
 
 更新规则：
 - `text_delta` → 找最后一个 `text_chunk` 并追加，或 push 新 `text_chunk`
+- `thinking_delta` → 追加到 `streamingThinking` 字符串
 - `tool_call_start` / `auto_applied` → push `{ kind: "tool_call" }`
 - `tool_call_result` → 用 id map 更新对应 `tool_call` 的 status/result_summary
-- `done` → 从 events 派生 `accText`（合并所有 text_chunk）和 `accToolCalls`（Object.values(byId)），存入 ChatMessage
+- `done` → 从 events 派生 `accText`（合并所有 text_chunk）和 `accToolCalls`（Object.values(byId)），存入 ChatMessage（含 `thinking_json: accThinking || null`）
 
 `StreamingBubble` 按 events 顺序渲染：text_chunk 用 `<ReactMarkdown>`，tool_call 用 `<ToolCallCard>`。
-Blinking cursor 只放在最后一个 text_chunk 末尾（不是全部 text_chunk）。
+Blinking cursor 只放在最后一个 text_chunk 末尾。
+若有 thinking，在气泡顶部渲染 `<ThinkingBlock>` 折叠块，传入 `isStreaming` prop 控制呼吸灯。
+
+`ThinkingBlock` 规范：
+- 默认折叠，点击展开
+- streaming 时 header 显示小圆点呼吸灯（`animation: blink`）
+- 内容用 `<pre>` 渲染（monospace，`var(--text-muted)` 色）
+- `streaming` prop 来自父级 `isStreaming`，**不要**用 `events.length === 0` 来判断——这会在第一个 event 到达后立刻关掉指示灯
+
+SSE 读取循环：当收到 `done` 或 `error` 事件后，**必须**设置 `streamDone = true` 来提前退出 `while(true)` 读循环，不要等待 `reader.read()` 返回 `{done: true}`。
 
 > `patch_proposal` 事件已废弃，`PatchConfirmDialog` 已删除。所有资产写入直接执行。
 

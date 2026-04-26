@@ -190,6 +190,7 @@ async def send_message(
     async def _event_generator():
         text_buffer = []
         tool_calls_emitted: list[dict] = []
+        thinking_buffer: list[str] = []
 
         # ── Keepalive via asyncio queue ───────────────────────────────────────
         # The director may go silent for 30-60s while LM Studio processes a
@@ -241,6 +242,10 @@ async def send_message(
                     text_buffer.append(data.get("content", ""))
                     yield _sse("text_delta", data)
 
+                elif event_type == "thinking_delta":
+                    thinking_buffer.append(data.get("content", ""))
+                    yield _sse("thinking_delta", data)
+
                 elif event_type == "tool_call_start":
                     tool_calls_emitted.append({
                         "id": data.get("id", ""),
@@ -272,12 +277,14 @@ async def send_message(
                     # Save assistant message
                     final_text = "".join(text_buffer)
                     tc_json = json.dumps(tool_calls_emitted, ensure_ascii=False) if tool_calls_emitted else None
+                    final_thinking = "".join(thinking_buffer) if thinking_buffer else None
                     chat_service.append_message(
                         workspace_path=ws.workspace_path,
                         session_id=session_id,
                         role="assistant",
                         content=final_text,
                         tool_calls_json=tc_json,
+                        thinking_json=final_thinking,
                     )
                     # Update session
                     session.message_count = (session.message_count or 0) + 2

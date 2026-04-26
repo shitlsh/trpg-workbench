@@ -1,5 +1,5 @@
 ---
-status: partial
+status: completed
 date: 2026-04-26
 source: OpenPawz, 用户实测反馈
 theme: Thinking/Reasoning 过程展示 + 工具调用 UX 打磨
@@ -53,46 +53,42 @@ Agent 开始写文字...（流式追加）
 
 ---
 
-## 适合性判断
-
-适合，且有 TRPG 场景特有的额外价值——用户可以看到"Agent 为什么这样设计这个 NPC 的背景故事"，这本身就是创作参考。
-
----
-
-## 对创作控制感的影响
-
-显著改善——用户可以审查 Agent 的推理是否符合创作意图，及时发现偏差。
-
----
-
-## 对 workbench 协同的影响
-
-改善 Agent 面板信息密度，让 Agent 面板从"黑箱结果输出"变为"可审查的推理过程"。
-
----
-
-## 对 1.0 用户价值的影响
-
-中。非紧急但差异化价值较高，是 trpg-workbench 区别于普通 chatbot 的体验标志。
-
----
-
 ## 实现进度
 
 ### Phase 1 — 工具调用顺序感（纯前端）✅ 已完成
+
+提交：`f3fa24b`
 
 - [x] 将 streaming state 从两个独立列表（`streamingText` + `streamingToolCalls`）改为统一时序事件序列 `StreamEvent[]`
 - [x] `text_delta` → 追加到最后一个 `text_chunk` 或新建
 - [x] `tool_call_start` / `auto_applied` → push `{ kind: "tool_call" }`
 - [x] `tool_call_result` → 用 id 更新对应 tool_call 的 status/result_summary
 - [x] `StreamingBubble` 按 `events` 顺序渲染，blinking cursor 在最后一个 text_chunk 末尾
-- [x] TypeScript 零错误（`pnpm tsc --noEmit`）
+- [x] TypeScript 零错误
 
-### Phase 2 — Thinking Token 折叠展示（需后端配合）⏳ 待实现
+### Phase 2 — Thinking Token 折叠展示 ✅ 已完成
 
-前置验证：agno 版本（2.5.x）对 thinking token 的事件类型需要确认，实现 Phase 2 前需验证 agno 是否透传 thinking 事件。如 agno 不支持，则需要通过 model_adapter 层直接捕获原始 API 响应。
+agno 2.5.17 透传 `ReasoningContentDelta` 事件（`reasoning_content` 字段），无需绕过 model_adapter。
 
-1. **后端** `apps/backend/app/agents/director.py`：在 agno event 处理循环中捕获 `ThinkingContent` / `ReasoningContent` 类型事件，emit 新 SSE 类型 `thinking_delta`（`{"content": "..."}` 增量流）
-2. **前端** `AgentPanel.tsx`：新增 `thinkingText` 累积 state，处理 `thinking_delta` 事件；在 `streamingEvents` 序列最前方插入 thinking block
-3. **UI**：在助手气泡最顶部显示折叠块"💭 推理过程"，默认收起，点击展开显示 thinking 内容（monospace 小字，`var(--text-subtle)` 色）
-4. **持久化**：thinking 内容在 `done` 事件后随消息存入新字段（DB schema 扩展或 `tool_calls_json` 旁新增 `thinking_json`）
+#### 后端
+
+- [x] `director.py`：捕获 `ReasoningContentDelta` 事件，emit `thinking_delta` SSE
+- [x] `chat.py`：增加 `thinking_buffer: list[str]`，处理 `thinking_delta`，`done` 时将 `"".join(thinking_buffer)` 作为 `thinking_json` 写入 JSONL
+- [x] `chat_service.append_message`：新增 `thinking_json: str | None = None` 参数
+- [x] `ChatMessageSchema`（`schemas.py`）：新增 `thinking_json: str | None = None` 字段
+- [x] 向后兼容：旧 JSONL 记录无此字段，Pydantic 默认填 `None`
+
+#### 前端
+
+- [x] `shared-schema`：`ChatMessage` 增加 `thinking_json: string | null`
+- [x] 新增 `ThinkingBlock` 组件：默认折叠，点击展开；streaming 时 header 有呼吸灯小圆点
+- [x] `StreamingBubble`：接受 `thinking` + `isStreaming` props，在顶部渲染 `ThinkingBlock`
+- [x] `StoredMessageBubble`：历史消息如有 `thinking_json` 则渲染 `ThinkingBlock`
+- [x] 新增 `streamingThinking` state，处理 `thinking_delta` SSE 事件
+- [x] 所有 `ChatMessage` 构造（fakeUserMsg / assistantMsg / errMsg）补全 `thinking_json` 字段
+- [x] `@keyframes blink` 添加到 `index.css`（修复 code review 发现的遗漏）
+- [x] `streamDone` flag 在 `done`/`error` 后提前退出读循环（修复 code review 发现的问题）
+
+#### 存储格式说明
+
+`thinking_json` 字段名沿用 `_json` 后缀约定，但存储的是**纯文本字符串**（不是 JSON 序列化的数组），与 `tool_calls_json`（存 `json.dumps(list)`）有所不同。原因：thinking 内容是单一文本，无需数组包装；TS 注释已说明这一点。

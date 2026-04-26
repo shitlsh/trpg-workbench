@@ -302,6 +302,7 @@ class ChatMessageSchema(BaseModel):
     content: str
     references_json: str | None = None
     tool_calls_json: str | None = None
+    thinking_json: str | None = None
     created_at: datetime
 
 
