@@ -19,6 +19,7 @@ export interface RuleSet {
   name: string;
   slug: string;
   description: string | null;
+  default_prompt_profile_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -32,6 +33,7 @@ export interface CreateRuleSetRequest {
 export interface UpdateRuleSetRequest {
   name?: string;
   description?: string;
+  default_prompt_profile_id?: string | null;
 }
 
 // ─── Workspace ────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ class RuleSetSchema(BaseModel):
     name: str
     slug: str
     description: str | None
+    default_prompt_profile_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -21,6 +22,7 @@ class RuleSetCreate(BaseModel):
 class RuleSetUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    default_prompt_profile_id: str | None = None
 
 
 class WorkspaceSchema(BaseModel):
