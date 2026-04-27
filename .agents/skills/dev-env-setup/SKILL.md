@@ -18,10 +18,14 @@ description: 在新机器上从零搭建 trpg-workbench 开发环境的完整步
 ```bash
 node --version       # 需要 >= 20
 pnpm --version       # 需要 >= 9
-python3 --version    # 系统自带是 3.9，不够用，见下文
+python3 --version    # 可能是 3.9：这是系统自带 Python，**不要用它**创建 venv
+python3.13 --version # 必须能运行（>= 3.13），路径应来自 Homebrew
+which python3.13
 rustc --version      # 需要 >= 1.70
 cargo tauri --version
 ```
+
+> 说明：macOS 的 `python3` 可能长期显示 3.9，这并不代表 Homebrew 的 3.13 没装上；**以后端 venv 的 python 为准**。
 
 ---
 
@@ -31,7 +35,7 @@ cargo tauri --version
 
 ```bash
 # 验证
-node --version   # v20.x 或更高
+node --version   # 仓库当前 engines 为 `>= 20`（LTS/Current 通常都可以）
 ```
 
 ---
@@ -42,7 +46,7 @@ node --version   # v20.x 或更高
 npm install -g pnpm
 
 # 验证
-pnpm --version   # 10.x
+pnpm --version   # 10.x（以 `package.json#engines` 要求为准，当前为 `>= 9`）
 ```
 
 ---
@@ -61,7 +65,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 
 # 验证
-rustc --version   # rustc 1.95.0 或更高
+rustc --version
 cargo --version
 ```
 
@@ -71,15 +75,17 @@ cargo --version
 
 ## 4. Tauri CLI
 
-Rust 环境就绪后安装 Tauri CLI（编译耗时约 2-3 分钟）：
+Rust 环境就绪后安装 Tauri CLI（首次从源码编译安装，常见耗时在 **2-10+ 分钟**，视机器与网络而定）：
 
 ```bash
 source "$HOME/.cargo/env"   # 如果还没 source
 cargo install tauri-cli
 
 # 验证
-cargo tauri --version   # tauri-cli 2.x
+cargo tauri --version
 ```
+
+> 以实际安装结果为准。举例：`tauri-cli 2.10.1`。
 
 ---
 
@@ -114,6 +120,10 @@ pnpm install
 
 这会同时安装 `apps/desktop` 和 `packages/shared-schema` 的依赖，并建立 workspace 软链接。
 
+> **pnpm 10+ 的构建脚本白名单（esbuild）**  
+> 你偶尔会在 `pnpm install` 末尾看到 `Ignored build scripts: esbuild@...`，这是 pnpm 的安全机制。对大多数情况 **不影响** Vite 工作（Vite 会在依赖树中解析到 `esbuild` 包，而不是要求根目录有 `node_modules/esbuild`）。  
+> 如果你实际遇到 esbuild 相关运行时报错，优先尝试在仓库里执行 `pnpm approve-builds` 批准构建脚本，然后重装依赖。快速自检：`cd apps/desktop && node -e "import('vite').then(m=>console.log('vite ok', m.version))"`。
+
 ---
 
 ## 7. 后端 venv 与依赖
@@ -144,6 +154,8 @@ ERROR: Can not perform a '--user' install. User site-packages are not visible in
 PIP_USER=false .venv/bin/pip install -r requirements.txt
 ```
 
+> 说明：首次安装时如果包含 `lancedb/pyarrow` 等大包，**下载+安装 10-20+ 分钟** 属于常见情况，耐心等 `Successfully installed` 出现即可（避免中途强退）。
+
 或者一次性修改 pip 配置（适合长期使用）：
 
 ```bash
@@ -151,6 +163,8 @@ PIP_USER=false .venv/bin/pip install -r requirements.txt
 cat ~/Library/Application\ Support/pip/pip.conf
 # 将 "user = true" 改为 "user = false"，或删除该行
 ```
+
+> 选做：想消除 pip 的升级提示，可在 venv 里执行 `PIP_USER=false .venv/bin/python -m pip install --upgrade pip`（不升级也不影响运行）。
 
 ### 7.3 验证后端可正常启动
 
@@ -179,6 +193,14 @@ PIP_USER=false TRPG_DATA_DIR=~/trpg-workbench-data .venv/bin/python3 server.py
 # 访问 http://127.0.0.1:7821/health 应返回 {"status":"ok","version":"0.1.0"}
 ```
 
+### 仅前端（可选快速验证，不拉 Tauri）
+
+```bash
+cd /path/to/trpg-workbench
+pnpm dev
+# 通常是 Vite dev server（以 apps/desktop 配置为准；常见端口 1420）
+```
+
 ### 完整桌面应用
 
 ```bash
@@ -200,8 +222,9 @@ cargo tauri dev
 | `pip install` 报 `user install` 错误 | `~/.../pip.conf` 有 `user = true` | 命令前加 `PIP_USER=false` |
 | `python3 -m venv` 创建的 venv 装包异常 | 系统 Python 3.9 版本太低 | 改用 `/opt/homebrew/bin/python3.13` |
 | `cargo tauri dev` 首次极慢 | Rust 编译所有依赖 | 正常，等待 5-10 分钟 |
+| `pnpm install` 提示忽略 `esbuild` 构建脚本 | pnpm 10+ 的依赖构建脚本需显式允许 | 多数可忽略；若真遇到 esbuild 问题：`pnpm approve-builds` 后重试/重装；或用上面的 `import('vite')` 自检 |
 | 前端报 `Cannot find module '@trpg-workbench/shared-schema'` | pnpm workspace 未链接 | 在仓库根目录运行 `pnpm install` |
-| 后端端口 7821 被占用 | 上次进程未退出 | `lsof -ti:7821 \| xargs kill` |
+| 后端端口 7821 被占用 | 上次进程未退出 | `lsof -ti:7821 \| xargs kill`（mac 上如不想依赖 GNU 扩展，可手动 `lsof` 后 `kill <pid>`） |
 | `lancedb` 安装失败（Rust 编译错误）| lancedb 有 Rust native extension，需要 Rust 工具链 | 确保已完成第 3 步（rustup + source），再重新 pip install |
 | `lancedb` 在 Apple Silicon 报 `ImportError` | 架构不匹配的预编译轮子 | 用 `pip install lancedb --no-binary lancedb` 从源码编译 |
 
