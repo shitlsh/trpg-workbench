@@ -2,7 +2,7 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M27（资产单步操作与批处理）进行中**
+> **当前状态：M1–M27 已完成**（资产单步/批处理、跨资产 preview→apply 等已落地；计划见 [`.agents/plans/archive/m27-asset-ops-and-batch.md`](.agents/plans/archive/m27-asset-ops-and-batch.md)）
 
 ---
 
