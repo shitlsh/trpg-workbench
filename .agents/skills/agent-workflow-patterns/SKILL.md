@@ -107,8 +107,8 @@ async def run_director_stream(
 {"event": "text_delta",      "data": {"content": "正在分析..."}}
 {"event": "tool_call_start", "data": {"id": "tc_1", "name": "check_consistency", "arguments": "..."}}
 {"event": "tool_call_result","data": {"id": "tc_1", "success": true, "summary": "无冲突"}}
+{"event": "tool_call_result","data": {"id": "tc_2", "success": true, "summary": "{...}", "workspace_mutating": true}}  # 成功写盘，前端绿标 + 刷资产
 {"event": "patch_proposal",  "data": {"id": "pp_xxx", "action": "create", "asset_type": "npc", ...}}
-{"event": "auto_applied",    "data": {"action": "created", "asset_name": "赵探长"}}  # 信任模式
 {"event": "done",            "data": {}}
 {"event": "error",           "data": {"message": "..."}}
 ```
@@ -193,9 +193,9 @@ class PatchProposalInterrupt(AgentRunException):
         super().__init__("patch_proposal", stop_execution=True)
 ```
 
-### SSE `auto_applied`（与工具 JSON）
+### `tool_call_result` 与 `workspace_mutating`
 
-`create_asset` / `patch_asset` / `update_asset` / `create_skill` 成功时返回标准 JSON（含 `success`、`slug`、`action` 等），**不再**包含 `auto_applied` 字段。`app/agents/director.py` 根据工具名白名单 `_SSE_AUTO_APPLY_TOOL_NAMES` 与 `success` 为真，将结果以 SSE 事件 `auto_applied` 推给前端（「已自动应用」样式 + 刷新资产列表），与早先依赖 JSON 内 `auto_applied: true` 的行为等价。
+`create_asset` / `patch_asset` / `update_asset` / `create_skill` 成功时返回标准 JSON（含 `success`、`slug`、`action` 等）。`app/agents/director.py` 在 **同一条** `tool_call_result` SSE 上附加 `workspace_mutating: true`（工具名白名单 `_WORKSPACE_MUTATING_TOOL_NAMES` + 解析 `success`），供前端绿标与流式过程中刷新资产树。与已移除的「信任模式」无关；不再使用独立 SSE 事件名 `auto_applied`。
 
 ### 工具上下文注入
 

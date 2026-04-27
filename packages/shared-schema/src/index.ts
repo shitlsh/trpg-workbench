@@ -484,6 +484,7 @@ export interface ToolCall {
   name: string;
   /** JSON-serialised arguments object */
   arguments: string;
+  /** `auto_applied` = successful immediate asset/skill write (green badge in UI), not a separate “trust” mode */
   status: "running" | "done" | "error" | "auto_applied" | "pending_confirm";
   /** Brief human-readable summary of the result */
   result_summary: string | null;
@@ -549,14 +550,6 @@ export interface ConsistencyReport {
   overall_status: "clean" | "has_warnings" | "has_errors";
 }
 
-export interface AutoAppliedEvent {
-  auto_applied: true;
-  success: boolean;
-  action: "created" | "updated";
-  asset_id: string;
-  slug: string;
-}
-
 // ─── M19: SSE Event types ─────────────────────────────────────────────────────
 
 export type SSEEventType =
@@ -564,7 +557,6 @@ export type SSEEventType =
   | "tool_call_start"
   | "tool_call_result"
   | "patch_proposal"
-  | "auto_applied"
   | "agent_question"
   | "done"
   | "error";
@@ -581,17 +573,12 @@ export interface SSEToolCallStart {
 
 export interface SSEToolCallResult {
   event: "tool_call_result";
-  data: { id: string; success: boolean; summary: string };
+  data: { id: string; success: boolean; summary: string; workspace_mutating?: boolean };
 }
 
 export interface SSEPatchProposal {
   event: "patch_proposal";
   data: PatchProposal;
-}
-
-export interface SSEAutoApplied {
-  event: "auto_applied";
-  data: AutoAppliedEvent;
 }
 
 export interface SSEDone {
@@ -633,7 +620,6 @@ export type SSEEvent =
   | SSEToolCallStart
   | SSEToolCallResult
   | SSEPatchProposal
-  | SSEAutoApplied
   | SSEAgentQuestion
   | SSEDone
   | SSEError;

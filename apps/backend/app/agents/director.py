@@ -83,9 +83,9 @@ def _build_workspace_snapshot(workspace_context: dict) -> str:
     return "\n".join(lines)
 
 
-# Tools whose successful return JSON should be surfaced as SSE `auto_applied` (green “已应用” + asset list refresh), not only `tool_call_result`.
-# Replaces the legacy `auto_applied: true` key inside tool return JSON.
-_SSE_AUTO_APPLY_TOOL_NAMES = frozenset({
+# create/patch/update asset + create_skill: successful JSON → `tool_call_result` with `workspace_mutating: true`
+# (UI green “已应用” + mid-stream asset tree refresh). Not related to removed “trust mode”.
+_WORKSPACE_MUTATING_TOOL_NAMES = frozenset({
     "create_asset",
     "patch_asset",
     "update_asset",
@@ -93,20 +93,18 @@ _SSE_AUTO_APPLY_TOOL_NAMES = frozenset({
 })
 
 
-def _payload_for_auto_applied_sse(tool, raw_content: str) -> dict | None:
-    """If this completed tool should emit `auto_applied`, return the parsed payload; else None."""
-    if tool is None:
-        return None
+def _workspace_mutating_result(tool, raw_content: str) -> bool:
+    """True if this tool result should refresh workspace assets in the client (streaming)."""
+    if tool is None or getattr(tool, "tool_call_error", False):
+        return False
     name = (getattr(tool, "tool_name", None) or "").strip()
-    if name not in _SSE_AUTO_APPLY_TOOL_NAMES:
-        return None
+    if name not in _WORKSPACE_MUTATING_TOOL_NAMES:
+        return False
     try:
         payload = json.loads(raw_content)
     except Exception:
-        return None
-    if not isinstance(payload, dict) or not payload.get("success"):
-        return None
-    return payload
+        return False
+    return isinstance(payload, dict) and bool(payload.get("success"))
 
 
 async def run_director_stream(
@@ -121,8 +119,8 @@ async def run_director_stream(
     """Async generator yielding SSE event dicts.
 
     Yields dicts with keys: event, data
-    Events: text_delta, tool_call_start, tool_call_result, auto_applied, done, error
-    (`auto_applied` is emitted for a fixed set of write tools on success — see `_SSE_AUTO_APPLY_TOOL_NAMES`.)
+    Events: text_delta, tool_call_start, tool_call_result, done, error
+    (`tool_call_result` may include `workspace_mutating: true` for successful asset/skill writes — see `_WORKSPACE_MUTATING_TOOL_NAMES`.)
     """
     if model is None:
         yield {"event": "error", "data": {"message": "未配置 LLM，请在工作区设置中配置 LLM Profile"}}
@@ -222,16 +220,14 @@ async def run_director_stream(
                     or ""
                 )
                 if tool is not None:
-                    ap_payload = _payload_for_auto_applied_sse(tool, raw_content)
-                    if ap_payload is not None:
-                        yield {"event": "auto_applied", "data": ap_payload}
-                        continue
+                    ws_mut = _workspace_mutating_result(tool, raw_content)
                     yield {
                         "event": "tool_call_result",
                         "data": {
                             "id": tool.tool_call_id or "",
                             "success": not tool.tool_call_error,
                             "summary": raw_content[:500],
+                            "workspace_mutating": ws_mut,
                         },
                     }
                 elif raw_content:
@@ -241,6 +237,7 @@ async def run_director_stream(
                             "id": getattr(chunk, "tool_call_id", None) or "",
                             "success": True,
                             "summary": raw_content[:500],
+                            "workspace_mutating": False,
                         },
                     }
 

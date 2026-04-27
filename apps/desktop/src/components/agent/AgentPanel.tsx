@@ -19,8 +19,8 @@ import { MentionInput } from "./MentionInput";
 import { SessionDrawer } from "./SessionDrawer";
 import { apiFetch } from "@/lib/api";
 
-/** Map `auto_applied` payload from the server to a tool name (fallback when no `tool_call_start` ran). */
-function toolNameFromAutoAppliedPayload(data: { action?: string; asset_type?: string }): string {
+/** Infer display tool name from parsed write-result JSON when there was no `tool_call_start`. */
+function toolNameFromWriteResultPayload(data: { action?: string; asset_type?: string }): string {
   const act = data.action;
   if (act === "deleted") return "delete_asset";
   if (data.asset_type === "skill" && act === "created") return "create_skill";
@@ -685,11 +685,15 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               setStreamingEvents([...accEvents]);
 
             } else if (currentEvent === "tool_call_result") {
-              const tcId = data.id as string;
+              const tcId = (data.id as string) ?? "";
+              const workspaceMutating = (data as { workspace_mutating?: boolean }).workspace_mutating === true;
+              if (workspaceMutating && workspaceId) {
+                qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
+              }
               if (accToolCallsById[tcId]) {
-                const updated = {
+                const updated: ToolCall = {
                   ...accToolCallsById[tcId],
-                  status: "done" as const,
+                  status: (workspaceMutating ? "auto_applied" : "done") as ToolCall["status"],
                   result_summary: (data.summary as string) ?? null,
                 };
                 accToolCallsById[tcId] = updated;
@@ -698,8 +702,24 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                     ? { kind: "tool_call", toolCall: updated }
                     : e
                 );
-                setStreamingEvents([...accEvents]);
+              } else if (workspaceMutating) {
+                let parsed: { action?: string; asset_type?: string; slug?: string; asset_id?: string } = {};
+                try {
+                  parsed = JSON.parse((data.summary as string) || "{}") as typeof parsed;
+                } catch {
+                  /* empty */
+                }
+                const tc: ToolCall = {
+                  id: tcId || `aa_${Date.now()}`,
+                  name: toolNameFromWriteResultPayload(parsed),
+                  arguments: JSON.stringify({ slug: parsed.slug, asset_id: parsed.asset_id }),
+                  status: "auto_applied" as ToolCall["status"],
+                  result_summary: (data.summary as string) ?? null,
+                };
+                accToolCallsById[tc.id] = tc;
+                accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
               }
+              setStreamingEvents([...accEvents]);
 
             } else if (currentEvent === "agent_question") {
               // Director wants to ask the user a question before continuing
@@ -708,45 +728,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               setStreamingEvents([...accEvents]);
               // Stream ends after this (backend emits done next); keep isStreaming=true until done
 
-            } else if (currentEvent === "auto_applied") {
-              // Asset written directly — refresh assets list
-              qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
-              // Find the last "running" tool_call and upgrade it to auto_applied in-place,
-              // rather than adding a redundant second card.
-              const lastRunningIdx = accEvents.reduce(
-                (found, e, i) => (e.kind === "tool_call" && e.toolCall.status === "running" ? i : found),
-                -1,
-              );
-              if (lastRunningIdx !== -1) {
-                const existing = (accEvents[lastRunningIdx] as { kind: "tool_call"; toolCall: ToolCall }).toolCall;
-                const upgraded: ToolCall = {
-                  ...existing,
-                  status: "auto_applied" as ToolCall["status"],
-                  result_summary: `${data.action ?? "created"}: ${data.slug ?? ""}`,
-                };
-                accToolCallsById[upgraded.id] = upgraded;
-                accEvents = accEvents.map((e, i) =>
-                  i === lastRunningIdx ? { kind: "tool_call" as const, toolCall: upgraded } : e
-                );
-              } else {
-                // Fallback: no prior running card (e.g. direct auto_applied without tool_call_start)
-                const tc: ToolCall = {
-                  id: (data.slug as string) ?? `aa_${Date.now()}`,
-                  name: toolNameFromAutoAppliedPayload(
-                    data as { action?: string; asset_type?: string },
-                  ),
-                  arguments: JSON.stringify({ slug: data.slug, asset_id: data.asset_id }),
-                  status: "auto_applied" as ToolCall["status"],
-                  result_summary: null,
-                };
-                accToolCallsById[tc.id] = tc;
-                accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
-              }
-              setStreamingEvents([...accEvents]);
-
             } else if (currentEvent === "done") {
-              // Fallback refresh: ensure asset tree is up-to-date even if
-              // auto_applied events were missed or not emitted.
+              // Ensure asset tree is up-to-date after the turn (covers missed flags or only-read tools).
               qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
               // Build content with {{tool:id}} placeholders to preserve ordering.
               // Text segments and tool-call markers are interleaved in accEvents order.

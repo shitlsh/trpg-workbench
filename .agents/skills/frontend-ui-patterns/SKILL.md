@@ -341,8 +341,7 @@ while (true) {
 |-------------------|---------|
 | `text_delta`      | 追加到流式消息气泡的文本（Markdown 渲染，见下方规范） |
 | `tool_call_start` | 追加 `ToolCallCard`（状态: running） |
-| `tool_call_result`| 更新对应 `ToolCallCard`（状态: done/error） |
-| `auto_applied`    | 追加 `ToolCallCard`（状态: auto_applied），刷新资产列表 |
+| `tool_call_result`| 更新对应 `ToolCallCard`（`done` / `error`；若 `data.workspace_mutating` 则为成功写盘，状态用 `auto_applied` 绿标并刷新资产列表） |
 | `done`            | 关闭流，finalizing message |
 | `error`           | 显示错误提示，关闭流 |
 
@@ -364,7 +363,7 @@ const [streamingThinking, setStreamingThinking] = useState("");
 更新规则：
 - `text_delta` → 找最后一个 `text_chunk` 并追加，或 push 新 `text_chunk`
 - `thinking_delta` → 追加到 `streamingThinking` 字符串
-- `tool_call_start` / `auto_applied` → push `{ kind: "tool_call" }`
+- `tool_call_start` / `tool_call_result`（含 `workspace_mutating` 时与写盘成功同效） → push 或更新 `{ kind: "tool_call" }`
 - `tool_call_result` → 用 id map 更新对应 `tool_call` 的 status/result_summary
 - `done` → 从 events 派生 `accText`（合并所有 text_chunk）和 `accToolCalls`（Object.values(byId)），存入 ChatMessage（含 `thinking_json: accThinking || null`）
 

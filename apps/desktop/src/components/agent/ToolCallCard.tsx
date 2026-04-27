@@ -329,7 +329,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
             background: "rgba(82,201,126,0.15)", color: "#52c97e",
             border: "1px solid rgba(82,201,126,0.3)",
           }}>
-            已自动应用
+            已写入
           </span>
         )}
         {toolCall.result_summary && !isAutoApplied && !consistencyReport && !knowledgeSummary && (

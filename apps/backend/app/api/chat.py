@@ -201,7 +201,7 @@ async def send_message(
     `agent_scope` 在创建会话时设置；`explore` 为只读探索，其余为创作向 Director。
 
     Returns: text/event-stream
-    Events: text_delta, tool_call_start, tool_call_result, auto_applied, done, error
+    Events: text_delta, tool_call_start, tool_call_result (optional workspace_mutating), done, error
     """
     session = db.get(ChatSessionORM, session_id)
     if not session:
@@ -350,20 +350,12 @@ async def send_message(
 
                 elif event_type == "tool_call_result":
                     tc_id = data.get("id", "")
+                    ws_mut = bool(data.get("workspace_mutating"))
                     for tc in tool_calls_emitted:
                         if tc["id"] == tc_id:
-                            tc["status"] = "done"
+                            tc["status"] = "auto_applied" if ws_mut else "done"
                             tc["result_summary"] = data.get("summary", "")
                     yield _sse("tool_call_result", data)
-
-                elif event_type == "auto_applied":
-                    # Asset written directly — update last tool call status
-                    if tool_calls_emitted:
-                        tool_calls_emitted[-1]["status"] = "auto_applied"
-                        tool_calls_emitted[-1]["result_summary"] = (
-                            f"{data.get('action', 'written')}: {data.get('slug', '')}"
-                        )
-                    yield _sse("auto_applied", data)
 
                 elif event_type == "done":
                     # Save assistant message
