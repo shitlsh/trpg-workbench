@@ -131,22 +131,7 @@ async def run_explore_stream(
                     or getattr(chunk, "content", None)
                     or ""
                 )
-                # Explore has no write auto-apply; never emit auto_applied
                 if tool is not None:
-                    try:
-                        payload = json.loads(raw_content)
-                        if isinstance(payload, dict) and payload.get("auto_applied"):
-                            yield {
-                                "event": "tool_call_result",
-                                "data": {
-                                    "id": tool.tool_call_id or "",
-                                    "success": not tool.tool_call_error,
-                                    "summary": raw_content[:500],
-                                },
-                            }
-                            continue
-                    except Exception:
-                        pass
                     yield {
                         "event": "tool_call_result",
                         "data": {

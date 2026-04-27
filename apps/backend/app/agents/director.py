@@ -83,6 +83,32 @@ def _build_workspace_snapshot(workspace_context: dict) -> str:
     return "\n".join(lines)
 
 
+# Tools whose successful return JSON should be surfaced as SSE `auto_applied` (green “已应用” + asset list refresh), not only `tool_call_result`.
+# Replaces the legacy `auto_applied: true` key inside tool return JSON.
+_SSE_AUTO_APPLY_TOOL_NAMES = frozenset({
+    "create_asset",
+    "patch_asset",
+    "update_asset",
+    "create_skill",
+})
+
+
+def _payload_for_auto_applied_sse(tool, raw_content: str) -> dict | None:
+    """If this completed tool should emit `auto_applied`, return the parsed payload; else None."""
+    if tool is None:
+        return None
+    name = (getattr(tool, "tool_name", None) or "").strip()
+    if name not in _SSE_AUTO_APPLY_TOOL_NAMES:
+        return None
+    try:
+        payload = json.loads(raw_content)
+    except Exception:
+        return None
+    if not isinstance(payload, dict) or not payload.get("success"):
+        return None
+    return payload
+
+
 async def run_director_stream(
     user_message: str,
     workspace_context: dict,
@@ -96,6 +122,7 @@ async def run_director_stream(
 
     Yields dicts with keys: event, data
     Events: text_delta, tool_call_start, tool_call_result, auto_applied, done, error
+    (`auto_applied` is emitted for a fixed set of write tools on success — see `_SSE_AUTO_APPLY_TOOL_NAMES`.)
     """
     if model is None:
         yield {"event": "error", "data": {"message": "未配置 LLM，请在工作区设置中配置 LLM Profile"}}
@@ -195,13 +222,10 @@ async def run_director_stream(
                     or ""
                 )
                 if tool is not None:
-                    try:
-                        payload = json.loads(raw_content)
-                        if isinstance(payload, dict) and payload.get("auto_applied"):
-                            yield {"event": "auto_applied", "data": payload}
-                            continue
-                    except Exception:
-                        pass
+                    ap_payload = _payload_for_auto_applied_sse(tool, raw_content)
+                    if ap_payload is not None:
+                        yield {"event": "auto_applied", "data": ap_payload}
+                        continue
                     yield {
                         "event": "tool_call_result",
                         "data": {

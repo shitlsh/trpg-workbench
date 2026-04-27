@@ -193,9 +193,9 @@ class PatchProposalInterrupt(AgentRunException):
         super().__init__("patch_proposal", stop_execution=True)
 ```
 
-### 信任模式
+### SSE `auto_applied`（与工具 JSON）
 
-`workspace_context["trust_mode"] == True` 时，写入工具直接调用 `execute_patch_proposal` 落盘，不 raise `PatchProposalInterrupt`，改为返回含 `auto_applied: true` 的结果。SSE 层检测并 yield `auto_applied` 事件。
+`create_asset` / `patch_asset` / `update_asset` / `create_skill` 成功时返回标准 JSON（含 `success`、`slug`、`action` 等），**不再**包含 `auto_applied` 字段。`app/agents/director.py` 根据工具名白名单 `_SSE_AUTO_APPLY_TOOL_NAMES` 与 `success` 为真，将结果以 SSE 事件 `auto_applied` 推给前端（「已自动应用」样式 + 刷新资产列表），与早先依赖 JSON 内 `auto_applied: true` 的行为等价。
 
 ### 工具上下文注入
 

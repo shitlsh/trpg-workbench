@@ -375,7 +375,7 @@ def create_asset(
         "change_summary": change_summary or f"新建 {asset_type}：{name}",
     }
     result = execute_patch_proposal(proposal, ws_path, _db)
-    return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @tool
@@ -423,7 +423,7 @@ def patch_asset(asset_slug: str, old_str: str, new_str: str, change_summary: str
         "change_summary": change_summary or f"局部修改资产：{asset_name}",
     }
     result = execute_patch_proposal(proposal, ws_path, _db)
-    return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @tool
@@ -450,7 +450,7 @@ def update_asset(asset_slug: str, content_md: str, change_summary: str = "") -> 
         "change_summary": change_summary or f"修改资产：{asset_name}",
     }
     result = execute_patch_proposal(proposal, ws_path, _db)
-    return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
+    return json.dumps(result, ensure_ascii=False)
 
 
 # ─── Delete / move (single) — same semantics as HTTP + asset_service.relocate_asset
@@ -1503,7 +1503,7 @@ def create_skill(user_intent: str) -> str:
         "change_summary": f"新建 Skill：{skill_name}",
     }
     result = execute_patch_proposal(proposal, ws_path, _db)
-    return json.dumps({"auto_applied": True, **result}, ensure_ascii=False)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @tool
