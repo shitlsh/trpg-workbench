@@ -173,6 +173,65 @@ def _parse_hhc_xml(hhc_text: str) -> list[dict]:
     return sections
 
 
+def _chm_codec_name(chm_file) -> str:
+    """pychm GetEncoding() may return bytes (e.g. b'cp936') suitable for str.decode/encode."""
+    enc = chm_file.GetEncoding()
+    if not enc:
+        return "utf-8"
+    if isinstance(enc, bytes):
+        return enc.decode("ascii", errors="replace")
+    return str(enc)
+
+
+def _chm_topics_path_variants(topics: bytes | None) -> list[bytes]:
+    """#SYSTEM stores topics path in local encoding; resolve may need UTF-8 re-encoded form."""
+    if not topics:
+        return []
+    out: list[bytes] = [topics]
+    for dec in ("gbk", "gb18030", "cp936"):
+        try:
+            s = topics.decode(dec)
+            u8 = s.encode("utf-8")
+            if u8 not in out:
+                out.append(u8)
+        except UnicodeDecodeError:
+            continue
+    return out
+
+
+def _chm_read_object_bytes(chm_file: object, chm_c: object, path: bytes) -> bytes | None:
+    """Read one object by path bytes; pychm CHMFile.ResolveObject(str) is wrong for non-ASCII on py3."""
+    if not chm_file.file:
+        return None
+    res, ui = chm_c.chm_resolve_object(chm_file.file, path)
+    if res != chm_c.CHM_RESOLVE_SUCCESS or ui is None:
+        return None
+    size, raw = chm_file.RetrieveObject(ui)
+    if not size or not raw:
+        return None
+    return raw
+
+
+def _decode_hhc_file(raw: bytes, chm_suggested_codec: str) -> str:
+    """HHC is often GBK/GB18030 while #SYSTEM / GetEncoding() may report utf-8; pick best fit."""
+    candidates: list[str] = []
+    for c in (chm_suggested_codec, "gbk", "gb18030", "utf-8", "cp936", "big5", "latin-1"):
+        if c and c not in candidates:
+            candidates.append(c)
+    best: tuple[int, str] | None = None
+    for enc in candidates:
+        try:
+            s = raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+        bad = s.count("\ufffd")
+        if best is None or bad < best[0]:
+            best = (bad, s)
+        if bad == 0 and enc in ("gbk", "gb18030", "utf-8") and any("\u4e00" <= ch <= "\u9fff" for ch in s[:2000]):
+            return s
+    return best[1] if best else raw.decode("utf-8", errors="replace")
+
+
 def extract_chm_toc_sync(chm_path: Path) -> list[dict]:
     """Extract the CHM directory structure from the embedded .hhc file.
 
@@ -181,60 +240,64 @@ def extract_chm_toc_sync(chm_path: Path) -> list[dict]:
 
     Raises RuntimeError if pychm is not available or .hhc cannot be found.
     """
-    try:
-        from chm import chm as chmlib
-    except ImportError:
-        raise RuntimeError(
-            "pychm is not installed. "
-            "macOS: brew install chmlib && pip install pychm  |  "
-            "Linux: apt-get install libchm-dev && pip install pychm  |  "
-            "Windows: pip install pychm"
-        )
+    from app.knowledge.pychm_loader import import_pychm
 
-    chm_file = chmlib.CHMFile()
+    chm_hl, chm_c = import_pychm()
+
+    chm_file = chm_hl.CHMFile()
     if not chm_file.LoadCHM(str(chm_path)):
         raise RuntimeError(f"pychm could not open CHM file: {chm_path}")
 
-    encoding = chm_file.GetEncoding() or "utf-8"
-
-    # Common .hhc path candidates
-    hhc_candidates = ["/#TOCIDX", "/toc.hhc", "/Table of Contents.hhc"]
+    encoding = _chm_codec_name(chm_file)
     hhc_text: str | None = None
+    hhc_raw: bytes | None = None
 
-    # Try known candidates first
-    for candidate in hhc_candidates:
-        try:
-            import ctypes
-            ui = chmlib.chmUnitInfo()
-            if chm_file.ResolveObject(candidate, ui) == chmlib.CHM_RESOLVE_SUCCESS:
-                success, raw = chm_file.RetrieveObject(ui)
-                if success and raw:
-                    hhc_text = raw.decode(encoding, errors="replace")
-                    break
-        except Exception:
-            continue
+    # 1) GetTopicsTree() when #SYSTEM path resolves
+    try:
+        raw = chm_file.GetTopicsTree()
+        if raw and len(raw) > 8:
+            hhc_raw = raw
+    except Exception:
+        hhc_raw = None
 
-    # Fallback: enumerate to find .hhc file
-    if hhc_text is None:
-        found_path: list[str] = []
+    # 2) Same file as chm_file.topics but with path encoding variants (Chinese CHMs)
+    if hhc_raw is None and chm_file.topics:
+        topics_b = chm_file.topics if isinstance(chm_file.topics, bytes) else str(chm_file.topics).encode("utf-8")
+        for pth in _chm_topics_path_variants(topics_b):
+            hhc_raw = _chm_read_object_bytes(chm_file, chm_c, pth)
+            if hhc_raw:
+                break
 
-        def _find_hhc(chm_obj, ui, ctx):
-            path = ui.path.decode("utf-8", errors="replace") if isinstance(ui.path, bytes) else ui.path
-            if path.lower().endswith(".hhc"):
-                found_path.append(path)
-            return chmlib.CHM_ENUMERATOR_CONTINUE
+    # 3) Common English paths
+    hhc_candidates = ("/#TOCIDX", "/toc.hhc", "/Table of Contents.hhc")
+    if hhc_raw is None:
+        for candidate in hhc_candidates:
+            hhc_raw = _chm_read_object_bytes(chm_file, chm_c, candidate.encode("utf-8"))
+            if hhc_raw:
+                break
 
-        chm_file.EnumerateDir("/", chmlib.CHM_ENUMERATE_NORMAL, _find_hhc, None)
-        for fp in found_path:
-            try:
-                ui = chmlib.chmUnitInfo()
-                if chm_file.ResolveObject(fp, ui) == chmlib.CHM_RESOLVE_SUCCESS:
-                    success, raw = chm_file.RetrieveObject(ui)
-                    if success and raw:
-                        hhc_text = raw.decode(encoding, errors="replace")
-                        break
-            except Exception:
-                continue
+    # 4) Enumerate — keep path as bytes (matches archive; str/UTF-8 alone can fail)
+    if hhc_raw is None and chm_file.file:
+        found: list[bytes] = []
+
+        def _find_hhc(_ctx: object, ui: object, _user: object) -> int:
+            path = getattr(ui, "path", b"")
+            if isinstance(path, memoryview):
+                path = path.tobytes()
+            if isinstance(path, bytes) and path.lower().endswith(b".hhc"):
+                found.append(path)
+            return chm_c.CHM_ENUMERATOR_CONTINUE
+
+        chm_c.chm_enumerate_dir(
+            chm_file.file, b"/", chm_c.CHM_ENUMERATE_ALL, _find_hhc, None
+        )
+        for fp in found:
+            hhc_raw = _chm_read_object_bytes(chm_file, chm_c, fp)
+            if hhc_raw:
+                break
+
+    if hhc_raw:
+        hhc_text = _decode_hhc_file(hhc_raw, encoding)
 
     chm_file.CloseCHM()
 

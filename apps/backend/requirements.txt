@@ -14,8 +14,10 @@ openai>=1.50.0
 tiktoken>=0.7.0
 python-multipart>=0.0.9
 aiofiles>=24.1.0
-# M24-B1: CHM format support (requires chmlib system library)
-# macOS: brew install chmlib  |  Linux: apt-get install libchm-dev  |  Windows: pre-built wheel
+# M24-B1: CHM — needs system chmlib headers *and* the pychm PyPI package (import name: chm).
+# macOS: brew install chmlib, then if pip build fails on chm_lib.h:
+#   CFLAGS="-I$(brew --prefix chmlib)/include" LDFLAGS="-L$(brew --prefix chmlib)/lib" pip install pychm
+# Linux: apt-get install libchm-dev && pip install pychm  |  Windows: pip install pychm (wheel)
 pychm>=0.8.6
 # M17: Skill file parsing
 python-frontmatter>=1.1.0

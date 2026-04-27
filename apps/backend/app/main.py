@@ -53,8 +53,10 @@ app.include_router(model_catalog_router)
 app.include_router(usage_router)
 app.include_router(knowledge_libraries.router)
 app.include_router(knowledge_documents.router)
-app.include_router(knowledge_documents.router2)
+# router3 before router2: DELETE /knowledge/documents/{id} would otherwise match
+# "upload-preview" as an id and return 405 for POST /knowledge/documents/upload-preview
 app.include_router(knowledge_documents.router3)
+app.include_router(knowledge_documents.router2)
 app.include_router(knowledge_documents.router4)
 app.include_router(tasks.router)
 app.include_router(knowledge_search.router)

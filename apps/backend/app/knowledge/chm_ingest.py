@@ -3,7 +3,8 @@
 Uses `pychm` (Python bindings to chmlib) to read CHM files cross-platform.
 
 Requirements:
-  macOS:   brew install chmlib && pip install pychm
+  macOS:   brew install chmlib; then pip install pychm in apps/backend venv.
+           If build fails on chm_lib.h: set CFLAGS/LDFLAGS to brew --prefix chmlib (see requirements.txt).
   Linux:   apt-get install libchm-dev && pip install pychm
   Windows: pip install pychm   (pre-built wheels available on PyPI)
 
@@ -64,44 +65,48 @@ def _strip_html(raw: str) -> str:
     return raw.strip()
 
 
+def _chm_text_encoding(chm_file: Any) -> str:
+    enc = chm_file.GetEncoding()
+    if not enc:
+        return "utf-8"
+    if isinstance(enc, bytes):
+        return enc.decode("ascii", errors="replace")
+    return str(enc)
+
+
 def _extract_chm_pages_sync(chm_path: Path) -> list[dict]:
     """Extract [{page: int, text: str}] from a CHM file using pychm.
 
     Raises RuntimeError if pychm is not installed or the file cannot be opened.
     """
-    try:
-        from chm import chm as chmlib
-    except ImportError:
-        raise RuntimeError(
-            "pychm is not installed. "
-            "macOS: brew install chmlib && pip install pychm  |  "
-            "Linux: apt-get install libchm-dev && pip install pychm  |  "
-            "Windows: pip install pychm"
-        )
+    from app.knowledge.pychm_loader import import_pychm
 
-    chm_file = chmlib.CHMFile()
+    chm_hl, chm_c = import_pychm()
+
+    chm_file = chm_hl.CHMFile()
     if not chm_file.LoadCHM(str(chm_path)):
         raise RuntimeError(f"pychm could not open CHM file: {chm_path}")
 
-    encoding = chm_file.GetEncoding() or "utf-8"
+    encoding = _chm_text_encoding(chm_file)
 
     pages: list[dict] = []
     page_index = 0
 
-    def _visitor(chm_obj: Any, ui: Any, ctx: Any) -> int:
-        """Called by pychm for each object in the CHM archive."""
+    def _visitor(_chm_handle: Any, ui: Any, _ctx: Any) -> int:
+        """chm_enumerate_dir callback: (context, chmUnitInfo, user)."""
         nonlocal page_index
-        # Only process HTML topic files (not images, scripts, etc.)
-        path: str = ui.path.decode("utf-8", errors="replace") if isinstance(ui.path, bytes) else ui.path
+        path_b = ui.path
+        if isinstance(path_b, memoryview):
+            path_b = path_b.tobytes()
+        path: str = path_b.decode("utf-8", errors="replace") if isinstance(path_b, bytes) else str(path_b)
         if not path.lower().endswith((".htm", ".html")):
-            return chmlib.CHM_ENUMERATOR_CONTINUE
-        # Skip internal CHM metadata files
+            return chm_c.CHM_ENUMERATOR_CONTINUE
         if path.startswith("/#") or path.startswith("/$"):
-            return chmlib.CHM_ENUMERATOR_CONTINUE
+            return chm_c.CHM_ENUMERATOR_CONTINUE
 
-        success, raw_bytes = chm_file.RetrieveObject(ui)
-        if not success or not raw_bytes:
-            return chmlib.CHM_ENUMERATOR_CONTINUE
+        size, raw_bytes = chm_file.RetrieveObject(ui)
+        if not size or not raw_bytes:
+            return chm_c.CHM_ENUMERATOR_CONTINUE
 
         try:
             raw_html = raw_bytes.decode(encoding, errors="replace")
@@ -113,9 +118,12 @@ def _extract_chm_pages_sync(chm_path: Path) -> list[dict]:
             page_index += 1
             pages.append({"page": page_index, "text": text, "_path": path})
 
-        return chmlib.CHM_ENUMERATOR_CONTINUE
+        return chm_c.CHM_ENUMERATOR_CONTINUE
 
-    chm_file.EnumerateDir("/", chmlib.CHM_ENUMERATE_NORMAL, _visitor, None)
+    if chm_file.file:
+        chm_c.chm_enumerate_dir(
+            chm_file.file, b"/", chm_c.CHM_ENUMERATE_ALL, _visitor, None
+        )
     chm_file.CloseCHM()
 
     return pages

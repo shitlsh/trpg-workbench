@@ -154,6 +154,16 @@ ERROR: Can not perform a '--user' install. User site-packages are not visible in
 PIP_USER=false .venv/bin/pip install -r requirements.txt
 ```
 
+> **CHM（`pychm`）**：`brew install chmlib` 只装 C 库与头文件；**还必须**在 venv 里装上 PyPI 包 `pychm`（`import chm`）。若 `pip install` 在编译扩展时报 `chm_lib.h: file not found`，在重试时带上 Homebrew 路径（Apple Silicon 示例）：
+>
+> ```bash
+> export CFLAGS="-I$(brew --prefix chmlib)/include"
+> export LDFLAGS="-L$(brew --prefix chmlib)/lib"
+> PIP_USER=false .venv/bin/pip install pychm
+> ```
+>
+> 装好后执行 `.venv/bin/python -c "from chm import chm; print('pychm ok')"` 应输出 `pychm ok`。
+
 > 说明：首次安装时如果包含 `lancedb/pyarrow` 等大包，**下载+安装 10-20+ 分钟** 属于常见情况，耐心等 `Successfully installed` 出现即可（避免中途强退）。
 
 或者一次性修改 pip 配置（适合长期使用）：
@@ -227,6 +237,7 @@ cargo tauri dev
 | 后端端口 7821 被占用 | 上次进程未退出 | `lsof -ti:7821 \| xargs kill`（mac 上如不想依赖 GNU 扩展，可手动 `lsof` 后 `kill <pid>`） |
 | `lancedb` 安装失败（Rust 编译错误）| lancedb 有 Rust native extension，需要 Rust 工具链 | 确保已完成第 3 步（rustup + source），再重新 pip install |
 | `lancedb` 在 Apple Silicon 报 `ImportError` | 架构不匹配的预编译轮子 | 用 `pip install lancedb --no-binary lancedb` 从源码编译 |
+| CHM 提示缺少 pychm / 无 `chm` 模块 | 只装了 `brew install chmlib`，未在 venv 装 `pychm`，或 pip 编译失败 | 在 `apps/backend` 的 venv 里 `pip install pychm`；若缺 `chm_lib.h` 见 **7.2** 的 `CFLAGS`/`LDFLAGS` 段落 |
 
 ---
 
