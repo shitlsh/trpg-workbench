@@ -156,18 +156,84 @@ function KnowledgeResultView({ raw, args }: { raw: string; args: Record<string, 
   );
 }
 
+function _jsonArrayLength(param: unknown): number | null {
+  if (typeof param !== "string" || !param) return null;
+  try {
+    const v = JSON.parse(param) as unknown;
+    return Array.isArray(v) ? v.length : null;
+  } catch {
+    return null;
+  }
+}
+
 // Build a short inline description of args for display in the card header
 function argsSummary(name: string, args: Record<string, unknown>): string | null {
-  if (name === "search_knowledge" || name === "consult_rules" || name === "web_search") {
+  if (name === "search_knowledge" || name === "web_search") {
     const q = args.query as string;
+    return q ? `"${q}"` : null;
+  }
+  if (name === "consult_rules") {
+    const q = (args.question ?? args.query) as string;
     return q ? `"${q}"` : null;
   }
   if (name === "search_assets") {
     const q = (args.query ?? args.name ?? args.type) as string;
     return q ? `"${q}"` : null;
   }
-  if (name === "read_asset") return (args.slug ?? args.asset_id) as string ?? null;
-  if (name === "create_asset" || name === "update_asset") return (args.name ?? args.asset_slug) as string ?? null;
+  if (name === "list_assets") {
+    const parts: string[] = [];
+    if (args.asset_type) parts.push(String(args.asset_type));
+    if (args.name_contains) parts.push(`*${String(args.name_contains).slice(0, 20)}*`);
+    if (args.status) parts.push(String(args.status));
+    if (args.limit) parts.push(`limit ${args.limit}`);
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }
+  if (name === "read_asset") {
+    return ((args.asset_slug ?? args.slug ?? args.asset_id) as string) ?? null;
+  }
+  if (name === "grep_asset" || name === "read_asset_section" || name === "patch_asset") {
+    const slug = (args.asset_slug ?? args.slug) as string | undefined;
+    if (name === "grep_asset" && (args.pattern || slug)) {
+      const p = String(args.pattern ?? "");
+      return slug ? `${slug} · ${p.slice(0, 40)}${p.length > 40 ? "…" : ""}` : p.slice(0, 40);
+    }
+    if (name === "read_asset_section" && (args.heading || slug)) {
+      return [slug, args.heading as string | undefined].filter(Boolean).join(" · ") || null;
+    }
+    return slug ?? null;
+  }
+  if (name === "create_asset" || name === "update_asset") {
+    return ((args.name ?? args.asset_slug) as string) ?? null;
+  }
+  if (name === "create_skill" && args.user_intent) {
+    const t = String(args.user_intent);
+    return t.length > 48 ? `${t.slice(0, 48)}…` : t;
+  }
+  if (name === "check_consistency" && args.focus) {
+    return String(args.focus).slice(0, 40);
+  }
+  if (name === "delete_asset") {
+    if (args.asset_id) return `id: ${String(args.asset_id).slice(0, 8)}…`;
+    if (args.asset_slug) return String(args.asset_slug);
+  }
+  if (name === "move_asset" && (args.from_slug || args.to_slug)) {
+    return `${String(args.from_slug)} → ${String(args.to_slug)}`;
+  }
+  if (name === "ask_user" && Array.isArray(args.questions)) {
+    return `${(args.questions as unknown[]).length} 问`;
+  }
+  if (name === "create_assets" || name === "patch_assets" || name === "delete_assets" || name === "move_assets") {
+    const n = _jsonArrayLength(args.items_json);
+    if (n != null) return `${n} 项`;
+  }
+  if (name === "preview_bulk_text_replace" && args.old_str) {
+    const t = String(args.old_str);
+    return t.length > 36 ? `${t.slice(0, 36)}…` : t;
+  }
+  if (name === "apply_bulk_text_replace") {
+    const n = _jsonArrayLength(args.slugs_json);
+    if (n != null) return `${n} 个 slug`;
+  }
   return null;
 }
 

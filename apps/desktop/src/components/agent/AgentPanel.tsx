@@ -19,6 +19,16 @@ import { MentionInput } from "./MentionInput";
 import { SessionDrawer } from "./SessionDrawer";
 import { apiFetch } from "@/lib/api";
 
+/** Map `auto_applied` payload from the server to a tool name (fallback when no `tool_call_start` ran). */
+function toolNameFromAutoAppliedPayload(data: { action?: string; asset_type?: string }): string {
+  const act = data.action;
+  if (act === "deleted") return "delete_asset";
+  if (data.asset_type === "skill" && act === "created") return "create_skill";
+  if (act === "updated") return "update_asset";
+  if (act === "created") return "create_asset";
+  return "create_asset";
+}
+
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
 // Renders assistant content, preserving tool-call ordering via {{tool:id}} placeholders.
@@ -722,7 +732,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 // Fallback: no prior running card (e.g. direct auto_applied without tool_call_start)
                 const tc: ToolCall = {
                   id: (data.slug as string) ?? `aa_${Date.now()}`,
-                  name: (data.action as string) === "updated" ? "update_asset" : "create_asset",
+                  name: toolNameFromAutoAppliedPayload(
+                    data as { action?: string; asset_type?: string },
+                  ),
                   arguments: JSON.stringify({ slug: data.slug, asset_id: data.asset_id }),
                   status: "auto_applied" as ToolCall["status"],
                   result_summary: null,
