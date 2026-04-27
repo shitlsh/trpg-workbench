@@ -11,6 +11,15 @@ def _llm_timeout_kwargs() -> dict:
     return {"timeout": float(LLM_REQUEST_TIMEOUT_SECONDS)}
 
 
+def _instantiate_chat_model(factory, **kwargs):
+    """Construct an Agno model, dropping ``timeout`` if the class rejects it."""
+    try:
+        return factory(**kwargs)
+    except TypeError:
+        kwargs.pop("timeout", None)
+        return factory(**kwargs)
+
+
 def strip_code_fence(text: str) -> str:
     """Remove markdown code fences (``` or ```json etc.) from LLM responses."""
     return re.sub(r"^```[a-zA-Z]*\n?|```\s*$", "", text.strip(), flags=re.MULTILINE).strip()
@@ -49,28 +58,28 @@ def model_from_profile(profile, model_name: str) -> Any:
             kwargs["api_key"] = api_key
         if base_url:
             kwargs["base_url"] = base_url
-        return OpenAIChat(**kwargs)
+        return _instantiate_chat_model(OpenAIChat, **kwargs)
 
     elif provider == "anthropic":
         from agno.models.anthropic import Claude
         kwargs = {"id": model_name, **to}
         if api_key:
             kwargs["api_key"] = api_key
-        return Claude(**kwargs)
+        return _instantiate_chat_model(Claude, **kwargs)
 
     elif provider == "google":
         from agno.models.google import Gemini
         kwargs = {"id": model_name, **to}
         if api_key:
             kwargs["api_key"] = api_key
-        return Gemini(**kwargs)
+        return _instantiate_chat_model(Gemini, **kwargs)
 
     elif provider == "openrouter":
         kwargs = {"id": model_name, **to}
         if api_key:
             kwargs["api_key"] = api_key
         kwargs["base_url"] = base_url or "https://openrouter.ai/api/v1"
-        return OpenAIChat(**kwargs)
+        return _instantiate_chat_model(OpenAIChat, **kwargs)
 
     elif provider == "openai_compatible":
         kwargs = {"id": model_name, **to}
@@ -79,7 +88,7 @@ def model_from_profile(profile, model_name: str) -> Any:
         kwargs["api_key"] = api_key or "local"
         if base_url:
             kwargs["base_url"] = base_url
-        return OpenAIChat(**kwargs)
+        return _instantiate_chat_model(OpenAIChat, **kwargs)
 
     else:
         raise ValueError(f"Unsupported provider_type: {provider}")
