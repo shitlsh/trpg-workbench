@@ -869,6 +869,8 @@ function LibraryDetailPanel({
     | { step: "toc_preview"; fileId: string; filename: string; fileExt: string;
         tocText: string; pageStart: number; pageEnd: number;
         customStart: number; customEnd: number; redetecting: boolean; redetectError: string }
+    | { step: "select_llm"; fileId: string; filename: string; fileExt: string;
+        tocText: string; llmProfileId: string; llmModelName: string }
     | { step: "analyzing_toc"; fileId: string; filename: string; fileExt: string;
         tocText: string }
     | { step: "section_confirm"; fileId: string; filename: string; fileExt: string;
@@ -1000,27 +1002,29 @@ function LibraryDetailPanel({
     }
   }
 
-  async function analyzeToc(fileId: string, filename: string, fileExt: string, tocText: string) {
-    const llmProfileId = llmProfilesForUpload[0]?.id;
-    if (!llmProfileId) {
-      setUploadError("请先在模型配置中添加 LLM 模型");
-      return;
-    }
+  async function analyzeToc(fileId: string, filename: string, fileExt: string, tocText: string, llmProfileId: string, llmModelName: string) {
     setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText });
     try {
       const res = await apiFetch<{ sections: TocSectionState[] }>(
         `/knowledge/documents/preview/${fileId}/analyze-toc`,
-        { method: "POST", body: JSON.stringify({ toc_text: tocText, llm_profile_id: llmProfileId }) },
+        {
+          method: "POST",
+          body: JSON.stringify({ toc_text: tocText, llm_profile_id: llmProfileId, llm_model_name: llmModelName || undefined }),
+          timeoutMs: 120_000,
+        },
       );
       setWizard({
         step: "section_confirm",
         fileId, filename, fileExt,
-        sections: res.sections.map((s) => ({ ...s, chunk_type: s.chunk_type ?? "" })),
+        sections: res.sections.map((s) => {
+          const raw = s as unknown as Record<string, unknown>;
+          const ct = (raw.suggested_chunk_type ?? raw.chunk_type ?? "") as ChunkType | "";
+          return { title: String(raw.title ?? ""), page_from: Number(raw.page_from ?? 0), page_to: Number(raw.page_to ?? 0), depth: Number(raw.depth ?? 1), chunk_type: ct };
+        }),
         pageOffset: 0,
         analyzeError: "",
       });
     } catch (e) {
-      // Go back to toc_preview with error shown
       setWizard({
         step: "section_confirm",
         fileId, filename, fileExt,
@@ -1183,6 +1187,7 @@ function LibraryDetailPanel({
                 {wizard.step === "uploading" && "上传文件"}
                 {wizard.step === "detecting_toc" && "检测目录页"}
                 {wizard.step === "toc_preview" && "确认目录页范围"}
+                {wizard.step === "select_llm" && "选择分析模型"}
                 {wizard.step === "analyzing_toc" && "AI 分析目录"}
                 {wizard.step === "section_confirm" && "章节分类确认"}
               </h2>
@@ -1242,8 +1247,61 @@ function LibraryDetailPanel({
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                     <button className={styles.btnSecondary} onClick={() => setWizard({ step: "idle" })}>取消</button>
                     <button className={styles.btnPrimary} disabled={!w.tocText}
-                      onClick={() => analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText)}>
-                      用 AI 分析目录
+                      onClick={() => {
+                        if (!llmProfilesForUpload.length) { setUploadError("请先在模型配置中添加 LLM 模型"); return; }
+                        setWizard({
+                          step: "select_llm",
+                          fileId: w.fileId, filename: w.filename, fileExt: w.fileExt,
+                          tocText: w.tocText,
+                          llmProfileId: llmProfilesForUpload[0].id,
+                          llmModelName: "",
+                        });
+                      }}>
+                      用 AI 分析目录 →
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* select_llm */}
+            {wizard.step === "select_llm" && (() => {
+              const w = wizard;
+              return (
+                <>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
+                    选择用于解析目录结构的 LLM 供应商和模型。建议使用支持 JSON 输出的模型（如 GPT-4o、Claude 3.5 Sonnet）。
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>供应商配置</label>
+                    <select
+                      style={{ width: "100%", fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+                      value={w.llmProfileId}
+                      onChange={(e) => setWizard({ ...w, llmProfileId: e.target.value })}
+                    >
+                      {llmProfilesForUpload.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.provider_type})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>模型名称（可选，留空则用供应商默认）</label>
+                    <input
+                      type="text"
+                      placeholder="例：gpt-4o / claude-3-5-sonnet-20241022"
+                      value={w.llmModelName}
+                      onChange={(e) => setWizard({ ...w, llmModelName: e.target.value })}
+                      style={{ width: "100%", fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <button className={styles.btnSecondary}
+                      onClick={() => setWizard({ step: "toc_preview", fileId: w.fileId, filename: w.filename, fileExt: w.fileExt, tocText: w.tocText, pageStart: 1, pageEnd: 1, customStart: 1, customEnd: 1, redetecting: false, redetectError: "" })}>
+                      ← 返回
+                    </button>
+                    <button className={styles.btnPrimary} disabled={!w.llmProfileId}
+                      onClick={() => analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText, w.llmProfileId, w.llmModelName)}>
+                      开始分析
                     </button>
                   </div>
                 </>

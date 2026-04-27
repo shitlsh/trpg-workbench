@@ -414,7 +414,12 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
         )
 
     try:
-        result = await asyncio.to_thread(_analyze, body.toc_text, profile, body.llm_model_name)
+        result = await asyncio.wait_for(
+            asyncio.to_thread(_analyze, body.toc_text, profile, body.llm_model_name),
+            timeout=120.0,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="TOC analysis timed out after 120 seconds. Try a faster model.")
     except TocNotRecognizedError as e:
         raise HTTPException(
             status_code=422,
