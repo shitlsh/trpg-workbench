@@ -2,7 +2,7 @@
 
 **前置条件**：M23 完成（Agent 澄清问题机制可用，Agent 工具链稳定）。
 
-**状态：✅ 已完成（commit ba459a8，A 类 + B 类全部实现）**
+**状态：✅ 已完成（commit aba94ca，A 类 + B 类全部实现）**
 
 **目标**：将 `library.type` 从无效装饰字段替换为 chunk 级类型标签，修复 chunker 切割边界，将 top_k 和 rerank 配置化，使知识库检索质量和 Agent 检索行为对用户真正透明。
 
