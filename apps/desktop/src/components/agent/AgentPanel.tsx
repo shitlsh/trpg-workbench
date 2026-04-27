@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import {
   RefreshCw, FileText, ChevronDown, ChevronUp, MessageSquare, Brain,
 } from "lucide-react";
+import { useModelList } from "../../hooks/useModelList";
 import type {
   ChatSession, ChatMessage, ToolCall,
   LLMProfile, ModelCatalogEntry, WorkspaceConfigResponse,
@@ -466,19 +467,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   });
   const activeProfile = llmProfiles.find((p) => p.name === defaultLlmName);
 
-  // Probe available models from active profile's base_url
-  const { data: probeResult } = useQuery({
-    queryKey: ["probe-models-chat", activeProfile?.base_url],
-    queryFn: async () => {
-      const params = new URLSearchParams({ base_url: activeProfile!.base_url! });
-      return apiFetch<{ models: string[]; error: string | null }>(
-        `/settings/model-catalog/probe-models?${params.toString()}`
-      );
-    },
-    enabled: !!activeProfile?.base_url,
-    staleTime: 60_000,
-  });
-  const availableModels = probeResult?.models ?? [];
+  // Fetch available models for the active profile (works for all provider types)
+  const { models: availableModels } = useModelList(activeProfile?.id ?? null);
+  const modelOptions = availableModels;
 
   const effectiveModel = sessionModel || defaultLlmModel;
 
@@ -1024,8 +1015,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             <option value="">
               {defaultLlmModel ? `默认: ${defaultLlmModel}` : defaultLlmName ? `${defaultLlmName}（未选模型）` : "未配置模型"}
             </option>
-            {availableModels.length > 0
-              ? availableModels.map((m) => <option key={m} value={m}>{m}</option>)
+            {modelOptions.length > 0
+              ? modelOptions.map((m) => <option key={m} value={m}>{m}</option>)
               : null
             }
           </select>

@@ -9,38 +9,14 @@ import type {
   WorkspaceConfigResponse,
   WorkspaceSkillMeta, WorkspaceSkill,
   CreateWorkspaceSkillRequest, UpdateWorkspaceSkillRequest,
-  ProbeModelsResponse, PromptProfile,
+  PromptProfile,
 } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
 import { HelpButton } from "../components/HelpButton";
+import { ModelNameInput } from "../components/ModelNameInput";
+import { useModelList } from "../hooks/useModelList";
 
 // ─── Skills Section ────────────────────────────────────────────────────────────
-
-const KNOWN_MODELS: Record<string, string[]> = {
-  anthropic: [
-    "claude-opus-4-5",
-    "claude-sonnet-4-5",
-    "claude-haiku-3-5",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-haiku-20241022",
-    "claude-3-opus-20240229",
-  ],
-  google: [
-    "gemini-2.5-pro-preview-06-05",
-    "gemini-2.5-flash-preview-05-20",
-    "gemini-2.0-flash",
-    "gemini-1.5-pro",
-    "gemini-1.5-flash",
-  ],
-  openai: [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "gpt-4-turbo",
-    "o1",
-    "o1-mini",
-    "o3-mini",
-  ],
-};
 
 const AGENT_TYPE_OPTIONS = [
   { value: "npc", label: "NPC" },
@@ -365,10 +341,6 @@ export default function WorkspaceSettingsPage() {
   const [rerankTopN, setRerankTopN] = useState(5);
   const [rerankTopK, setRerankTopK] = useState(20);
   const [knowledgeTopK, setKnowledgeTopK] = useState(5);
-  const [probedModels, setProbedModels] = useState<string[]>([]);
-  const [probingModels, setProbingModels] = useState(false);
-  const [probeError, setProbeError] = useState<string | null>(null);
-
   // Populate form from config
   useEffect(() => {
     if (config) {
@@ -383,8 +355,6 @@ export default function WorkspaceSettingsPage() {
       setRerankTopN(config.rerank?.top_n ?? 5);
       setRerankTopK(config.rerank?.top_k ?? 20);
       setKnowledgeTopK(config.retrieval?.knowledge_top_k ?? 5);
-      setProbedModels([]);
-      setProbeError(null);
     }
   }, [config?.name, id]); // re-init when workspace changes
 
@@ -450,28 +420,9 @@ export default function WorkspaceSettingsPage() {
 
   if (!workspace || !config) return <div className={styles.loading}>加载中...</div>;
 
-  // Resolve the selected LLM profile for probing
+  // Resolve the selected LLM profile and auto-fetch its available models
   const selectedLlmProfile = llmProfiles.find((p) => p.name === defaultLlmName);
-
-  async function handleProbeModels() {
-    if (!selectedLlmProfile?.base_url) return;
-    setProbingModels(true); setProbeError(null);
-    try {
-      const params = new URLSearchParams({ base_url: selectedLlmProfile.base_url });
-      const result = await apiFetch<ProbeModelsResponse>(
-        `/settings/model-catalog/probe-models?${params.toString()}`
-      );
-      if (result.error) {
-        setProbeError(result.error);
-      } else {
-        setProbedModels(result.models);
-      }
-    } catch (e) {
-      setProbeError((e as Error).message);
-    } finally {
-      setProbingModels(false);
-    }
-  }
+  const { models: probedModels, isLoading: probingModels, error: probeError } = useModelList(selectedLlmProfile?.id ?? null);
 
   return (
     <div className={styles.page}>
@@ -529,7 +480,7 @@ export default function WorkspaceSettingsPage() {
               )}
               <CatalogHint modelName={defaultLlmModel || undefined} catalog={llmCatalog} />
             </span>
-            <select className={styles.select} value={defaultLlmName} onChange={(e) => { setDefaultLlmName(e.target.value); setProbedModels([]); setProbeError(null); setDefaultLlmModel(""); }}>
+            <select className={styles.select} value={defaultLlmName} onChange={(e) => { setDefaultLlmName(e.target.value); setDefaultLlmModel(""); }}>
               <option value="">不指定</option>
               {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.provider_type})</option>)}
             </select>
@@ -538,48 +489,20 @@ export default function WorkspaceSettingsPage() {
             <div style={{ marginLeft: 0, marginTop: -4, marginBottom: 8 }}>
               <div style={{ fontSize: 13, marginBottom: 4, fontWeight: 500, color: "var(--text-muted)" }}>模型名称</div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                {probedModels.length > 0 ? (
-                  <select
-                    className={styles.select}
-                    style={{ flex: 1 }}
-                    value={defaultLlmModel}
-                    onChange={(e) => setDefaultLlmModel(e.target.value)}
-                  >
-                    <option value="">选择模型...</option>
-                    {probedModels.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                ) : (
-                  <>
-                    {selectedLlmProfile?.provider_type && KNOWN_MODELS[selectedLlmProfile.provider_type] && (
-                      <datalist id="llm-known-models-list">
-                        {KNOWN_MODELS[selectedLlmProfile.provider_type].map((m) => (
-                          <option key={m} value={m} />
-                        ))}
-                      </datalist>
-                    )}
-                    <input
-                      className={styles.input}
-                      style={{ flex: 1 }}
-                      value={defaultLlmModel}
-                      onChange={(e) => setDefaultLlmModel(e.target.value)}
-                      placeholder={selectedLlmProfile?.provider_type === "openai_compatible" ? "例：qwen3.5-35b-a3b" : "例：gemini-2.0-flash"}
-                      list={selectedLlmProfile?.provider_type && KNOWN_MODELS[selectedLlmProfile.provider_type] ? "llm-known-models-list" : undefined}
-                    />
-                  </>
-                )}
-                {selectedLlmProfile?.base_url && (
-                  <button
-                    type="button"
-                    onClick={handleProbeModels}
-                    disabled={probingModels}
-                    style={{ whiteSpace: "nowrap", fontSize: 12, padding: "5px 10px", borderRadius: 5, background: "transparent", border: "1px solid var(--border)", cursor: "pointer", color: "var(--text)" }}
-                  >
-                    {probingModels ? "获取中..." : "获取模型列表"}
-                  </button>
-                )}
+                <ModelNameInput
+                  catalog="llm"
+                  providerType={selectedLlmProfile?.provider_type ?? ""}
+                  value={defaultLlmModel}
+                  onChange={setDefaultLlmModel}
+                  fetchedModels={probedModels}
+                  placeholder={selectedLlmProfile?.provider_type === "openai_compatible" ? "例：qwen3.5-35b-a3b" : "例：gemini-2.0-flash"}
+                  className={styles.input}
+                  style={{ flex: 1 }}
+                />
               </div>
               {probeError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>{probeError}</span>}
-              {probedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ {probedModels.length} 个模型</span>}
+              {probingModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>获取模型列表中...</span>}
+              {!probingModels && probedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ {probedModels.length} 个模型</span>}
             </div>
           )}
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Rerank 重排序（可选）</div>

@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { ModelNameInput } from "../components/ModelNameInput";
 import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
   Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check,
 } from "lucide-react";
 import { apiFetch, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
+import { useModelList } from "../hooks/useModelList";
 import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
 import { getAssetTypeIcon, getAssetTypeLabel, getAssetTypeColor } from "../lib/assetTypeVisual";
 import { BUILTIN_ASSET_TYPES } from "@trpg-workbench/shared-schema";
@@ -181,20 +183,9 @@ function SetPromptModal({
   const [aiModelName, setAiModelName] = useState("");
   const [aiStyleDesc, setAiStyleDesc] = useState("");
 
-  // Probe available models when LLM provider is selected
+  // Fetch available models for the selected LLM profile (works for all provider types)
   const selectedLlmProfile = llmProfiles.find((p) => p.id === selectedLlmId);
-  const { data: probedModels = [] } = useQuery({
-    queryKey: ["probe-models-prompt", selectedLlmProfile?.base_url],
-    queryFn: async () => {
-      const params = new URLSearchParams({ base_url: selectedLlmProfile!.base_url! });
-      const res = await apiFetch<{ models: string[]; error?: string }>(
-        `/settings/model-catalog/probe-models?${params}`
-      );
-      return res.models ?? [];
-    },
-    enabled: !!selectedLlmProfile?.base_url,
-    staleTime: 30_000,
-  });
+  const { models: probedModels } = useModelList(selectedLlmId ?? null);
   // Auto-select when only one model is returned
   useEffect(() => {
     if (probedModels.length === 1 && !aiModelName) setAiModelName(probedModels[0]);
@@ -227,7 +218,7 @@ function SetPromptModal({
           timeoutMs: 120_000,
         }
       );
-      setAiName(res.name);
+      setAiName(res.name || `创作风格`);
       setAiPrompt(res.system_prompt);
       setAiNotes(res.style_notes);
       setGenerated(true);
@@ -391,19 +382,15 @@ function SetPromptModal({
             </label>
             <label className={styles.label}>
               模型名称 *
-              {probedModels.length > 0 ? (
-                <select className={styles.select} value={aiModelName} onChange={(e) => setAiModelName(e.target.value)}>
-                  <option value="">请选择模型...</option>
-                  {probedModels.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              ) : (
-                <input
-                  className={styles.input}
-                  value={aiModelName}
-                  onChange={(e) => setAiModelName(e.target.value)}
-                  placeholder="例：gemini-2.0-flash / llama-3.1-8b"
-                />
-              )}
+              <ModelNameInput
+                catalog="llm"
+                providerType={selectedLlmProfile?.provider_type ?? ""}
+                value={aiModelName}
+                onChange={setAiModelName}
+                fetchedModels={probedModels}
+                placeholder="例：gemini-2.0-flash / llama-3.1-8b"
+                className={styles.input}
+              />
             </label>
             <label className={styles.label}>
               风格描述（可选）
@@ -1117,6 +1104,13 @@ export default function RuleSetPage() {
   const [showCreateLib, setShowCreateLib] = useState(false);
   const [showSetPrompt, setShowSetPrompt] = useState(false);
 
+  // Inline prompt editing
+  const [editingPrompt, setEditingPrompt] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  const [promptEditName, setPromptEditName] = useState("");
+  const [promptEditNotes, setPromptEditNotes] = useState("");
+  const [promptEditBody, setPromptEditBody] = useState("");
+
   // Library detail drill-down
   const [activeLibId, setActiveLibId] = useState<string | null>(null);
 
@@ -1196,6 +1190,15 @@ export default function RuleSetPage() {
     mutationFn: (id: string) => apiFetch(`/knowledge/libraries/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge", "libraries"] });
+    },
+  });
+
+  const updatePromptMutation = useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; system_prompt?: string; style_notes?: string }) =>
+      apiFetch<PromptProfile>(`/prompt-profiles/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prompt-profiles", selectedId] });
+      setEditingPrompt(false);
     },
   });
 
@@ -1326,13 +1329,84 @@ export default function RuleSetPage() {
                 </div>
                 {currentPrompt ? (
                   <div className={styles.promptCard}>
-                    <div className={styles.promptName}>{currentPrompt.name}</div>
-                    {currentPrompt.style_notes && (
-                      <div className={styles.promptNotes}>{currentPrompt.style_notes.slice(0, 200)}{currentPrompt.style_notes.length > 200 ? "..." : ""}</div>
+                    {editingPrompt ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <input
+                          className={styles.input}
+                          value={promptEditName}
+                          onChange={(e) => setPromptEditName(e.target.value)}
+                          placeholder="名称"
+                          style={{ fontWeight: 600 }}
+                        />
+                        <input
+                          className={styles.input}
+                          value={promptEditNotes}
+                          onChange={(e) => setPromptEditNotes(e.target.value)}
+                          placeholder="风格摘要（选填）"
+                        />
+                        <textarea
+                          className={styles.textarea}
+                          value={promptEditBody}
+                          onChange={(e) => setPromptEditBody(e.target.value)}
+                          rows={8}
+                          style={{ fontFamily: "monospace", fontSize: 12 }}
+                          placeholder="System Prompt..."
+                        />
+                        {updatePromptMutation.isError && (
+                          <p className={styles.error}>{(updatePromptMutation.error as Error).message}</p>
+                        )}
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                          <button className={styles.btnSecondary} onClick={() => setEditingPrompt(false)}>取消</button>
+                          <button
+                            className={styles.btnPrimary}
+                            disabled={!promptEditName.trim() || !promptEditBody.trim() || updatePromptMutation.isPending}
+                            onClick={() => updatePromptMutation.mutate({ id: currentPrompt.id, name: promptEditName.trim(), system_prompt: promptEditBody.trim(), style_notes: promptEditNotes.trim() || undefined })}
+                          >
+                            {updatePromptMutation.isPending ? "保存中..." : "保存"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                          <div className={styles.promptName} style={{ flex: 1 }}>{currentPrompt.name}</div>
+                          <button
+                            className={styles.btnGhost}
+                            style={{ padding: "2px 6px", fontSize: 12 }}
+                            title="编辑提示词"
+                            onClick={() => {
+                              setPromptEditName(currentPrompt.name);
+                              setPromptEditNotes(currentPrompt.style_notes ?? "");
+                              setPromptEditBody(currentPrompt.system_prompt);
+                              setEditingPrompt(true);
+                              setPromptExpanded(false);
+                            }}
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        </div>
+                        {currentPrompt.style_notes && (
+                          <div className={styles.promptNotes}>{currentPrompt.style_notes.slice(0, 200)}{currentPrompt.style_notes.length > 200 ? "..." : ""}</div>
+                        )}
+                        <button
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: "4px 0", display: "flex", alignItems: "center", gap: 4 }}
+                          onClick={() => setPromptExpanded((v) => !v)}
+                        >
+                          {promptExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          {promptExpanded ? "收起 System Prompt" : "查看 System Prompt"}
+                        </button>
+                        {promptExpanded && (
+                          <pre style={{
+                            margin: "4px 0 0", padding: 10,
+                            background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4,
+                            fontSize: 11, whiteSpace: "pre-wrap", color: "var(--text)",
+                            maxHeight: 300, overflowY: "auto",
+                          }}>
+                            {currentPrompt.system_prompt}
+                          </pre>
+                        )}
+                      </>
                     )}
-                    <div className={styles.promptActions}>
-                      <button className={styles.btnGhost} onClick={() => navigate("/settings/prompts")}>查看/编辑 →</button>
-                    </div>
                   </div>
                 ) : (
                   <p className={styles.empty}>暂未指定提示词——Agent 将使用默认创作风格</p>

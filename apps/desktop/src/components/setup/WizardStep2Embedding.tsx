@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
 import type { EmbeddingProfile, CreateEmbeddingProfileRequest } from "@trpg-workbench/shared-schema";
+import { ModelNameInput } from "../ModelNameInput";
 
 type EmbeddingProviderType = "openai" | "openai_compatible";
 
@@ -126,17 +127,15 @@ export function WizardStep2Embedding({ onComplete, onSkip }: Props) {
         </label>
         <label style={labelStyle}>
           模型名称 *
-          {lmStudioModels.length > 1 ? (
-            <select
-              style={inputStyle}
-              value={form.model_name}
-              onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-            >
-              {lmStudioModels.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          ) : (
-            <input style={inputStyle} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：jina-embeddings-v5-text-small-retrieval" />
-          )}
+          <ModelNameInput
+            catalog="embedding"
+            providerType={form.provider_type}
+            value={form.model_name}
+            onChange={(v) => setForm({ ...form, model_name: v })}
+            fetchedModels={lmStudioModels.length > 1 ? lmStudioModels : []}
+            placeholder="例：jina-embeddings-v5-text-small-retrieval"
+            style={inputStyle}
+          />
         </label>
         {showBaseUrl && (
           <label style={labelStyle}>

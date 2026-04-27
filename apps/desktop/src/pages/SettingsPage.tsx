@@ -13,7 +13,9 @@ import type {
   ProbeModelsResponse,
 } from "@trpg-workbench/shared-schema";
 import styles from "./SettingsPage.module.css";
+import { ModelNameInput } from "../components/ModelNameInput";
 import { HelpButton } from "../components/HelpButton";
+import { useModelList } from "../hooks/useModelList";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -78,6 +80,9 @@ function LLMSection() {
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
   const [testModelName, setTestModelName] = useState<string>("");
+
+  // When editing an existing profile, auto-fetch its available models (works for all providers)
+  const { models: profileModels, isLoading: fetchingProfileModels } = useModelList(editTarget?.id ?? null);
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["llm-profiles"],
@@ -264,28 +269,20 @@ function LLMSection() {
                   {fetchedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 获取到 {fetchedModels.length} 个模型</span>}
                 </label>
               )}
-              {editTarget && (
+               {editTarget && (
                 <label className={styles.label}>
                   测试用模型名称
-                  {fetchedModels.length > 0 ? (
-                    <select
-                      className={styles.select}
-                      value={testModelName}
-                      onChange={(e) => setTestModelName(e.target.value)}
-                    >
-                      <option value="">-- 选择模型 --</option>
-                      {fetchedModels.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  ) : (
-                    <input
-                      className={styles.input}
-                      value={testModelName}
-                      onChange={(e) => setTestModelName(e.target.value)}
-                       placeholder="例：gemini-2.0-flash / qwen3.5-35b-a3b"
-                    />
-                  )}
+                   <ModelNameInput
+                    catalog="llm"
+                    providerType={form.provider_type}
+                    value={testModelName}
+                    onChange={setTestModelName}
+                    fetchedModels={profileModels.length > 0 ? profileModels : fetchedModels}
+                    placeholder="例：gemini-2.0-flash / qwen3.5-35b-a3b"
+                    className={styles.input}
+                  />
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                    输入模型名称后点击「测试连接」验证供应商配置；可点「获取模型列表」自动填充
+                    {fetchingProfileModels ? "正在获取模型列表..." : profileModels.length > 0 ? `✓ 已获取 ${profileModels.length} 个模型` : "输入模型名称后点击「测试连接」验证供应商配置"}
                   </span>
                 </label>
               )}
@@ -373,6 +370,9 @@ function EmbeddingSection() {
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
+
+  // When editing an existing profile, auto-fetch its available models
+  const { models: profileModels, isLoading: fetchingProfileModels } = useModelList(editTarget?.id ?? null);
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["embedding-profiles"],
@@ -529,20 +529,20 @@ function EmbeddingSection() {
                   {EMBEDDING_PROVIDERS.map((p) => <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>)}
                 </select>
               </label>
-              <label className={styles.label}>
-                模型名称 *
-                {form.provider_type === "openai_compatible" && fetchedModels.length > 0 ? (
-                  <select
-                    className={styles.select}
-                    value={form.model_name}
-                    onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-                  >
-                    {fetchedModels.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                ) : (
-                  <input className={styles.input} value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="例：jina-embeddings-v3" />
-                )}
-              </label>
+               <label className={styles.label}>
+                 模型名称 *
+                 <ModelNameInput
+                   catalog="embedding"
+                   providerType={form.provider_type}
+                   value={form.model_name}
+                   onChange={(v) => setForm({ ...form, model_name: v })}
+                   fetchedModels={profileModels.length > 0 ? profileModels : (form.provider_type === "openai_compatible" ? fetchedModels : [])}
+                   placeholder="例：jina-embeddings-v3"
+                   className={styles.input}
+                 />
+                 {fetchingProfileModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>正在获取模型列表...</span>}
+                 {!fetchingProfileModels && profileModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 已获取 {profileModels.length} 个模型</span>}
+               </label>
               {showBaseUrl && (
                 <label className={styles.label}>
                   Base URL *
