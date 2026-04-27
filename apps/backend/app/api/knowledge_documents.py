@@ -119,7 +119,7 @@ async def _run_ingest_background(
     filename: str,
     file_ext: str = ".pdf",
     embedding_profile_id: str = "",
-    embedding_snapshot: dict = {},
+    embedding_snapshot: dict | None = None,
     default_chunk_type: str = "",
     page_offset: int = 0,
 ):
@@ -172,7 +172,7 @@ async def _run_ingest_background(
             original_filename=filename,
             progress_callback=progress_callback,
             embedder=embedder,
-            embedding_snapshot=embedding_snapshot,
+            embedding_snapshot=embedding_snapshot or {},
             default_chunk_type=default_chunk_type,
             page_offset=page_offset,
         )

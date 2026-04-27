@@ -148,16 +148,18 @@ async def run_ingest(
     await report(7, STEP_LABELS[6])
     chunk_records = []
     chunk_dicts = []
+
+    # Convert PDF page numbers to logical (TOC-aligned) page numbers.
+    # page_offset = (PDF page number of book's "page 1") - 1
+    # e.g. if book's page 1 is PDF page 13, offset=12 → logical page = PDF page - 12
+    def _logical(pdf_page: int) -> int:
+        if parse_quality == "scanned_fallback" or pdf_page < 0:
+            return -1
+        lp = pdf_page - page_offset
+        return lp if lp > 0 else pdf_page  # don't go ≤ 0; fall back to raw if offset is wrong
+
     for i, (rc, vec) in enumerate(zip(raw_chunks, vectors)):
         cid = f"chunk_{uuid.uuid4().hex[:16]}"
-        # Apply page_offset: convert PDF page numbers to logical (TOC-aligned) page numbers.
-        # page_offset = (PDF page number of book's "page 1") - 1
-        # e.g. if book's page 1 is PDF page 13, offset=12 → logical page = PDF page - 12
-        def _logical(pdf_page: int) -> int:
-            if parse_quality == "scanned_fallback" or pdf_page < 0:
-                return -1
-            lp = pdf_page - page_offset
-            return lp if lp > 0 else pdf_page  # don't go ≤ 0; fall back to raw if offset is wrong
         chunk_records.append({
             "chunk_id": cid,
             "document_id": document_id,

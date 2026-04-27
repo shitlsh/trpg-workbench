@@ -64,10 +64,11 @@ def chunk_pages(
     """Split extracted page texts into overlapping chunks with page tracking."""
     # Detect CJK dominance from full document text and pick appropriate bounds
     full_text = " ".join(p.get("text", "") for p in pages)
+    is_cjk = _is_cjk_dominant(full_text)
     if target_min is None:
-        target_min = CJK_TARGET_MIN_CHARS if _is_cjk_dominant(full_text) else TARGET_MIN_CHARS
+        target_min = CJK_TARGET_MIN_CHARS if is_cjk else TARGET_MIN_CHARS
     if target_max is None:
-        target_max = CJK_TARGET_MAX_CHARS if _is_cjk_dominant(full_text) else TARGET_MAX_CHARS
+        target_max = CJK_TARGET_MAX_CHARS if is_cjk else TARGET_MAX_CHARS
 
     # Build a flat list of (text, page_num) segments by paragraph
     segments: list[tuple[str, int]] = []
