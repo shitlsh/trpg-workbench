@@ -2,6 +2,8 @@
 
 **前置条件**：M25 完成（LLM Profile 与聊天、模型选择基础稳定；M20 子 Agent 工具委托与 Director 流式聊天已存在）。
 
+**状态：✅ 已完成（2026-04-27）**
+
 **目标**：以**类 vibe coding** 的「先逛后写」为目标，落地**只读探索子 Agent（Explore）** 与独立中文 system，减轻「全揉在 Director 里」的创作偏置；同步完成 **P0 契约**、**全栈 prompt 统一中文化**（含 Rules/Consistency/Skill、**PDF 与 CHM 两条 TOC 线**、散落任务句）、**死 prompt 清理**与**注册表文档纠偏**；并补齐 **聊天历史摘要** 的 `prompts/` 化与 **PromptProfile 生成** 复查。**不**在本 milestone 承诺通用 LLM 埋点落库（见 B1）。不恢复已否定的旧顺序多 Agent 主创作链。
 
 **实施优先级**：**先**完成「prompt 迁出 + 规范化 + P0/死 prompt/中文化」（见下节 **阶段 1**），**再**做 Explore 与会话分支（**阶段 2**），最后文档与 skill（**阶段 3**）。避免在仍含内联文案的基线上叠新 Agent，降低回归面。
@@ -142,27 +144,27 @@ apps/desktop/... (chat 会话创建)                     # agent_scope UI
 
 ### A0：计划与路线图
 
-- [x] **A0.1**：本 plan 已存在于 `.agents/plans/m26-explore-prompt-integrity.md`，`roadmap.md` 已追加 M26 节点与「进行中」表行；`README.md` 当前状态已指向 M26 进行中。
+- [x] **A0.1**：本 plan 已落地于 `.agents/plans/`，归档前已同步 `roadmap.md` / `README.md`；完成后已移入 `archive/m26-explore-prompt-integrity.md`。
 
 ### 阶段 1（优先）
 
 ### A3：P0 修复
 
-- [ ] **A3.1**：`overall_status` 与 patch/grep 指引已修正。
+- [x] **A3.1**：`overall_status` 与 patch/grep 指引已修正（与 consistency 的 `has_errors` / `has_warnings` / `clean` 一致；局部修改优先 `grep_asset` / `read_asset_section`）。
 
 ### A4：统一中文化
 
-- [ ] **A4.1**：Rules / Consistency / Skill 的 `load_prompt` 源文件为中文，解析契约未破坏。
-- [ ] **A4.2**：`toc_analyzer/system.txt`（PDF 目录）与 `toc_analyzer/chm_classify_system.txt`（CHM 目录）均已中文化，且与 [toc_analyzer.py](apps/backend/app/knowledge/toc_analyzer.py) 的 JSON 解析仍匹配；**user 任务**英文已清掉或外置中文化。
+- [x] **A4.1**：Rules / Consistency / Skill 的 `load_prompt` 源文件为中文，解析契约未破坏。
+- [x] **A4.2**：`toc_analyzer/system.txt`（PDF 目录）与 `toc_analyzer/chm_classify_system.txt`（CHM 目录）均已中文化；`user_pdf` / `user_chm_batch` 外置并经 `load_prompt` 注入，与 [toc_analyzer.py](apps/backend/app/knowledge/toc_analyzer.py) 解析一致。
 
 ### A5：死 prompt 与 `__init__`
 
-- [ ] **A5.1**：旧 clarification/planning 已移出热路径；`rag`/`style` 共享件已用或删；`__init__.py` 示例已净化。
+- [x] **A5.1**：旧 `clarification` / `planning` 已移入 [archive/legacy_director_stages](apps/backend/app/prompts/archive/legacy_director_stages/)；`rag_injection` / `style_prefix` 已由 skill/director 经 `load_prompt` 使用；`__init__.py` 示例无幽灵路径。
 
 ### A7：摘要 system 与迁出（阶段 1 子集）
 
-- [ ] **A7.1**：`chat._summarize_dropped_messages` 的 system 文案已迁入 `app/prompts/`，经 `load_prompt` 使用。
-- [ ] **A7.2**：`prompt_profiles/generate.txt` 与生成流程已通读，与 A4/解析契约无冲突（或已修正）。
+- [x] **A7.1**：`chat._summarize_dropped_messages` 使用 `load_prompt("chat", "summary_system")`。
+- [x] **A7.2**：`prompt_profiles/generate` 保持 `load_prompt` 通路与 `generate.txt` 契约一致（M26 通读，无再迁出需求）。
 
 ### 阶段 2
 

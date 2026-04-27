@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M25；**M26 进行中**（见下表）。
+核心功能链路已通过 **M1–M26**（见下表）。
 
 ```
 ✅ M1 基础骨架
@@ -31,7 +31,7 @@
                                                                                                                                                                            └── ✅ M23 Agent 澄清问题机制
                                                                                                                                                                                    ├── ✅ M24 知识库检索质量提升
                                                                                                                                                                                    ├── ✅ M25 LLM Profile 字段瘦身
-                                                                                                                                                                                   └── M26 探索子 Agent 与 Prompt 体系统一
+                                                                                                                                                                                   └── ✅ M26 探索子 Agent 与 Prompt 体系统一
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -72,12 +72,11 @@
 | M23 ✅ | Agent 澄清问题机制 | Director 在推理中途向用户提出结构化选项问题，减少猜错方向的来回成本 | [archive/m23-agent-question-interrupt.md](archive/m23-agent-question-interrupt.md) |
 | M24 ✅ | 知识库检索质量提升 | chunk 级类型标签、chunker 修复、top_k 配置化、rerank 接入 | [archive/m24-knowledge-retrieval-quality.md](archive/m24-knowledge-retrieval-quality.md) |
 | M25 ✅ | LLM Profile 字段瘦身与模型选择体验 | 去掉 Profile 死字段、能力归目录、模型下拉可搜可筛可展示 | [archive/m25-llm-profile-fields-cleanup.md](archive/m25-llm-profile-fields-cleanup.md) |
+| M26 ✅ | 探索子 Agent 与 Prompt 体系统一 | 落地只读 Explore + 会话分流；**统一中文化**（含 **PDF/CHM 两套 TOC prompt**）；P0、死 prompt、`prompts` 规范；聊天摘要等；`knowledge-library-ingest` skill；不恢复旧顺序主链；用量见 plan B1 | [archive/m26-explore-prompt-integrity.md](archive/m26-explore-prompt-integrity.md) |
 
 ### 进行中 / 待启动
 
-| # | 名称 | 目标 | 计划文件 |
-|---|------|------|---------|
-| M26 | 探索子 Agent 与 Prompt 体系统一 | 落地只读 Explore + 会话分流；**统一中文化**（含 **PDF/CHM 两套 TOC prompt**）；P0、死 prompt、`prompts` 规范；聊天摘要等；不恢复旧顺序主链；用量见 plan B1 | [m26-explore-prompt-integrity.md](m26-explore-prompt-integrity.md) |
+_当前无进行中的里程碑。_
 
 ---
 
