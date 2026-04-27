@@ -43,6 +43,22 @@ def init_db():
     from app.models import orm  # noqa: F401 – ensure models are registered
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+    _run_migrations(engine)
+
+
+def _run_migrations(engine) -> None:
+    """Lightweight column-add migrations for SQLite (no Alembic)."""
+    migrations = [
+        "ALTER TABLE rule_sets ADD COLUMN default_prompt_profile_id TEXT",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(__import__("sqlalchemy").text(sql))
+                conn.commit()
+            except Exception:
+                # Column already exists – ignore
+                pass
 
 
 def get_db():
