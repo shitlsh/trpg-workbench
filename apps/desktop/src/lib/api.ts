@@ -15,7 +15,7 @@ export async function apiFetch<T>(
       ...fetchOptions,
     });
   } catch (err) {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
+    if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
       throw new Error("请求超时：模型响应时间过长，请稍后重试");
     }
     throw new Error(`网络错误：无法连接到后端服务（${BASE_URL}）`);
@@ -34,6 +34,55 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+/**
+ * POST to an SSE endpoint and return the first `event: result` payload.
+ * Ignores `: keepalive` comments. Throws on `event: error`.
+ */
+export async function apiPostSSE<T>(path: string, body: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new Error(`网络错误：无法连接到后端服务（${BASE_URL}）`);
+  }
+  if (!res.ok || !res.body) {
+    let detail = `HTTP ${res.status}`;
+    try { const b = await res.json(); detail = b.detail ?? b.message ?? detail; } catch {}
+    throw new Error(detail);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let currentEvent = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) throw new Error("SSE stream ended without result");
+
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line === "") {
+        currentEvent = "";
+      } else if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith("data: ")) {
+        const data = JSON.parse(line.slice(6).trim());
+        if (currentEvent === "result") return data as T;
+        if (currentEvent === "error") throw new Error(data.message ?? "Unknown error");
+      }
+      // `: keepalive` lines (starting with ":") are silently ignored
+    }
+  }
+}
+
 export async function checkHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(2000) });
@@ -42,3 +91,4 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
+

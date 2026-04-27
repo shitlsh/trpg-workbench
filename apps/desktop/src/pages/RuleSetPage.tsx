@@ -6,7 +6,7 @@ import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
   Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check,
 } from "lucide-react";
-import { apiFetch, BACKEND_URL } from "../lib/api";
+import { apiFetch, apiPostSSE, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useModelList } from "../hooks/useModelList";
 import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
@@ -209,18 +209,14 @@ function SetPromptModal({
     setIsGenerating(true);
     setGenError(null);
     try {
-      const res = await apiFetch<{ name: string; system_prompt: string; style_notes: string }>(
+      const res = await apiPostSSE<{ name: string; system_prompt: string; style_notes: string }>(
         "/prompt-profiles/generate",
         {
-          method: "POST",
-          body: JSON.stringify({
-            rule_set_id: ruleSetId,
-            llm_profile_id: selectedLlmId,
-            model_name: aiModelName.trim(),
-            style_description: aiStyleDesc.trim() || undefined,
-          }),
-          timeoutMs: 120_000,
-        }
+          rule_set_id: ruleSetId,
+          llm_profile_id: selectedLlmId,
+          model_name: aiModelName.trim(),
+          style_description: aiStyleDesc.trim() || undefined,
+        },
       );
       setAiName(res.name || `创作风格`);
       setAiPrompt(res.system_prompt);
@@ -889,6 +885,11 @@ function LibraryDetailPanel({
   });
   const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>("");
 
+  // Probe models for whichever LLM profile is selected in the wizard's select_llm step
+  const wizardLlmProfileId = wizard.step === "select_llm" ? wizard.llmProfileId : null;
+  const { models: wizardProbedModels } = useModelList(wizardLlmProfileId);
+  const wizardLlmProfile = llmProfilesForUpload.find((p) => p.id === wizardLlmProfileId);
+
   const { data: documents = [] } = useQuery({
     queryKey: ["knowledge", "documents", library.id],
     queryFn: () => apiFetch<KnowledgeDocument[]>(`/knowledge/libraries/${library.id}/documents`),
@@ -1005,13 +1006,9 @@ function LibraryDetailPanel({
   async function analyzeToc(fileId: string, filename: string, fileExt: string, tocText: string, llmProfileId: string, llmModelName: string) {
     setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText });
     try {
-      const res = await apiFetch<{ sections: TocSectionState[] }>(
+      const res = await apiPostSSE<{ sections: TocSectionState[] }>(
         `/knowledge/documents/preview/${fileId}/analyze-toc`,
-        {
-          method: "POST",
-          body: JSON.stringify({ toc_text: tocText, llm_profile_id: llmProfileId, llm_model_name: llmModelName || undefined }),
-          timeoutMs: 120_000,
-        },
+        { toc_text: tocText, llm_profile_id: llmProfileId, llm_model_name: llmModelName || undefined },
       );
       setWizard({
         step: "section_confirm",
@@ -1033,9 +1030,7 @@ function LibraryDetailPanel({
         analyzeError: e instanceof Error ? e.message : String(e),
       });
     }
-  }
-
-  async function startIngest(fileId: string, sections: TocSectionState[], pageOffset: number) {
+  }  async function startIngest(fileId: string, sections: TocSectionState[], pageOffset: number) {
     const profileId = selectedEmbeddingId || embeddingProfiles[0]?.id;
     if (!profileId) {
       setUploadError("请先在模型配置中添加 Embedding 模型");
@@ -1286,12 +1281,13 @@ function LibraryDetailPanel({
                   </div>
                   <div style={{ marginBottom: 16 }}>
                     <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>模型名称（可选，留空则用供应商默认）</label>
-                    <input
-                      type="text"
-                      placeholder="例：gpt-4o / claude-3-5-sonnet-20241022"
+                    <ModelNameInput
+                      catalog="llm"
+                      providerType={wizardLlmProfile?.provider_type ?? ""}
                       value={w.llmModelName}
-                      onChange={(e) => setWizard({ ...w, llmModelName: e.target.value })}
-                      style={{ width: "100%", fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", boxSizing: "border-box" }}
+                      onChange={(v) => setWizard({ ...w, llmModelName: v })}
+                      fetchedModels={wizardProbedModels}
+                      placeholder="例：gpt-4o / claude-3-5-sonnet-20241022"
                     />
                   </div>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
