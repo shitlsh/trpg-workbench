@@ -878,3 +878,15 @@ def ask_user(questions: list[dict]) -> str:
 ALL_TOOLS = [list_assets, read_asset, grep_asset, read_asset_section, search_assets, search_knowledge,
              create_asset, patch_asset, update_asset, check_consistency, consult_rules, create_skill,
              web_search, ask_user]
+
+# Explore 会话：只读 + 规则咨询，无写入、无一致性委托、无 Skill、无向用户中断提问
+EXPLORE_TOOLS = [
+    list_assets,
+    read_asset,
+    grep_asset,
+    read_asset_section,
+    search_assets,
+    search_knowledge,
+    web_search,
+    consult_rules,
+]

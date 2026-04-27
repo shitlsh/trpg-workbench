@@ -21,6 +21,7 @@ from app.models.schemas import (
 )
 from app.services import chat_service
 from app.agents.director import run_director_stream
+from app.agents.explore import run_explore_stream
 from app.workflows.utils import get_workspace_context
 from app.services.model_routing import get_llm_for_task, ModelNotConfiguredError
 from app.services.llm_defaults import task_temperature
@@ -195,7 +196,9 @@ async def send_message(
     body: SendMessageRequest,
     db: Session = Depends(get_db),
 ):
-    """Send a user message and stream Director response via SSE.
+    """Send a user message and stream agent response via SSE (Director 或 Explore).
+
+    `agent_scope` 在创建会话时设置；`explore` 为只读探索，其余为创作向 Director。
 
     Returns: text/event-stream
     Events: text_delta, tool_call_start, tool_call_result, auto_applied, done, error
@@ -231,6 +234,9 @@ async def send_message(
 
     # Get workspace context
     ws_ctx = get_workspace_context(db, body.workspace_id)
+
+    scope = (session.agent_scope or "").strip().lower()
+    run_stream = run_explore_stream if scope == "explore" else run_director_stream
 
     # Multi-turn history
     history = chat_service.read_recent_messages(ws.workspace_path, session_id, limit=20)
@@ -286,7 +292,7 @@ async def send_message(
 
         async def _produce():
             try:
-                async for evt in run_director_stream(
+                async for evt in run_stream(
                     user_message=body.content,
                     workspace_context=ws_ctx,
                     model=model,

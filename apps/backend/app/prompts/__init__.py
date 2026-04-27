@@ -16,7 +16,7 @@ _PROMPTS_DIR = Path(__file__).parent
 def load_prompt(agent: str, phase: str, **vars) -> str:
     """
     Load and render a prompt template.
-    agent: subdirectory under app/prompts, e.g. "director", "rules", "consistency", "chat", "toc_analyzer", "prompt_profiles"
+    agent: subdirectory under app/prompts, e.g. "director", "explore", "rules", "consistency", "chat", "toc_analyzer", "prompt_profiles"
     phase: filename without .txt, e.g. "system", "review", "generate", "summary_system"
     vars: template variables substituted via str.format_map()
     """
