@@ -31,16 +31,44 @@ _IS_SINGLE_LINE = re.compile(r"^[^\n]+$")
 
 TARGET_MIN_CHARS = 600
 TARGET_MAX_CHARS = 1600
+# CJK languages are denser: a Chinese sentence of 300 chars carries more
+# semantic content than 600 English characters.  Use tighter bounds so
+# chunks stay well within LLM context windows and retrieval stays precise.
+CJK_TARGET_MIN_CHARS = 300
+CJK_TARGET_MAX_CHARS = 800
 OVERLAP_CHARS = 200
+
+
+def _is_cjk_dominant(text: str, threshold: float = 0.4) -> bool:
+    """Return True if CJK characters make up >= threshold of all letters/words."""
+    if not text:
+        return False
+    cjk_count = sum(
+        1 for ch in text
+        if "\u4e00" <= ch <= "\u9fff"  # CJK Unified Ideographs
+        or "\u3400" <= ch <= "\u4dbf"  # Extension A
+        or "\uac00" <= ch <= "\ud7a3"  # Hangul syllables
+        or "\u3040" <= ch <= "\u30ff"  # Hiragana / Katakana
+    )
+    # Compare against total non-whitespace characters
+    total = sum(1 for ch in text if not ch.isspace())
+    return total > 0 and (cjk_count / total) >= threshold
 
 
 def chunk_pages(
     pages: list[dict],  # [{"page": int, "text": str}]
-    target_min: int = TARGET_MIN_CHARS,
-    target_max: int = TARGET_MAX_CHARS,
+    target_min: int | None = None,
+    target_max: int | None = None,
     overlap: int = OVERLAP_CHARS,
 ) -> list[RawChunk]:
     """Split extracted page texts into overlapping chunks with page tracking."""
+    # Detect CJK dominance from full document text and pick appropriate bounds
+    full_text = " ".join(p.get("text", "") for p in pages)
+    if target_min is None:
+        target_min = CJK_TARGET_MIN_CHARS if _is_cjk_dominant(full_text) else TARGET_MIN_CHARS
+    if target_max is None:
+        target_max = CJK_TARGET_MAX_CHARS if _is_cjk_dominant(full_text) else TARGET_MAX_CHARS
+
     # Build a flat list of (text, page_num) segments by paragraph
     segments: list[tuple[str, int]] = []
     for page_info in pages:

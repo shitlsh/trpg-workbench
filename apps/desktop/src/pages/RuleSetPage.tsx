@@ -485,6 +485,7 @@ function DocumentPreviewPanel({
   const [previewTab, setPreviewTab] = useState<"chunks" | "pages">("chunks");
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
+  const [filterChunkType, setFilterChunkType] = useState<ChunkType | "">("");
 
   const { data: chunks = [] } = useQuery({
     queryKey: ["knowledge", "doc", docId, "chunks"],
@@ -534,8 +535,22 @@ function DocumentPreviewPanel({
       <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
         {previewTab === "chunks" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {chunks.length === 0 && <p style={{ color: "var(--text-muted)", fontSize: 13 }}>尚无 Chunk 数据</p>}
-            {chunks.map((chunk) => (
+            {/* chunk_type filter */}
+            <select
+              value={filterChunkType}
+              onChange={(e) => setFilterChunkType(e.target.value as ChunkType | "")}
+              style={{ fontSize: 12, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", marginBottom: 4 }}
+            >
+              <option value="">全部类型 ({chunks.length})</option>
+              {CHUNK_TYPES.map((ct) => {
+                const count = chunks.filter((c) => c.chunk_type === ct.value).length;
+                return count > 0 ? <option key={ct.value} value={ct.value}>{ct.label} ({count})</option> : null;
+              })}
+            </select>
+            {chunks.filter((c) => !filterChunkType || c.chunk_type === filterChunkType).length === 0 && (
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>尚无 Chunk 数据</p>
+            )}
+            {chunks.filter((c) => !filterChunkType || c.chunk_type === filterChunkType).map((chunk) => (
               <div
                 key={chunk.chunk_id}
                 onClick={() => setSelectedChunkId(selectedChunkId === chunk.chunk_id ? null : chunk.chunk_id)}
@@ -549,6 +564,11 @@ function DocumentPreviewPanel({
                   <span style={{ fontWeight: 600 }}>#{chunk.chunk_index}</span>
                   <span style={{ color: "var(--text-muted)" }}>p{chunk.page_from}–{chunk.page_to}</span>
                   <span style={{ color: "var(--text-muted)" }}>{chunk.char_count} 字</span>
+                  {chunk.chunk_type && (
+                    <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 3, background: "var(--accent-muted, rgba(99,102,241,0.15))", color: "var(--accent)" }}>
+                      {CHUNK_TYPES.find((ct) => ct.value === chunk.chunk_type)?.label ?? chunk.chunk_type}
+                    </span>
+                  )}
                   {chunk.has_table && <span style={{ color: "#f0a500", fontSize: 11 }}>表格</span>}
                   {chunk.has_multi_column && <span style={{ color: "#f0a500", fontSize: 11 }}>多列</span>}
                 </div>
@@ -1013,6 +1033,25 @@ function LibraryDetailPanel({
             <option key={ct.value} value={ct.value}>{ct.label}：{ct.description}</option>
           ))}
         </select>
+      </div>
+
+      {/* page_offset input */}
+      <div style={{ marginBottom: 8 }}>
+        <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+          页码偏移（可选）
+        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="number"
+            min={0}
+            value={pageOffset}
+            onChange={(e) => setPageOffset(Math.max(0, parseInt(e.target.value) || 0))}
+            style={{ width: 80, fontSize: 12, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+          />
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            若 PDF 第 N 页对应书籍第 1 页，填 N−1。例：正文从 PDF 第 13 页开始 → 填 12
+          </span>
+        </div>
       </div>
 
       {/* Upload area */}
