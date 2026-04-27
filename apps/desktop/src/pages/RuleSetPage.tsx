@@ -1072,9 +1072,9 @@ function LibraryDetailPanel({
             }}
           >
             <Upload size={20} color="var(--text-muted)" />
-            <span>{overlayMsg ?? "拖拽 PDF 到此处，或点击选择文件"}</span>
+            <span>{overlayMsg ?? "拖拽 PDF / CHM 到此处，或点击选择文件"}</span>
             <input
-              ref={fileInputRef} type="file" accept=".pdf" style={{ display: "none" }}
+              ref={fileInputRef} type="file" accept=".pdf,.chm" style={{ display: "none" }}
               onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUpload(file); e.target.value = ""; }}
             />
           </div>

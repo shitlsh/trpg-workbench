@@ -40,8 +40,12 @@ async def upload_document(
     if not lib:
         raise HTTPException(status_code=404, detail="Library not found")
 
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    SUPPORTED_EXTS = {".pdf", ".chm"}
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in SUPPORTED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type '{file_ext}'. Supported: {', '.join(sorted(SUPPORTED_EXTS))}")
 
     # Resolve embedding profile directly by ID
     embedding_profile = db.get(_EmbeddingProfileORM, embedding_profile_id)
@@ -55,11 +59,12 @@ async def upload_document(
     safe_filename = Path(file.filename).name
 
     # Create document record
+    mime_map = {".pdf": "application/pdf", ".chm": "application/vnd.ms-htmlhelp"}
     doc = KnowledgeDocumentORM(
         library_id=library_id,
         filename=safe_filename,
         original_path="",  # will be set after save
-        mime_type="application/pdf",
+        mime_type=mime_map.get(file_ext, "application/octet-stream"),
         parse_status="pending",
     )
     db.add(doc)
@@ -74,7 +79,7 @@ async def upload_document(
 
     # Save uploaded file to temp location
     content = await file.read()
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
     tmp.write(content)
     tmp.close()
     tmp_path = Path(tmp.name)
@@ -95,6 +100,7 @@ async def upload_document(
             task_id=task.id,
             tmp_path=tmp_path,
             filename=file.filename,
+            file_ext=file_ext,
             embedding_profile_id=embedding_profile.id,
             embedding_snapshot=embedding_snapshot,
             default_chunk_type=default_chunk_type,
@@ -111,12 +117,16 @@ async def _run_ingest_background(
     task_id: str,
     tmp_path: Path,
     filename: str,
-    embedding_profile_id: str,
-    embedding_snapshot: dict,
+    file_ext: str = ".pdf",
+    embedding_profile_id: str = "",
+    embedding_snapshot: dict = {},
     default_chunk_type: str = "",
     page_offset: int = 0,
 ):
-    from app.knowledge.pdf_ingest import run_ingest
+    if file_ext == ".chm":
+        from app.knowledge.chm_ingest import run_ingest
+    else:
+        from app.knowledge.pdf_ingest import run_ingest
     from app.storage.database import get_session_factory
     from app.agents.model_adapter import embedding_from_profile
     from app.models.orm import EmbeddingProfileORM
