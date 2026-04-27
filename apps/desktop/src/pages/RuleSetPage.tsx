@@ -128,15 +128,19 @@ function CreateLibraryModal({
 function SetPromptModal({
   ruleSetId,
   currentProfileId,
+  initialTab = "select",
   onClose,
+  onSetDefault,
 }: {
   ruleSetId: string;
   currentProfileId: string | null;
+  initialTab?: "select" | "manual" | "ai";
   onClose: () => void;
+  onSetDefault?: (profileId: string) => void;
 }) {
   const queryClient = useQueryClient();
   type Tab = "select" | "manual" | "ai";
-  const [tab, setTab] = useState<Tab>("select");
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   // existing profiles for this rule set (shown in "已有" tab)
   const { data: profiles = [] } = useQuery({
@@ -282,7 +286,7 @@ function SetPromptModal({
         {tab === "select" && (
           <>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
-              此规则集下已有的创作风格提示词。在工作空间设置中可选择其中一个使用。
+              {onSetDefault ? "点击提示词将其设为此规则集的默认创作风格。" : "此规则集下已有的创作风格提示词。"}
             </p>
             <div className={styles.selectList}>
               {profiles.length === 0 && (
@@ -292,7 +296,13 @@ function SetPromptModal({
                 <div
                   key={p.id}
                   className={`${styles.selectListItem} ${p.id === currentProfileId ? styles.selected : ""}`}
-                  style={{ cursor: "default" }}
+                  style={{ cursor: onSetDefault ? "pointer" : "default" }}
+                  onClick={() => {
+                    if (onSetDefault && p.id !== currentProfileId) {
+                      onSetDefault(p.id);
+                      onClose();
+                    }
+                  }}
                 >
                   <MessageSquare size={14} style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -309,7 +319,7 @@ function SetPromptModal({
                   <button
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "2px 4px", flexShrink: 0 }}
                     title="删除"
-                    onClick={() => { if (confirm(`确认删除「${p.name}」？`)) deleteMutation.mutate(p.id); }}
+                    onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除「${p.name}」？`)) deleteMutation.mutate(p.id); }}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -1103,6 +1113,7 @@ export default function RuleSetPage() {
   // Library/prompt modals
   const [showCreateLib, setShowCreateLib] = useState(false);
   const [showSetPrompt, setShowSetPrompt] = useState(false);
+  const [promptModalMode, setPromptModalMode] = useState<"select" | "manual" | "ai">("select");
 
   // Inline prompt editing
   const [editingPrompt, setEditingPrompt] = useState(false);
@@ -1146,8 +1157,10 @@ export default function RuleSetPage() {
   });
   const hasEmbedding = embeddingProfiles.length > 0;
 
-  const currentPrompt = selectedId
-    ? allProfiles[0] ?? null  // first profile in the rule set (default)
+  const currentPrompt = selectedId && selectedRuleSet
+    ? allProfiles.find((p) => p.id === selectedRuleSet.default_prompt_profile_id)
+      ?? allProfiles[0]  // fall back to first if no explicit default set yet
+      ?? null
     : null;
 
   const activeLib = libraries.find((l) => l.id === activeLibId) ?? null;
@@ -1199,6 +1212,29 @@ export default function RuleSetPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prompt-profiles", selectedId] });
       setEditingPrompt(false);
+    },
+  });
+
+  const setDefaultPromptMutation = useMutation({
+    mutationFn: (promptProfileId: string | null) =>
+      apiFetch<RuleSet>(`/rule-sets/${selectedId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ default_prompt_profile_id: promptProfileId }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rule-sets"] });
+    },
+  });
+
+  const deletePromptMutation = useMutation({
+    mutationFn: (promptProfileId: string) =>
+      apiFetch(`/prompt-profiles/${promptProfileId}`, { method: "DELETE" }),
+    onSuccess: (_data, deletedId) => {
+      queryClient.invalidateQueries({ queryKey: ["prompt-profiles", selectedId] });
+      // If the deleted profile was the default, clear the default reference
+      if (selectedRuleSet?.default_prompt_profile_id === deletedId) {
+        setDefaultPromptMutation.mutate(null);
+      }
     },
   });
 
@@ -1323,35 +1359,59 @@ export default function RuleSetPage() {
               <div className={styles.section}>
                 <div className={styles.sectionHeader}>
                   <span className={styles.sectionLabel}><MessageSquare size={12} /> 创作风格提示词</span>
-                  <button className={styles.btnSecondary} style={{ fontSize: 12, padding: "4px 10px" }} onClick={() => setShowSetPrompt(true)}>
-                    {currentPrompt ? "更换" : "指定提示词"}
-                  </button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {allProfiles.length > 0 && (
+                      <button
+                        className={styles.btnSecondary}
+                        style={{ fontSize: 12, padding: "4px 10px" }}
+                        onClick={() => { setPromptModalMode("select"); setShowSetPrompt(true); }}
+                      >
+                        设为默认
+                      </button>
+                    )}
+                    <button
+                      className={styles.btnSecondary}
+                      style={{ fontSize: 12, padding: "4px 10px" }}
+                      onClick={() => { setPromptModalMode("manual"); setShowSetPrompt(true); }}
+                    >
+                      <Plus size={12} /> 新建
+                    </button>
+                  </div>
                 </div>
                 {currentPrompt ? (
                   <div className={styles.promptCard}>
                     {editingPrompt ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <input
-                          className={styles.input}
-                          value={promptEditName}
-                          onChange={(e) => setPromptEditName(e.target.value)}
-                          placeholder="名称"
-                          style={{ fontWeight: 600 }}
-                        />
-                        <input
-                          className={styles.input}
-                          value={promptEditNotes}
-                          onChange={(e) => setPromptEditNotes(e.target.value)}
-                          placeholder="风格摘要（选填）"
-                        />
-                        <textarea
-                          className={styles.textarea}
-                          value={promptEditBody}
-                          onChange={(e) => setPromptEditBody(e.target.value)}
-                          rows={8}
-                          style={{ fontFamily: "monospace", fontSize: 12 }}
-                          placeholder="System Prompt..."
-                        />
+                        <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 4 }}>
+                          名称 *
+                          <input
+                            className={styles.input}
+                            value={promptEditName}
+                            onChange={(e) => setPromptEditName(e.target.value)}
+                            placeholder="名称"
+                            style={{ fontWeight: 600 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 4 }}>
+                          风格摘要（选填）
+                          <input
+                            className={styles.input}
+                            value={promptEditNotes}
+                            onChange={(e) => setPromptEditNotes(e.target.value)}
+                            placeholder="风格摘要（选填）"
+                          />
+                        </label>
+                        <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 4 }}>
+                          System Prompt *
+                          <textarea
+                            className={styles.textarea}
+                            value={promptEditBody}
+                            onChange={(e) => setPromptEditBody(e.target.value)}
+                            rows={8}
+                            style={{ fontFamily: "monospace", fontSize: 12 }}
+                            placeholder="System Prompt..."
+                          />
+                        </label>
                         {updatePromptMutation.isError && (
                           <p className={styles.error}>{(updatePromptMutation.error as Error).message}</p>
                         )}
@@ -1383,6 +1443,14 @@ export default function RuleSetPage() {
                             }}
                           >
                             <Edit2 size={12} />
+                          </button>
+                          <button
+                            className={styles.btnGhost}
+                            style={{ padding: "2px 6px", fontSize: 12, color: "var(--danger, #e05252)" }}
+                            title="删除提示词"
+                            onClick={() => deletePromptMutation.mutate(currentPrompt.id)}
+                          >
+                            <Trash2 size={12} />
                           </button>
                         </div>
                         {currentPrompt.style_notes && (
@@ -1664,7 +1732,13 @@ export default function RuleSetPage() {
 
       {/* Set Prompt modal */}
       {showSetPrompt && selectedId && (
-        <SetPromptModal ruleSetId={selectedId} currentProfileId={currentPrompt?.id ?? null} onClose={() => setShowSetPrompt(false)} />
+        <SetPromptModal
+          ruleSetId={selectedId}
+          currentProfileId={currentPrompt?.id ?? null}
+          initialTab={promptModalMode}
+          onClose={() => setShowSetPrompt(false)}
+          onSetDefault={(profileId) => setDefaultPromptMutation.mutate(profileId)}
+        />
       )}
     </div>
   );
