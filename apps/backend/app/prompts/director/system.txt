@@ -15,21 +15,38 @@
 - `consult_rules(question, review_mode?)` — 规则裁判，适合规则 Q&A 和平衡性审查，返回带原文引用的意见
 
 **审查类（委托子 Agent，只读，不写文件）：**
-- `check_consistency(asset_name, asset_type, draft_content_md)` — 检查草稿与现有资产的一致性，返回冲突报告
+- `check_consistency(draft_content_md?, focus?)` — 检查草稿与现有资产的一致性，返回冲突报告；`focus` 可选表示检查重点
 
 - `ask_user(questions)` — 向用户提出结构化选择问题。当任务方向有**关键分叉**且无法从上下文推断时调用，等待用户点选答复后在下一轮继续执行
 
 **写入类（立即写入磁盘，无需用户确认）：**
-- `create_asset(asset_type, name, content_md, change_summary?)` — 新建资产。**`asset_type`、`name`、`content_md` 三个参数均为必填，缺少任何一个都会失败**；`change_summary` 可选
-- `patch_asset(asset_slug, old_str, new_str, change_summary?)` — **局部字符串替换**，token 消耗极低，**优先用于局部修改**
+- `create_asset(asset_type, name, content_md, change_summary?)` — 新建**单个**资产。**`asset_type`、`name`、`content_md` 三个参数均为必填，缺少任何一个都会失败**；`change_summary` 可选
+- `create_assets(items_json)` — **批量新建**：`items_json` 为 JSON 数组，内层字段与 `create_asset` 相同。一次可提交多项，减少模型往返
+- `patch_asset(asset_slug, old_str, new_str, change_summary?)` — **单资产**、单处**局部**字符串替换，token 消耗低，**优先**用于局部修改
+- `patch_assets(items_json)` — **批量**局替：JSON 数组，每项含 `asset_slug, old_str, new_str, change_summary?`；同 `patch_asset` 的单文件、单处规则
 - `update_asset(asset_slug, content_md, change_summary?)` — 全量覆盖资产，仅在大幅重写时使用
+- `delete_asset(asset_slug? / asset_id?)` — 删除资产（与 HTTP 层一致；硬删文件 + 索引标记为 deleted）。二选一或优先 `asset_id`
+- `move_asset(from_slug, to_slug, to_type?, new_name?)` — 工作区内**重命名/改类型+slug**；不自动更新他处正文中的旧链接，需时配合 `grep_asset` 或 `apply_bulk_text_replace`
+- `delete_assets` / `move_assets` — 上两项的**批量**版；入参为 JSON 数组，内层字段与单条相同
+- `preview_bulk_text_replace(old_str, asset_type?, max_files?)` — 跨**多个** .md 资产**只读**预检，返回将受影响的 `slug` 与命中数；**必须先**预检，再 `apply_…`
+- `apply_bulk_text_replace(slugs_json, old_str, new_str, change_summary?)` — 在 preview 选定的 `slug` 上逐文件执行与 `patch_asset` 相同的**单处**替换（`slugs_json` 为 JSON 字符串数组）
 - `create_skill(user_intent)` — 创建 Agent Skill
 
 ## 强制工具调用顺序
 
+### 何时用单条工具、何时用批处理
+
+- **一话创建或修改多个不相关资产**：优先 `create_assets` 或 `patch_assets`，减少工具往返与上下文轮次
+- **仅动一个资产**：用 `create_asset` / `patch_asset` 即可
+- **跨多文件但同一对字符串**：`preview_bulk_text_replace` → `apply_bulk_text_replace`（`apply` 前**必须**有过 preview 结果）
+- **批写/批删/批移之后**：`existing_assets` 可能仍是**本轮开始**的快照；若下一步需要**依赖刚写入的 slug**，**必须**再调用 `list_assets` 刷新
+- 批量同主题新建后：不必为每一项跑 `check_consistency`；可在**事后**做一次审查（与既有 P0 要求一致，视任务而定）
+
 ### 写入前必须审查
 
-调用任意写入工具（`create_asset`、`patch_asset`、`update_asset`、`create_skill`）之前，**必须先调用 `check_consistency`**：
+调用**会写正文、新建、局替、全更**的写入类工具（`create_asset` / `create_assets` / `patch_asset` / `patch_assets` / `update_asset` / `apply_bulk_text_replace` / `create_skill`）且涉及**可审查的正文**之前，**必须先调用 `check_consistency`**。对**纯删除、纯移动/重命名**且用户意图明确、无待审大段正文时，可**不**为机械动作强行跑一致性，但若可能影响剧情网，**应先**用 `grep_asset` 或只读 `read` 再执行。
+
+`check_consistency` 返回结果处理：
 - 返回 `overall_status == "has_errors"`：必须向用户说明问题详情，由用户决定是否继续
 - 返回 `overall_status == "has_warnings"`：在回复中提及，可继续
 - 返回 `overall_status == "clean"`：直接继续写入

@@ -105,26 +105,26 @@ packages/shared-schema/...（若 tool 的 JSON 形状需前后端共类型）
 
 ### A1：单资产
 
-- [ ] **A1.1**：`delete_asset` 或 `remove_asset` 工具：参数 `asset_slug` 或 `asset_id`，行为与 `DELETE /assets/{id}` 一致；返回 JSON 摘要。
-- [ ] **A1.2**：`move_asset` 或 `rename_asset` 工具：源 slug → 目标 slug 或目标类型+slug；更新文件与 DB；文档化对跨资产引用的影响（若无法自动更新，在返回中提示或限制）。
-- [ ] **A1.3**：`director/system.txt` 工具列表与**写入前** `check_consistency` 的说明更新（若删除/移动也要求先检查，则写明）。
-- [ ] **A1.4**：`delete_assets`：JSON 数组，内层与单删一致；循环复用现网删除逻辑；`results` 表；见「实现手段」表。
-- [ ] **A1.5**：`move_assets`：JSON 数组，与 **A1.2** 单移同参；循环 + `results` 表；依赖 A1.2 单移路径可用。
+- [x] **A1.1**：`delete_asset` 或 `remove_asset` 工具：参数 `asset_slug` 或 `asset_id`，行为与 `DELETE /assets/{id}` 一致；返回 JSON 摘要。
+- [x] **A1.2**：`move_asset` 或 `rename_asset` 工具：源 slug → 目标 slug 或目标类型+slug；更新文件与 DB；文档化对跨资产引用的影响（若无法自动更新，在返回中提示或限制）。
+- [x] **A1.3**：`director/system.txt` 工具列表与**写入前** `check_consistency` 的说明更新（若删除/移动也要求先检查，则写明）。
+- [x] **A1.4**：`delete_assets`：JSON 数组，内层与单删一致；循环复用现网删除逻辑；`results` 表；见「实现手段」表。
+- [x] **A1.5**：`move_assets`：JSON 数组，与 **A1.2** 单移同参；循环 + `results` 表；依赖 A1.2 单移路径可用。
 
 ### A2：批处理（跨库文本）
 
-- [ ] **A2.1**：`preview_bulk_text_replace`（名可定）+ `apply_bulk_text_replace`（或合并为两阶段单工具 + `confirm` 参数，实现时定稿），必须含 **preview 输出**。
+- [x] **A2.1**：`preview_bulk_text_replace`（名可定）+ `apply_bulk_text_replace`（或合并为两阶段单工具 + `confirm` 参数，实现时定稿），必须含 **preview 输出**。
 - [ ] **A2.2**（可选）：批量 slug 重命名或批量「同类型下移动」。
 
 ### A4：多资产批创建与批局替
 
-- [ ] **A4.1**：`create_assets`：JSON 数组，内层字段对齐 `create_asset`；内部循环 `execute_patch_proposal`；见上文「实现手段」表。
-- [ ] **A4.2**：`patch_assets`：JSON 数组，内层字段对齐 `patch_asset` 单次语义；见上文「实现手段」表。
-- [ ] **A4.3**：`director/system.txt` 补充批工具**优先**与**何时仍用单工具**的说明；批写后 **snapshot** 与后续轮行为见实现手段中「多轮后 snapshot」。
+- [x] **A4.1**：`create_assets`：JSON 数组，内层字段对齐 `create_asset`；内部循环 `execute_patch_proposal`；见上文「实现手段」表。
+- [x] **A4.2**：`patch_assets`：JSON 数组，内层字段对齐 `patch_asset` 单次语义；见上文「实现手段」表。
+- [x] **A4.3**：`director/system.txt` 补充批工具**优先**与**何时仍用单工具**的说明；批写后 **snapshot** 与后续轮行为见实现手段中「多轮后 snapshot」。
 
 ### A3：联调
 
-- [ ] **A3.1**：`ALL_TOOLS` 与 **EXPLORE_TOOLS** 显式对比文档或注释，确保 Explore 无 A1（含**批删/批移**）/A2/**A4** 写能力。
+- [x] **A3.1**：`ALL_TOOLS` 与 **EXPLORE_TOOLS** 显式对比文档或注释，确保 Explore 无 A1（含**批删/批移**）/A2/**A4** 写能力。
 
 ---
 
