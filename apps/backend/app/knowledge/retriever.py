@@ -15,12 +15,20 @@ def retrieve_knowledge(
     library_ids: list[str],
     db,
     top_k: int = 5,
+    type_filter: list[str] | None = None,
+    workspace_path: str | None = None,
 ) -> list[dict]:
     """Synchronous convenience wrapper used by tool functions.
 
     Resolves the embedder from the first library's snapshot profile, embeds the
     query, and returns results as plain dicts (not Citation objects) so that
     caller code doesn't need to import Citation.
+
+    Args:
+        type_filter: Optional list of ChunkType values to restrict results.
+            Chunks with unknown/empty chunk_type are conservatively included.
+        workspace_path: If provided, will attempt to load rerank config from
+            .trpg/config.yaml to apply rerank after vector retrieval.
 
     Returns [] silently if no library is indexed or embedding profile is missing.
     """
@@ -56,16 +64,25 @@ def retrieve_knowledge(
     except Exception:
         pass
 
+    # Determine effective top_k — if rerank is enabled we over-fetch
+    rerank_cfg = _load_rerank_cfg(workspace_path)
+    rerank_enabled = rerank_cfg.get("enabled", False)
+    effective_fetch_k = rerank_cfg.get("top_k", 20) if rerank_enabled else top_k
+
     seen_chunk_ids: set[str] = set()
     all_results: list[dict] = []
     for lib_id in library_ids:
         idx_dir = _index_dir(lib_id)
-        hits = search_library(idx_dir, query_vector, top_k=top_k)
+        hits = search_library(idx_dir, query_vector, top_k=effective_fetch_k)
         for hit in hits:
             cid = hit.get("chunk_id", "")
             if cid not in seen_chunk_ids:
                 seen_chunk_ids.add(cid)
                 doc_info = doc_map.get(hit.get("document_id", ""), {})
+                chunk_type = hit.get("chunk_type") or None
+                # Apply type filter: chunks with no type are conservatively included
+                if type_filter and chunk_type and chunk_type not in type_filter:
+                    continue
                 all_results.append({
                     "chunk_id": cid,
                     "document_id": hit.get("document_id", ""),
@@ -74,11 +91,102 @@ def retrieve_knowledge(
                     "page_to": hit.get("page_to"),
                     "section_title": hit.get("section_title") or "",
                     "content": hit.get("content", ""),
+                    "chunk_type": chunk_type,
                     "_distance": hit.get("_distance", 999),
                 })
 
     all_results.sort(key=lambda x: x.get("_distance", 999))
+
+    # If type_filter was applied and nothing came through, fall back to unfiltered results
+    if type_filter and not all_results:
+        return retrieve_knowledge(
+            query=query,
+            library_ids=library_ids,
+            db=db,
+            top_k=top_k,
+            type_filter=None,
+            workspace_path=workspace_path,
+        )
+
+    # Optional rerank
+    if rerank_enabled and all_results:
+        reranked = _apply_rerank(
+            query=query,
+            results=all_results,
+            workspace_path=workspace_path,
+            rerank_cfg=rerank_cfg,
+            db=db,
+        )
+        if reranked is not None:
+            all_results = reranked
+
     return all_results[:top_k]
+
+
+def _load_rerank_cfg(workspace_path: str | None) -> dict:
+    """Load rerank config from workspace config.yaml. Returns empty dict if unavailable."""
+    if not workspace_path:
+        return {}
+    try:
+        from app.services.workspace_service import read_config
+        cfg = read_config(workspace_path)
+        return cfg.get("rerank") or {}
+    except Exception:
+        return {}
+
+
+def _apply_rerank(
+    query: str,
+    results: list[dict],
+    workspace_path: str | None,
+    rerank_cfg: dict,
+    db,
+) -> list[dict] | None:
+    """Apply rerank if workspace has a rerank profile configured. Returns None on failure."""
+    try:
+        from app.services.workspace_service import read_config
+        from app.models.orm import WorkspaceORM, RerankProfileORM
+        from app.services.rerank_adapter import rerank as do_rerank
+        from app.utils.secrets import decrypt_secret as decrypt
+
+        if not workspace_path or db is None:
+            return None
+
+        cfg = read_config(workspace_path)
+        rerank_model_name = (cfg.get("models") or {}).get("rerank", "")
+        if not rerank_model_name:
+            return None
+
+        # Resolve rerank profile by name
+        try:
+            from app.models.orm import RerankProfileORM as _RerankORM
+            profile = db.query(_RerankORM).filter_by(name=rerank_model_name).first()
+        except Exception:
+            return None
+
+        if not profile:
+            return None
+
+        api_key = decrypt(profile.api_key_encrypted) if profile.api_key_encrypted else None
+        top_n = rerank_cfg.get("top_n", 5)
+        texts = [r["content"] for r in results]
+        reranked_items = do_rerank(
+            query,
+            texts,
+            provider_type=profile.provider_type,
+            model_name=profile.model,
+            api_key=api_key,
+            base_url=profile.base_url,
+            top_n=top_n,
+        )
+        reranked_results = []
+        for item in reranked_items:
+            orig = results[item.index]
+            reranked_results.append({**orig, "_rerank_score": item.score})
+        return reranked_results
+    except Exception as e:
+        logger.warning("retrieve_knowledge: rerank failed, falling back to vector results: %s", e)
+        return None
 
 
 def _index_dir(library_id: str) -> Path:

@@ -104,7 +104,6 @@ class KnowledgeLibraryORM(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     rule_set_id: Mapped[str] = mapped_column(String(36), ForeignKey("rule_sets.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False, default="core_rules")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     embedding_model_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON snapshot at index time

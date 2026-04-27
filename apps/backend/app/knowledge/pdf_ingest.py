@@ -52,6 +52,7 @@ async def run_ingest(
     embedder: Any,  # object with .embed(texts: list[str]) -> list[list[float]]
     embedding_snapshot: dict,  # {profile_id, provider_type, model_name, dimensions}
     progress_callback=None,  # async callable(step: int, label: str, status: str)
+    default_chunk_type: str = "",  # ChunkType value to tag all chunks in this document
 ) -> dict:
     """
     Run the full 8-step ingest pipeline.
@@ -150,6 +151,7 @@ async def run_ingest(
             "page_from": rc.page_from if parse_quality != "scanned_fallback" else -1,
             "page_to": rc.page_to if parse_quality != "scanned_fallback" else -1,
             "section_title": rc.section_title or "",
+            "chunk_type": default_chunk_type,
             "vector": vec,
         })
         chunk_dicts.append({
@@ -163,7 +165,7 @@ async def run_ingest(
             "section_title": rc.section_title,
             "char_count": rc.char_count,
             "metadata": {
-                "library_type": None,
+                "chunk_type": default_chunk_type or None,
                 "parse_quality": parse_quality,
                 "has_table": False,
                 "has_multi_column": False,

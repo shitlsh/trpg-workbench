@@ -80,6 +80,9 @@ export interface WorkspaceConfig {
     top_n: number;
     top_k: number;
   };
+  retrieval: {
+    knowledge_top_k: number; // number of chunks injected into LLM context (when rerank disabled)
+  };
   knowledge_libraries: string[];
   trust_mode?: boolean; // M20: skip confirmation dialogs and auto-apply writes
 }
@@ -195,19 +198,22 @@ export interface LLMUsageRecord {
 
 // ─── M2: Knowledge ────────────────────────────────────────────────────────────
 
-export type LibraryType =
-  | "core_rules"
-  | "expansion"
-  | "module_reference"
-  | "monster_manual"
-  | "lore"
-  | "house_rules";
+/**
+ * Chunk-level semantic type tag.
+ * Single source of truth: apps/backend/app/knowledge/types.py ChunkType enum.
+ */
+export type ChunkType =
+  | "rule"        // 规则说明、技能定义、判定机制
+  | "example"     // 举例说明、示例场景
+  | "lore"        // 世界设定、背景叙述
+  | "table"       // 数值表格、技能列表、装备清单
+  | "procedure"   // 程序性内容：行动顺序、战斗流程
+  | "flavor";     // 纯叙事/氛围文字，无规则信息
 
 export interface KnowledgeLibrary {
   id: string;
   rule_set_id: string;
   name: string;
-  type: LibraryType;
   description: string | null;
   embedding_profile_id: string | null;
   embedding_model_snapshot: string | null;
@@ -218,7 +224,6 @@ export interface KnowledgeLibrary {
 
 export interface CreateKnowledgeLibraryRequest {
   name: string;
-  type: LibraryType;
   description?: string;
   rule_set_id: string;
 }
@@ -801,6 +806,7 @@ export interface ChunkListItem {
   parse_quality: string;
   has_table: boolean;
   has_multi_column: boolean;
+  chunk_type: ChunkType | null;
 }
 
 export interface SearchTestResult {

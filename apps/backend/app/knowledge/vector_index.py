@@ -14,6 +14,7 @@ SCHEMA = pa.schema([
     pa.field("page_from", pa.int32()),
     pa.field("page_to", pa.int32()),
     pa.field("section_title", pa.string()),
+    pa.field("chunk_type", pa.string()),  # ChunkType value, empty string = unknown
     pa.field("vector", pa.list_(pa.float32())),  # dimension determined at index creation time
 ])
 
@@ -29,11 +30,23 @@ def get_table(index_dir: Path, dimensions: int = 1536) -> lancedb.table.Table:
         pa.field("page_from", pa.int32()),
         pa.field("page_to", pa.int32()),
         pa.field("section_title", pa.string()),
+        pa.field("chunk_type", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), dimensions)),
     ])
     if "chunks" not in db.table_names():
         return db.create_table("chunks", schema=schema)
     return db.open_table("chunks")
+
+
+def _ensure_chunk_type_column(table) -> None:
+    """Best-effort: add chunk_type column to tables created before M24."""
+    try:
+        field_names = [f.name for f in table.schema]
+        if "chunk_type" not in field_names:
+            import pyarrow as _pa
+            table.add_columns([_pa.field("chunk_type", _pa.string())])
+    except Exception:
+        pass  # schema evolution not supported by this lancedb version — degrade gracefully
 
 
 def upsert_chunks(
@@ -59,6 +72,7 @@ def upsert_chunks(
             "page_from": int(r["page_from"]),
             "page_to": int(r["page_to"]),
             "section_title": r.get("section_title") or "",
+            "chunk_type": r.get("chunk_type") or "",
             "vector": vector,
         })
     if rows:
@@ -105,7 +119,8 @@ def delete_document_chunks(index_dir: Path, document_id: str) -> None:
     try:
         db = lancedb.connect(str(index_dir))
         if "chunks" in db.table_names():
-            table = db.open_table("chunks")
+        table = db.open_table("chunks")
+        _ensure_chunk_type_column(table)
             table.delete(f"document_id = '{document_id}'")
     except Exception:
         pass

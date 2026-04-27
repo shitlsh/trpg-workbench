@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M23 全部完成。M23 完成了 Agent 澄清问题机制——Director 可在推理中途调用 `ask_user` 向用户提出结构化选项问题，前端渲染 `QuestionCard`，用户点选后自动回复，Director 在下一轮继续执行。
+核心功能链路已通过 M1–M23 全部完成。M24 进行中，目标是将 `library.type` 替换为 chunk 级类型标签，修复 chunker 切割边界，并将 top_k / rerank 配置化。
 
 ```
 ✅ M1 基础骨架
@@ -29,6 +29,7 @@
                                                                                                                                                               └── ✅ M21 聊天会话管理
                                                                                                                                                                     └── ✅ M22 规则集 UX 打磨
                                                                                                                                                                            └── ✅ M23 Agent 澄清问题机制
+                                                                                                                                                                                  └── 🔄 M24 知识库检索质量提升
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -72,6 +73,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
+| M24 🔄 | 知识库检索质量提升 | chunk 级类型标签、chunker 修复、top_k 配置化、rerank 接入 | [m24-knowledge-retrieval-quality.md](m24-knowledge-retrieval-quality.md) |
 
 ---
 

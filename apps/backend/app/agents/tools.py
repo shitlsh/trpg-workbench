@@ -54,6 +54,23 @@ def _get_model():
     return _model
 
 
+def _get_knowledge_top_k(default: int = 5) -> int:
+    """Read retrieval.knowledge_top_k from workspace config; fall back to default."""
+    ws_path = _workspace_context.get("workspace_path")
+    if not ws_path:
+        return default
+    try:
+        from app.services.workspace_service import read_config
+        cfg = read_config(ws_path)
+        retrieval = cfg.get("retrieval") or {}
+        val = retrieval.get("knowledge_top_k")
+        if isinstance(val, int) and val > 0:
+            return val
+    except Exception:
+        pass
+    return default
+
+
 # ─── Read-only tools ──────────────────────────────────────────────────────────
 
 @tool
@@ -274,8 +291,10 @@ def read_config() -> str:
 
 
 @tool
-def search_knowledge(query: str = "") -> str:
-    """检索工作空间关联的知识库（RAG）。返回相关段落列表（JSON），含文档名和页码。"""
+def search_knowledge(query: str = "", chunk_types: str = "") -> str:
+    """检索工作空间关联的知识库（RAG）。返回相关段落列表（JSON），含文档名和页码。
+    chunk_types：可选，逗号分隔的类型过滤（rule/example/lore/table/procedure/flavor）。
+    例如："rule,table" 只检索规则说明和数值表格；留空则不过滤。"""
     if not query or not query.strip():
         return json.dumps({"error": "query 参数不能为空，请提供具体的搜索关键词。"}, ensure_ascii=False)
     library_ids = _workspace_context.get("library_ids", [])
@@ -285,24 +304,42 @@ def search_knowledge(query: str = "") -> str:
             "message": "当前工作空间未绑定任何知识库。若需要规则参考，请先在「知识库」页面导入规则书并绑定到此工作空间。",
         }, ensure_ascii=False)
 
+    # Parse type filter
+    type_filter: list[str] | None = None
+    if chunk_types and chunk_types.strip():
+        type_filter = [t.strip() for t in chunk_types.split(",") if t.strip()]
+
+    # Resolve top_k from workspace config
+    top_k = _get_knowledge_top_k()
+
     try:
         from app.knowledge.retriever import retrieve_knowledge
+        ws_path = _workspace_context.get("workspace_path")
         results = retrieve_knowledge(
             query=query,
             library_ids=library_ids,
             db=_db,
-            top_k=5,
+            top_k=top_k,
+            type_filter=type_filter,
+            workspace_path=ws_path,
         )
         formatted = [
             {
                 "document_name": r.get("document_name", r.get("document_filename", "")),
                 "page_from": r.get("page_from"),
                 "page_to": r.get("page_to"),
+                "chunk_type": r.get("chunk_type"),
                 "content": r.get("content", "")[:500],  # truncate for context budget
             }
             for r in results
         ]
-        return json.dumps({"results": formatted}, ensure_ascii=False)
+        warning = None
+        if not formatted:
+            warning = "知识库检索结果为空，建议尝试不同关键词或清空 chunk_types 过滤。"
+        resp = {"results": formatted}
+        if warning:
+            resp["warning"] = warning
+        return json.dumps(resp, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"results": [], "error": str(e)}, ensure_ascii=False)
 
@@ -662,11 +699,14 @@ def consult_rules(question: str, review_mode: bool = False) -> str:
     if library_ids and _db is not None:
         try:
             from app.knowledge.retriever import retrieve_knowledge
+            from app.knowledge.types import RULE_CHUNK_TYPES
             knowledge_context = retrieve_knowledge(
                 query=question,
                 library_ids=library_ids,
                 db=_db,
-                top_k=6,
+                top_k=_get_knowledge_top_k(default=6),
+                type_filter=RULE_CHUNK_TYPES,
+                workspace_path=_workspace_context.get("workspace_path"),
             )
         except Exception:
             pass
@@ -701,7 +741,8 @@ def create_skill(user_intent: str) -> str:
                 query=user_intent,
                 library_ids=library_ids,
                 db=_db,
-                top_k=4,
+                top_k=_get_knowledge_top_k(default=4),
+                workspace_path=_workspace_context.get("workspace_path"),
             )
         except Exception:
             pass

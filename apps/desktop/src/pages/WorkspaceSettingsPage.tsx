@@ -329,6 +329,7 @@ export default function WorkspaceSettingsPage() {
   const [rerankEnabled, setRerankEnabled] = useState(false);
   const [rerankTopN, setRerankTopN] = useState(5);
   const [rerankTopK, setRerankTopK] = useState(20);
+  const [knowledgeTopK, setKnowledgeTopK] = useState(5);
   const [probedModels, setProbedModels] = useState<string[]>([]);
   const [probingModels, setProbingModels] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
@@ -345,6 +346,7 @@ export default function WorkspaceSettingsPage() {
       setRerankEnabled(config.rerank?.enabled ?? false);
       setRerankTopN(config.rerank?.top_n ?? 5);
       setRerankTopK(config.rerank?.top_k ?? 20);
+      setKnowledgeTopK(config.retrieval?.knowledge_top_k ?? 5);
       setProbedModels([]);
       setProbeError(null);
     }
@@ -393,6 +395,9 @@ export default function WorkspaceSettingsPage() {
         enabled: rerankEnabled,
         top_n: rerankTopN,
         top_k: rerankTopK,
+      },
+      retrieval: {
+        knowledge_top_k: knowledgeTopK,
       },
     });
 
@@ -520,6 +525,20 @@ export default function WorkspaceSettingsPage() {
               {rerankProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model})</option>)}
             </select>
           </label>
+          {!rerankName && (
+            <label className={styles.label}>
+              知识库召回数量
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                max={20}
+                value={knowledgeTopK}
+                onChange={(e) => setKnowledgeTopK(Math.max(1, Math.min(20, parseInt(e.target.value) || 5)))}
+              />
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>每次检索返回的最大片段数（默认 5）</span>
+            </label>
+          )}
           {rerankName && (
             <>
               <label className={styles.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>

@@ -18,8 +18,16 @@ class RawChunk:
     char_count: int
 
 
-# Patterns that look like headings (Markdown-style or ALL CAPS short lines)
-_HEADING_RE = re.compile(r"^(#{1,3}\s+.+|[A-Z\u4e00-\u9fff][^\n]{0,60})$", re.MULTILINE)
+# Patterns that look like headings.
+# Requires Markdown-style (#) or ALL-CAPS short line (≤ 60 chars, no lowercase letters after the first).
+# Deliberately tighter than before to avoid false positives on regular sentences.
+_HEADING_RE = re.compile(
+    r"^(?:#{1,3}\s+.{1,80}|[A-Z\u4e00-\u9fff][^\n]{0,59})$",
+    re.MULTILINE,
+)
+# A more permissive pre-filter: only treat a paragraph as a heading candidate
+# if it is a single line (no embedded newlines).
+_IS_SINGLE_LINE = re.compile(r"^[^\n]+$")
 
 TARGET_MIN_CHARS = 600
 TARGET_MAX_CHARS = 1600
@@ -72,9 +80,29 @@ def chunk_pages(
         return rc
 
     for para, page_num in segments:
-        is_heading = bool(_HEADING_RE.match(para)) and len(para) < 120
+        is_heading = (
+            bool(_IS_SINGLE_LINE.match(para))
+            and bool(_HEADING_RE.match(para))
+            and len(para) < 120
+        )
 
         if is_heading:
+            # Force flush current buffer at a heading boundary so each section
+            # starts its own chunk (semantic boundary).
+            if current_chars >= target_min and current_parts:
+                rc = flush(current_parts)
+                if rc:
+                    chunks.append(rc)
+                # Keep overlap from end of previous section
+                overlap_parts: list[tuple[str, int]] = []
+                overlap_count = 0
+                for p, pg in reversed(current_parts):
+                    overlap_count += len(p)
+                    overlap_parts.insert(0, (p, pg))
+                    if overlap_count >= overlap:
+                        break
+                current_parts = overlap_parts
+                current_chars = sum(len(p) for p, _ in current_parts)
             current_section = para.lstrip("# ").strip()
 
         # If adding this paragraph exceeds target_max, flush first
@@ -83,14 +111,14 @@ def chunk_pages(
             if rc:
                 chunks.append(rc)
             # Keep overlap: last few parts
-            overlap_parts: list[tuple[str, int]] = []
+            size_overlap_parts: list[tuple[str, int]] = []
             overlap_count = 0
             for p, pg in reversed(current_parts):
                 overlap_count += len(p)
-                overlap_parts.insert(0, (p, pg))
+                size_overlap_parts.insert(0, (p, pg))
                 if overlap_count >= overlap:
                     break
-            current_parts = overlap_parts
+            current_parts = size_overlap_parts
             current_chars = sum(len(p) for p, _ in current_parts)
 
         current_parts.append((para, page_num))

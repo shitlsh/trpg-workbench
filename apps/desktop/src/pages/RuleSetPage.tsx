@@ -17,7 +17,7 @@ import type {
   UpdateRuleSetRequest,
   KnowledgeLibrary,
   CreateKnowledgeLibraryRequest,
-  LibraryType,
+  ChunkType,
   KnowledgeDocument,
   KnowledgeDocumentSummary,
   ChunkListItem,
@@ -34,13 +34,13 @@ import styles from "./RuleSetPage.module.css";
 import { HelpButton } from "../components/HelpButton";
 
 
-const LIBRARY_TYPES: { value: LibraryType; label: string }[] = [
-  { value: "core_rules", label: "核心规则" },
-  { value: "expansion", label: "扩展规则" },
-  { value: "module_reference", label: "参考模组" },
-  { value: "monster_manual", label: "怪物手册" },
-  { value: "lore", label: "世界观资料" },
-  { value: "house_rules", label: "房规补充" },
+const CHUNK_TYPES: { value: ChunkType; label: string; description: string }[] = [
+  { value: "rule", label: "规则说明", description: "规则机制、技能定义、判定方式" },
+  { value: "table", label: "数值表格", description: "技能列表、装备清单、数值表" },
+  { value: "procedure", label: "程序步骤", description: "战斗流程、行动顺序等程序性内容" },
+  { value: "lore", label: "世界设定", description: "背景叙述、世界观资料" },
+  { value: "example", label: "举例说明", description: "规则示例、示范场景" },
+  { value: "flavor", label: "氛围文字", description: "纯叙事文字，无规则信息" },
 ];
 
 const STATUS_LABEL: Record<string, string> = {
@@ -70,7 +70,6 @@ function CreateLibraryModal({
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
-  const [type, setType] = useState<LibraryType>("core_rules");
   const [desc, setDesc] = useState("");
 
   const createMutation = useMutation({
@@ -96,7 +95,6 @@ function CreateLibraryModal({
             if (!name.trim()) return;
             createMutation.mutate({
               name: name.trim(),
-              type,
               description: desc.trim() || undefined,
               rule_set_id: ruleSetId,
             });
@@ -105,12 +103,6 @@ function CreateLibraryModal({
           <label className={styles.label}>
             名称 *
             <input className={styles.input} value={name} onChange={(e) => setName(e.target.value)} placeholder="例：COC7 核心规则书" autoFocus />
-          </label>
-          <label className={styles.label}>
-            类型 *
-            <select className={styles.select} value={type} onChange={(e) => setType(e.target.value as LibraryType)}>
-              {LIBRARY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
           </label>
           <label className={styles.label}>
             描述
@@ -849,6 +841,7 @@ function LibraryDetailPanel({
     queryFn: () => apiFetch<EmbeddingProfile[]>("/settings/embedding-profiles"),
   });
   const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>("");
+  const [defaultChunkType, setDefaultChunkType] = useState<ChunkType | "">("");
 
   const { data: documents = [] } = useQuery({
     queryKey: ["knowledge", "documents", library.id],
@@ -899,6 +892,7 @@ function LibraryDetailPanel({
     form.append("file", file);
     const url = new URL(`${BACKEND_URL}/knowledge/libraries/${library.id}/documents`);
     url.searchParams.set("embedding_profile_id", profileId);
+    if (defaultChunkType) url.searchParams.set("default_chunk_type", defaultChunkType);
     try {
       const res = await fetch(url.toString(), { method: "POST", body: form });
       if (!res.ok) {
@@ -969,9 +963,6 @@ function LibraryDetailPanel({
               </>
             )}
           </h2>
-          <span className={styles.badge}>
-            {LIBRARY_TYPES.find((t) => t.value === library.type)?.label ?? library.type}
-          </span>
           {library.description && <p className={styles.detailDesc}>{library.description}</p>}
         </div>
         <div className={styles.detailActions}>
@@ -1002,6 +993,23 @@ function LibraryDetailPanel({
           </select>
         </div>
       )}
+
+      {/* chunk_type selector for upload */}
+      <div style={{ marginBottom: 8 }}>
+        <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+          文档内容类型（可选，标记所有 chunk 的语义分类）
+        </label>
+        <select
+          style={{ fontSize: 12, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%" }}
+          value={defaultChunkType}
+          onChange={(e) => setDefaultChunkType(e.target.value as ChunkType | "")}
+        >
+          <option value="">— 不标记（混合内容）</option>
+          {CHUNK_TYPES.map((ct) => (
+            <option key={ct.value} value={ct.value}>{ct.label}：{ct.description}</option>
+          ))}
+        </select>
+      </div>
 
       {/* Upload area */}
       {(() => {
@@ -1363,9 +1371,7 @@ export default function RuleSetPage() {
                       >
                         {lib.name}
                       </span>
-                      <span className={styles.bindingType}>
-                        {LIBRARY_TYPES.find((t) => t.value === lib.type)?.label ?? lib.type}
-                      </span>
+
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                         {lib.document_count} 篇
                       </span>

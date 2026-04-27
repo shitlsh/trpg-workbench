@@ -147,7 +147,6 @@ class KnowledgeLibrarySchema(BaseModel):
     id: str
     rule_set_id: str
     name: str
-    type: str
     description: str | None
     embedding_profile_id: str | None
     embedding_model_snapshot: str | None
@@ -158,7 +157,6 @@ class KnowledgeLibrarySchema(BaseModel):
 
 class KnowledgeLibraryCreate(BaseModel):
     name: str
-    type: str = "core_rules"
     description: str | None = None
     rule_set_id: str
 

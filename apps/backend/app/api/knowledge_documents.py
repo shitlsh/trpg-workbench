@@ -32,6 +32,7 @@ async def upload_document(
     library_id: str,
     file: UploadFile = File(...),
     embedding_profile_id: str = Query(..., description="Embedding profile ID to use for indexing"),
+    default_chunk_type: str = Query("", description="ChunkType tag for all chunks in this document"),
     db: Session = Depends(get_db),
 ):
     lib = db.get(KnowledgeLibraryORM, library_id)
@@ -95,6 +96,7 @@ async def upload_document(
             filename=file.filename,
             embedding_profile_id=embedding_profile.id,
             embedding_snapshot=embedding_snapshot,
+            default_chunk_type=default_chunk_type,
         )
     )
 
@@ -109,6 +111,7 @@ async def _run_ingest_background(
     filename: str,
     embedding_profile_id: str,
     embedding_snapshot: dict,
+    default_chunk_type: str = "",
 ):
     from app.knowledge.pdf_ingest import run_ingest
     from app.storage.database import get_session_factory
@@ -157,6 +160,7 @@ async def _run_ingest_background(
             progress_callback=progress_callback,
             embedder=embedder,
             embedding_snapshot=embedding_snapshot,
+            default_chunk_type=default_chunk_type,
         )
         db = SessionLocal()
         try:

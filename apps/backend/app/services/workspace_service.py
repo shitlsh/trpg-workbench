@@ -29,6 +29,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "top_n": 5,
         "top_k": 20,
     },
+    "retrieval": {
+        "knowledge_top_k": 5,  # chunks injected into LLM context (rerank disabled path)
+    },
     "knowledge_libraries": [],
     "trust_mode": False,
 }
@@ -49,6 +52,7 @@ def read_config(workspace_path: str | Path) -> dict:
         merged = {**DEFAULT_CONFIG, **data}
         merged["models"] = {**DEFAULT_CONFIG["models"], **(data.get("models") or {})}
         merged["rerank"] = {**DEFAULT_CONFIG["rerank"], **(data.get("rerank") or {})}
+        merged["retrieval"] = {**DEFAULT_CONFIG["retrieval"], **(data.get("retrieval") or {})}
         return merged
     except Exception:
         return {**DEFAULT_CONFIG, "name": Path(workspace_path).name}
