@@ -1,18 +1,31 @@
-import { useState } from "react";import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, AlertCircle, CheckCircle } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, AlertCircle, CheckCircle } from "lucide-react";
 import type { ToolCall, ConsistencyReport, ConsistencyIssue } from "@trpg-workbench/shared-schema";
 
 const TOOL_LABELS: Record<string, string> = {
   list_assets: "列出资产",
   read_asset: "读取资产",
+  grep_asset: "文内搜索",
+  read_asset_section: "读取章节",
   search_assets: "搜索资产",
   read_config: "读取配置",
   search_knowledge: "检索知识库",
   create_asset: "新建资产",
-  update_asset: "更新资产",
+  create_assets: "批量新建资产",
+  patch_asset: "局部修改资产",
+  patch_assets: "批量局部修改",
+  update_asset: "全量更新资产",
+  delete_asset: "删除资产",
+  move_asset: "移动/重命名资产",
+  delete_assets: "批量删除资产",
+  move_assets: "批量移动资产",
+  preview_bulk_text_replace: "预检跨资产替换",
+  apply_bulk_text_replace: "应用跨资产替换",
   check_consistency: "一致性检查",
   consult_rules: "规则咨询",
   create_skill: "新建 Skill",
   web_search: "网络搜索",
+  ask_user: "向用户提问",
 };
 
 interface ToolCallCardProps {
