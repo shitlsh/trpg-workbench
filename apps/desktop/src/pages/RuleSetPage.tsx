@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ModelNameInput } from "../components/ModelNameInput";
@@ -28,6 +28,7 @@ import type {
   SearchTestResponse,
   PromptProfile,
   LLMProfile,
+  ModelCatalogEntry,
   EmbeddingProfile,
   CustomAssetTypeConfig,
   CreateCustomAssetTypeRequest,
@@ -190,6 +191,14 @@ function SetPromptModal({
   // Fetch available models for the selected LLM profile (works for all provider types)
   const selectedLlmProfile = llmProfiles.find((p) => p.id === selectedLlmId);
   const { models: probedModels } = useModelList(selectedLlmId ?? null);
+  const { data: aiLlmCatalog = [] } = useQuery({
+    queryKey: ["model-catalog", selectedLlmProfile?.provider_type, "ai-prompt"],
+    queryFn: () =>
+      apiFetch<ModelCatalogEntry[]>(
+        `/settings/model-catalog?provider_type=${encodeURIComponent(selectedLlmProfile!.provider_type)}`,
+      ),
+    enabled: tab === "ai" && !!selectedLlmProfile?.provider_type,
+  });
   // Auto-select when only one model is returned
   useEffect(() => {
     if (probedModels.length === 1 && !aiModelName) setAiModelName(probedModels[0]);
@@ -396,7 +405,9 @@ function SetPromptModal({
                 providerType={selectedLlmProfile?.provider_type ?? ""}
                 value={aiModelName}
                 onChange={setAiModelName}
+                catalogEntries={aiLlmCatalog}
                 fetchedModels={probedModels}
+                requireJsonMode
                 placeholder="例：gemini-2.0-flash / llama-3.1-8b"
                 className={styles.input}
               />
@@ -885,6 +896,10 @@ function LibraryDetailPanel({
     queryKey: ["llm-profiles"],
     queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
   });
+  const { data: fullLlmCatalog = [] } = useQuery({
+    queryKey: ["model-catalog"],
+    queryFn: () => apiFetch<ModelCatalogEntry[]>("/settings/model-catalog"),
+  });
   const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>("");
 
   // Probe models for whichever LLM profile is selected in the wizard's select_llm step
@@ -896,6 +911,15 @@ function LibraryDetailPanel({
     : null;
   const { models: chmProbedModels } = useModelList(chmSectionLlmId);
   const chmSectionLlmProfile = llmProfilesForUpload.find((p) => p.id === chmLlm.profileId);
+
+  const wizardCatalog = useMemo(
+    () => fullLlmCatalog.filter((c) => c.provider_type === wizardLlmProfile?.provider_type),
+    [fullLlmCatalog, wizardLlmProfile?.provider_type],
+  );
+  const chmModelCatalog = useMemo(
+    () => fullLlmCatalog.filter((c) => c.provider_type === chmSectionLlmProfile?.provider_type),
+    [fullLlmCatalog, chmSectionLlmProfile?.provider_type],
+  );
 
   const { data: documents = [] } = useQuery({
     queryKey: ["knowledge", "documents", library.id],
@@ -1347,7 +1371,9 @@ function LibraryDetailPanel({
                       providerType={wizardLlmProfile?.provider_type ?? ""}
                       value={w.llmModelName}
                       onChange={(v) => setWizard({ ...w, llmModelName: v })}
+                      catalogEntries={wizardCatalog}
                       fetchedModels={wizardProbedModels}
+                      requireJsonMode
                       placeholder="例：gpt-4o / claude-3-5-sonnet-20241022"
                     />
                   </div>
@@ -1399,7 +1425,9 @@ function LibraryDetailPanel({
                           providerType={chmSectionLlmProfile?.provider_type ?? ""}
                           value={chmLlm.model}
                           onChange={(v) => setChmLlm({ ...chmLlm, model: v })}
+                          catalogEntries={chmModelCatalog}
                           fetchedModels={chmProbedModels}
+                          requireJsonMode
                           placeholder="模型（可留空）"
                         />
                         <button

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { Plus, Zap, ChevronDown, ChevronRight, Trash2, FolderOpen } from "lucide-react";
@@ -429,6 +429,11 @@ export default function WorkspaceSettingsPage() {
     selectedLlmProfile?.id ?? null
   );
 
+  const llmCatalogForProvider = useMemo(
+    () => llmCatalog.filter((c) => c.provider_type === selectedLlmProfile?.provider_type),
+    [llmCatalog, selectedLlmProfile?.provider_type],
+  );
+
   if (!workspace || !config) return <div className={styles.loading}>加载中...</div>;
 
   return (
@@ -501,7 +506,10 @@ export default function WorkspaceSettingsPage() {
                   providerType={selectedLlmProfile?.provider_type ?? ""}
                   value={defaultLlmModel}
                   onChange={setDefaultLlmModel}
+                  catalogEntries={llmCatalogForProvider}
                   fetchedModels={probedModels}
+                  requireTools
+                  requireJsonMode
                   placeholder={selectedLlmProfile?.provider_type === "openai_compatible" ? "例：qwen3.5-35b-a3b" : "例：gemini-2.0-flash"}
                   className={styles.input}
                   style={{ flex: 1 }}

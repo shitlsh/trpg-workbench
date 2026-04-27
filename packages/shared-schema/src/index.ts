@@ -103,11 +103,6 @@ export interface LLMProfile {
   name: string;
   provider_type: LLMProviderType;
   base_url: string | null;
-  temperature: number;
-  max_tokens: number;
-  supports_json_mode: boolean;
-  supports_tools: boolean;
-  timeout_seconds: number;
   has_api_key: boolean;
   created_at: string;
   updated_at: string;
@@ -118,11 +113,6 @@ export interface CreateLLMProfileRequest {
   provider_type: LLMProviderType;
   base_url?: string;
   api_key?: string;
-  temperature?: number;
-  max_tokens?: number;
-  supports_json_mode: boolean;
-  supports_tools: boolean;
-  timeout_seconds?: number;
 }
 
 export interface UpdateLLMProfileRequest {
@@ -131,11 +121,6 @@ export interface UpdateLLMProfileRequest {
   base_url?: string;
   api_key?: string;
   clear_api_key?: boolean;
-  temperature?: number;
-  max_tokens?: number;
-  supports_json_mode?: boolean;
-  supports_tools?: boolean;
-  timeout_seconds?: number;
 }
 
 export interface LLMTestResult {

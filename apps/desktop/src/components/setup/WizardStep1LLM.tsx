@@ -11,18 +11,9 @@ const PROVIDER_LABELS: Record<string, string> = {
   openrouter: "OpenRouter", openai_compatible: "OpenAI Compatible（含本地模型）",
 };
 
-const LLM_DEFAULTS: Record<LLMProviderType, { supports_json_mode: boolean; supports_tools: boolean }> = {
-  openai: { supports_json_mode: true, supports_tools: true },
-  anthropic: { supports_json_mode: false, supports_tools: true },
-  google: { supports_json_mode: true, supports_tools: true },
-  openrouter: { supports_json_mode: false, supports_tools: false },
-  openai_compatible: { supports_json_mode: false, supports_tools: false },
-};
-
 const EMPTY_FORM: CreateLLMProfileRequest = {
   name: "Gemini 2.0 Flash", provider_type: "google",
-  base_url: "", api_key: "", temperature: 0.7, max_tokens: 4096,
-  supports_json_mode: true, supports_tools: true, timeout_seconds: 60,
+  base_url: "", api_key: "",
 };
 
 interface Props {
@@ -55,7 +46,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   });
 
   function handleProviderChange(prov: LLMProviderType) {
-    setForm((f) => ({ ...f, provider_type: prov, ...LLM_DEFAULTS[prov] }));
+    setForm((f) => ({ ...f, provider_type: prov }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -79,7 +70,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
         <button
           type="button"
           style={presetBtnStyle}
-          onClick={() => setForm((f) => ({ ...f, provider_type: "google", base_url: "", supports_json_mode: true, supports_tools: true, name: f.provider_type === "google" ? f.name : "Gemini 2.0 Flash", api_key: f.provider_type === "google" ? f.api_key : "" }))}
+          onClick={() => setForm((f) => ({ ...f, provider_type: "google", base_url: "", name: f.provider_type === "google" ? f.name : "Gemini 2.0 Flash", api_key: f.provider_type === "google" ? f.api_key : "" }))}
         >
           填入 Gemini 推荐值
         </button>
@@ -95,12 +86,11 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
           type="button"
           style={{ ...presetBtnStyle, background: "rgba(34,197,94,0.12)", color: "#22c55e", borderColor: "rgba(34,197,94,0.3)" }}
           onClick={() => setForm((f) => ({
-            ...f, ...LLM_DEFAULTS["openai_compatible"],
+            ...f,
             provider_type: "openai_compatible",
             base_url: "http://localhost:1234/v1",
             api_key: "lm-studio",
             name: f.provider_type === "openai_compatible" ? f.name : "LM Studio",
-            supports_json_mode: true, supports_tools: false,
           }))}
         >
           填入 LM Studio 推荐值

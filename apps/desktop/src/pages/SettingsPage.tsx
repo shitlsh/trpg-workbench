@@ -25,14 +25,6 @@ const EMBEDDING_PROVIDERS = ["openai", "openai_compatible"] as const;
 type LLMProviderType = typeof LLM_PROVIDERS[number];
 type EmbeddingProviderType = typeof EMBEDDING_PROVIDERS[number];
 
-const LLM_DEFAULTS: Record<LLMProviderType, { supports_json_mode: boolean; supports_tools: boolean }> = {
-  openai: { supports_json_mode: true, supports_tools: true },
-  anthropic: { supports_json_mode: false, supports_tools: true },
-  google: { supports_json_mode: true, supports_tools: true },
-  openrouter: { supports_json_mode: false, supports_tools: false },
-  openai_compatible: { supports_json_mode: false, supports_tools: false },
-};
-
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
@@ -43,8 +35,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 const EMPTY_LLM: CreateLLMProfileRequest = {
   name: "", provider_type: "openai",
-  base_url: "", api_key: "", temperature: 0.7, max_tokens: 4096,
-  supports_json_mode: true, supports_tools: true, timeout_seconds: 60,
+  base_url: "", api_key: "",
 };
 
 const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
@@ -55,8 +46,6 @@ const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
 const GEMINI_PRESET: Partial<CreateLLMProfileRequest> = {
   provider_type: "google",
   base_url: "",
-  supports_json_mode: true,
-  supports_tools: true,
 };
 
 const JINA_EMBEDDING_PRESET: Partial<CreateEmbeddingProfileRequest> = {
@@ -89,6 +78,15 @@ function LLMSection() {
     queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
   });
 
+  const { data: formLlmCatalog = [] } = useQuery({
+    queryKey: ["model-catalog", form.provider_type],
+    queryFn: () =>
+      apiFetch<ModelCatalogEntry[]>(
+        `/settings/model-catalog?provider_type=${encodeURIComponent(form.provider_type)}`,
+      ),
+    enabled: showForm && !!form.provider_type,
+  });
+
   const createMutation = useMutation({
     mutationFn: (body: CreateLLMProfileRequest) =>
       apiFetch<LLMProfile>("/settings/llm-profiles", { method: "POST", body: JSON.stringify(body) }),
@@ -113,9 +111,7 @@ function LLMSection() {
     setEditTarget(p);
     setForm({
       name: p.name, provider_type: p.provider_type as LLMProviderType,
-      base_url: p.base_url ?? "", api_key: "", temperature: p.temperature, max_tokens: p.max_tokens,
-      supports_json_mode: p.supports_json_mode, supports_tools: p.supports_tools,
-      timeout_seconds: p.timeout_seconds,
+      base_url: p.base_url ?? "", api_key: "",
     });
     setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setShowForm(true);
   }
@@ -123,8 +119,7 @@ function LLMSection() {
     setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName("");
   }
   function handleProviderChange(prov: LLMProviderType) {
-    const defaults = LLM_DEFAULTS[prov];
-    setForm((f) => ({ ...f, provider_type: prov, ...defaults }));
+    setForm((f) => ({ ...f, provider_type: prov }));
     setFetchedModels([]); setFetchModelsError(null);
   }
 
@@ -277,6 +272,7 @@ function LLMSection() {
                     providerType={form.provider_type}
                     value={testModelName}
                     onChange={setTestModelName}
+                    catalogEntries={formLlmCatalog}
                     fetchedModels={profileModels.length > 0 ? profileModels : fetchedModels}
                     placeholder="例：gemini-2.0-flash / qwen3.5-35b-a3b"
                     className={styles.input}
@@ -290,30 +286,6 @@ function LLMSection() {
                 API Key {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
                 <input className={styles.input} type="password" value={form.api_key ?? ""} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="sk-..." />
               </label>
-              <div className={styles.row}>
-                <label className={styles.label}>
-                  支持 JSON Mode
-                  <select className={styles.select} value={form.supports_json_mode ? "1" : "0"} onChange={(e) => setForm({ ...form, supports_json_mode: e.target.value === "1" })}>
-                    <option value="1">是</option><option value="0">否</option>
-                  </select>
-                </label>
-                <label className={styles.label}>
-                  支持 Tool Calls
-                  <select className={styles.select} value={form.supports_tools ? "1" : "0"} onChange={(e) => setForm({ ...form, supports_tools: e.target.value === "1" })}>
-                    <option value="1">是</option><option value="0">否</option>
-                  </select>
-                </label>
-              </div>
-              <div className={styles.row}>
-                <label className={styles.label}>
-                  Temperature
-                  <input className={styles.input} type="number" min="0" max="2" step="0.1" value={form.temperature} onChange={(e) => setForm({ ...form, temperature: parseFloat(e.target.value) })} />
-                </label>
-                <label className={styles.label}>
-                  Timeout (秒)
-                  <input className={styles.input} type="number" min="10" max="600" value={form.timeout_seconds} onChange={(e) => setForm({ ...form, timeout_seconds: parseInt(e.target.value) })} />
-                </label>
-              </div>
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={closeForm}>取消</button>
                 {editTarget && (
