@@ -169,10 +169,8 @@ M19 起，Agent 响应通过 SSE（Server-Sent Events）流式推送，**废弃 
 ```
 POST /workspaces/{id}/chat
   → StreamingResponse(text/event-stream)
-  → yield SSE events: text_delta | tool_call | tool_result | patch_proposal | done | error
-
-POST /workspaces/{id}/chat/confirm   body: {session_id, proposal_id}
-POST /workspaces/{id}/chat/reject    body: {session_id, proposal_id}
+  → yield SSE events: text_delta | thinking_delta | tool_call_start | tool_call_result | agent_question | done | error
+  （`tool_call_result` 可对写盘成功附 `workspace_mutating`；**无** `patch_proposal` / confirm 端点，写入由工具直接落盘。）
 ```
 
 前端消费方式（封装在 `AgentPanel.tsx`，不用 TanStack Query）：
@@ -218,32 +216,13 @@ return StreamingResponse(_stream(), media_type="text/event-stream")
 ### M19 关键类型（shared-schema 定义）
 
 ```typescript
-// SSE 事件
-type SSEEvent =
-  | { type: "text_delta"; content: string }
-  | { type: "tool_call"; tool_name: string; args: Record<string, unknown>; call_id: string }
-  | { type: "tool_result"; call_id: string; result: unknown; is_error: boolean }
-  | { type: "patch_proposal"; proposal: PatchProposal }
-  | { type: "done"; session_id: string; message_id: string }
-  | { type: "error"; message: string; code?: string }
-
-// 写操作 Proposal（需用户确认）
-interface PatchProposal {
-  id: string                            // "pp_<uuid>"
-  operation: "create" | "update"
-  asset_type: string
-  asset_name: string
-  slug: string
-  content_preview: string              // 完整资产内容（frontmatter + body）
-  diff_summary: string                 // 人类可读的变更摘要
-}
+// 以 packages/shared-schema 的 `SSEEvent` / `SSEToolCallStart` 等为准；无 patch_proposal。
 
 // 消息发送 Request
 interface SendMessageRequest {
-  message: string
-  session_id?: string
-  model?: string
-  referenced_asset_ids?: string[]     // M19：@mention 的资产 ID
+  content: string
+  workspace_id: string
+  referenced_asset_ids?: string[]
 }
 ```
 

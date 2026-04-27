@@ -496,36 +496,6 @@ export interface ToolResult {
   summary: string;
 }
 
-export interface PatchProposal {
-  /** Unique proposal id, referenced by confirm/reject endpoints */
-  id: string;
-  /** tool_call id that triggered this proposal */
-  tool_call_id: string;
-  /** "create" | "update" */
-  action: "create" | "update";
-  asset_type: string;
-  asset_name: string;
-  /** new full Markdown content */
-  content_md: string;
-  /** existing content for diff (empty string for new assets) */
-  original_content: string;
-  change_summary: string;
-}
-
-/** A full assistant message with mixed text + tool_calls */
-export interface AssistantMessage {
-  id: string;
-  session_id: string;
-  role: "assistant";
-  /** Accumulated text content (may grow during streaming) */
-  content: string;
-  tool_calls: ToolCall[];
-  patch_proposals: PatchProposal[];
-  created_at: string;
-}
-
-// ─── M19: SSE Event types ─────────────────────────────────────────────────────
-
 // ─── M20: Agent Quality Types ─────────────────────────────────────────────────
 
 export type ConsistencyIssueType =
@@ -556,7 +526,6 @@ export type SSEEventType =
   | "text_delta"
   | "tool_call_start"
   | "tool_call_result"
-  | "patch_proposal"
   | "agent_question"
   | "done"
   | "error";
@@ -574,11 +543,6 @@ export interface SSEToolCallStart {
 export interface SSEToolCallResult {
   event: "tool_call_result";
   data: { id: string; success: boolean; summary: string; workspace_mutating?: boolean };
-}
-
-export interface SSEPatchProposal {
-  event: "patch_proposal";
-  data: PatchProposal;
 }
 
 export interface SSEDone {
@@ -619,7 +583,6 @@ export type SSEEvent =
   | SSETextDelta
   | SSEToolCallStart
   | SSEToolCallResult
-  | SSEPatchProposal
   | SSEAgentQuestion
   | SSEDone
   | SSEError;
