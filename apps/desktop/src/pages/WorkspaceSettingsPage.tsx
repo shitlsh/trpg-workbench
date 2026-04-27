@@ -286,6 +286,19 @@ export default function WorkspaceSettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Form state — must be declared before any hook/query that reads ruleSetName (TDZ)
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [ruleSetName, setRuleSetName] = useState("");
+  const [promptProfileName, setPromptProfileName] = useState("");
+  const [defaultLlmName, setDefaultLlmName] = useState("");
+  const [defaultLlmModel, setDefaultLlmModel] = useState("");
+  const [rerankName, setRerankName] = useState("");
+  const [rerankEnabled, setRerankEnabled] = useState(false);
+  const [rerankTopN, setRerankTopN] = useState(5);
+  const [rerankTopK, setRerankTopK] = useState(20);
+  const [knowledgeTopK, setKnowledgeTopK] = useState(5);
+
   // Workspace registry (id, name, path)
   const { data: workspace } = useQuery({
     queryKey: ["workspace", id],
@@ -320,7 +333,11 @@ export default function WorkspaceSettingsPage() {
   const selectedRuleSet = ruleSets.find((rs) => rs.name === ruleSetName);
   const { data: ruleSetProfiles = [] } = useQuery({
     queryKey: ["prompt-profiles", selectedRuleSet?.id],
-    queryFn: () => apiFetch<PromptProfile[]>(`/prompt-profiles?rule_set_id=${selectedRuleSet!.id}`),
+    queryFn: () => {
+      const rid = selectedRuleSet?.id;
+      if (!rid) return Promise.resolve([]);
+      return apiFetch<PromptProfile[]>(`/prompt-profiles?rule_set_id=${rid}`);
+    },
     enabled: !!selectedRuleSet?.id,
   });
 
@@ -329,18 +346,6 @@ export default function WorkspaceSettingsPage() {
     queryFn: () => apiFetch<ModelCatalogEntry[]>("/settings/model-catalog"),
   });
 
-  // Form state — populated from config
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [ruleSetName, setRuleSetName] = useState("");
-  const [promptProfileName, setPromptProfileName] = useState("");
-  const [defaultLlmName, setDefaultLlmName] = useState("");
-  const [defaultLlmModel, setDefaultLlmModel] = useState("");
-  const [rerankName, setRerankName] = useState("");
-  const [rerankEnabled, setRerankEnabled] = useState(false);
-  const [rerankTopN, setRerankTopN] = useState(5);
-  const [rerankTopK, setRerankTopK] = useState(20);
-  const [knowledgeTopK, setKnowledgeTopK] = useState(5);
   // Populate form from config
   useEffect(() => {
     if (config) {
@@ -418,11 +423,13 @@ export default function WorkspaceSettingsPage() {
   const isSaved = configMutation.isSuccess;
   const saveError = configMutation.error || nameMutation.error;
 
-  if (!workspace || !config) return <div className={styles.loading}>加载中...</div>;
-
-  // Resolve the selected LLM profile and auto-fetch its available models
+  // Must run before any early return — hooks cannot be conditional.
   const selectedLlmProfile = llmProfiles.find((p) => p.name === defaultLlmName);
-  const { models: probedModels, isLoading: probingModels, error: probeError } = useModelList(selectedLlmProfile?.id ?? null);
+  const { models: probedModels, isLoading: probingModels, error: probeError } = useModelList(
+    selectedLlmProfile?.id ?? null
+  );
+
+  if (!workspace || !config) return <div className={styles.loading}>加载中...</div>;
 
   return (
     <div className={styles.page}>
