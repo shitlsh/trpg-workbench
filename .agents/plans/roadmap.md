@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 **M1–M26**（见下表）。
+核心功能链路 **M1–M26 已完成**；**M27 进行中**（见下表）。
 
 ```
 ✅ M1 基础骨架
@@ -31,7 +31,8 @@
                                                                                                                                                                            └── ✅ M23 Agent 澄清问题机制
                                                                                                                                                                                    ├── ✅ M24 知识库检索质量提升
                                                                                                                                                                                    ├── ✅ M25 LLM Profile 字段瘦身
-                                                                                                                                                                                   └── ✅ M26 探索子 Agent 与 Prompt 体系统一
+                                                                                                                                                                                   ├── ✅ M26 探索子 Agent 与 Prompt 体系统一
+                                                                                                                                                                                   └── M27 资产单步操作与批处理
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -76,7 +77,9 @@
 
 ### 进行中 / 待启动
 
-_当前无进行中的里程碑。_
+| # | 名称 | 目标 | 计划文件 |
+|---|------|------|---------|
+| M27 | 资产单步操作与批处理 | Director 工具补足 **删除/移动**；**批量**查找替换等（preview→apply）；不引入通用 shell；见 [benchmark accepted](docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md) | [m27-asset-ops-and-batch.md](m27-asset-ops-and-batch.md) |
 
 ---
 
