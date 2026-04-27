@@ -453,6 +453,13 @@ export interface ChatSession {
   updated_at: string;
 }
 
+export interface ChatSessionCreate {
+  workspace_id: string;
+  /** `explore` = 只读探索；`null` 省略 = 创作向 Director */
+  agent_scope?: string | null;
+  title?: string | null;
+}
+
 export interface UpdateChatSessionRequest {
   title: string;
 }

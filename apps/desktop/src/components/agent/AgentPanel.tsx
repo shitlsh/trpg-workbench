@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { useModelList } from "../../hooks/useModelList";
 import type {
-  ChatSession, ChatMessage, ToolCall,
+  ChatSession, ChatSessionCreate, ChatMessage, ToolCall,
   LLMProfile, ModelCatalogEntry, WorkspaceConfigResponse,
   AgentQuestion,
 } from "@trpg-workbench/shared-schema";
@@ -510,21 +510,25 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     }
   }, [workspaceId, setActiveSession]);
 
-  // Create a brand-new session
-  const createNewSession = useCallback(async () => {
-    setSessionError(null);
-    try {
-      const s = await apiFetch<ChatSession>("/chat/sessions", {
-        method: "POST",
-        body: JSON.stringify({ workspace_id: workspaceId }),
-      });
-      setActiveSession(s, []);
-      localStorage.setItem(`last_session_${workspaceId}`, s.id);
-      qc.invalidateQueries({ queryKey: ["sessions", workspaceId] });
-    } catch (e) {
-      setSessionError((e as Error)?.message ?? "无法连接到后端，请检查服务状态");
-    }
-  }, [workspaceId, setActiveSession, qc]);
+  // Create a brand-new session (Director 创作 或 Explore 只读，由 agent_scope 区分)
+  const createNewSession = useCallback(
+    async (agentScope: string | null = null) => {
+      setSessionError(null);
+      try {
+        const body: ChatSessionCreate = { workspace_id: workspaceId, agent_scope: agentScope };
+        const s = await apiFetch<ChatSession>("/chat/sessions", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        setActiveSession(s, []);
+        localStorage.setItem(`last_session_${workspaceId}`, s.id);
+        qc.invalidateQueries({ queryKey: ["sessions", workspaceId] });
+      } catch (e) {
+        setSessionError((e as Error)?.message ?? "无法连接到后端，请检查服务状态");
+      }
+    },
+    [workspaceId, setActiveSession, qc]
+  );
 
   // Initialize: restore last session or create new one
   // Re-runs whenever workspaceId changes (workspace switch resets session)
@@ -827,7 +831,16 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     setStreamingEvents([]);
     setStreamingThinking("");
     syncQueue([]);
-    createNewSession();
+    createNewSession(null);
+  };
+
+  const handleNewExploreSession = () => {
+    abortRef.current?.abort();
+    setIsStreaming(false);
+    setStreamingEvents([]);
+    setStreamingThinking("");
+    syncQueue([]);
+    createNewSession("explore");
   };
 
   // Called after every stream ends (done / error / abort) to drain the queue
@@ -868,7 +881,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         >
           <MessageSquare size={13} />
         </button>
-        <span>AI 助手</span>
+        <span>AI 助手{session?.agent_scope === "explore" ? "（探索）" : ""}</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
           <button
             onClick={handleReset}
@@ -887,7 +900,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             workspaceId={workspaceId}
             activeSessionId={session?.id ?? null}
             onSelect={(s) => switchToSession(s)}
-            onNew={handleReset}
+            onNewDirector={handleReset}
+            onNewExplore={handleNewExploreSession}
           />
         )}
 
@@ -898,9 +912,19 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
           {messages.length === 0 && !isStreaming && (
             <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 24 }}>
-              在下方输入创作请求，例如：<br />
-              "帮我创建一个 COC 乡村调查模组"<br />
-              "把第一幕改得更压抑一点"
+              {session?.agent_scope === "explore" ? (
+                <>
+                  探索模式只读，可搜索、浏览资产与规则，不会修改工作区。<br />
+                  例如：「列出所有地点」「用 grep 找某某 NPC 的提到」<br />
+                  若要改内容，请用侧栏<strong>新对话</strong>打开创作会话。
+                </>
+              ) : (
+                <>
+                  在下方输入创作请求，例如：<br />
+                  "帮我创建一个 COC 乡村调查模组"<br />
+                  "把第一幕改得更压抑一点"
+                </>
+              )}
             </div>
           )}
 

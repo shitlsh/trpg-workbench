@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { MessageSquarePlus, Pencil, Trash2, Check, X } from "lucide-react";
+import { MessageSquarePlus, Compass, Pencil, Trash2, Check, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import type { ChatSession, UpdateChatSessionRequest } from "@trpg-workbench/shared-schema";
 
@@ -8,7 +8,8 @@ interface SessionDrawerProps {
   workspaceId: string;
   activeSessionId: string | null;
   onSelect: (session: ChatSession) => void;
-  onNew: () => void;
+  onNewDirector: () => void;
+  onNewExplore: () => void;
 }
 
 function relativeTime(iso: string): string {
@@ -25,7 +26,7 @@ function relativeTime(iso: string): string {
   return `${months} 个月前`;
 }
 
-export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }: SessionDrawerProps) {
+export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNewDirector, onNewExplore }: SessionDrawerProps) {
   const qc = useQueryClient();
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -96,27 +97,48 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
         overflow: "hidden",
       }}
     >
-      {/* New chat button */}
-      <button
-        onClick={onNew}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          margin: "8px 8px 4px",
-          padding: "6px 10px",
-          borderRadius: 6,
-          border: "1px solid var(--border)",
-          background: "transparent",
-          cursor: "pointer",
-          fontSize: 13,
-          color: "var(--text)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        <MessageSquarePlus size={14} />
-        新对话
-      </button>
+      {/* New session: 创作 vs 探索 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "8px 8px 4px" }}>
+        <button
+          onClick={onNewDirector}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 10px",
+            borderRadius: 6,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            cursor: "pointer",
+            fontSize: 13,
+            color: "var(--text)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <MessageSquarePlus size={14} />
+          新对话（创作）
+        </button>
+        <button
+          onClick={onNewExplore}
+          title="只读浏览资产与规则，不写入"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 10px",
+            borderRadius: 6,
+            border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--border))",
+            background: "color-mix(in srgb, var(--accent) 6%, transparent)",
+            cursor: "pointer",
+            fontSize: 12,
+            color: "var(--text)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <Compass size={14} />
+          新探索（只读）
+        </button>
+      </div>
 
       {/* Session list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0 4px 8px" }}>
@@ -184,7 +206,7 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                       lineHeight: 1.4,
                     }}
                   >
-                    {s.title ?? "（新对话）"}
+                    {s.title ?? (s.agent_scope === "explore" ? "（新探索）" : "（新对话）")}
                   </div>
                 )}
 
@@ -194,8 +216,23 @@ export function SessionDrawer({ workspaceId, activeSessionId, onSelect, onNew }:
                     alignItems: "center",
                     gap: 4,
                     marginTop: 2,
+                    flexWrap: "wrap",
                   }}
                 >
+                  {s.agent_scope === "explore" && (
+                    <span
+                      style={{
+                        fontSize: 9,
+                        lineHeight: "14px",
+                        color: "var(--accent)",
+                        border: "1px solid color-mix(in srgb, var(--accent) 40%, var(--border))",
+                        borderRadius: 3,
+                        padding: "0 4px",
+                      }}
+                    >
+                      探索
+                    </span>
+                  )}
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                     {relativeTime(s.updated_at)}
                   </span>
