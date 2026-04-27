@@ -9,7 +9,7 @@ import type {
   WorkspaceConfigResponse,
   WorkspaceSkillMeta, WorkspaceSkill,
   CreateWorkspaceSkillRequest, UpdateWorkspaceSkillRequest,
-  ProbeModelsResponse,
+  ProbeModelsResponse, PromptProfile,
 } from "@trpg-workbench/shared-schema";
 import styles from "./WorkspaceSettingsPage.module.css";
 import { HelpButton } from "../components/HelpButton";
@@ -314,6 +314,14 @@ export default function WorkspaceSettingsPage() {
     queryFn: () => apiFetch<RerankProfile[]>("/settings/rerank-profiles"),
   });
 
+  // Prompt profiles for the currently selected rule set
+  const selectedRuleSet = ruleSets.find((rs) => rs.name === ruleSetName);
+  const { data: ruleSetProfiles = [] } = useQuery({
+    queryKey: ["prompt-profiles", selectedRuleSet?.id],
+    queryFn: () => apiFetch<PromptProfile[]>(`/prompt-profiles?rule_set_id=${selectedRuleSet!.id}`),
+    enabled: !!selectedRuleSet?.id,
+  });
+
   const { data: llmCatalog = [] } = useQuery({
     queryKey: ["model-catalog"],
     queryFn: () => apiFetch<ModelCatalogEntry[]>("/settings/model-catalog"),
@@ -323,6 +331,7 @@ export default function WorkspaceSettingsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [ruleSetName, setRuleSetName] = useState("");
+  const [promptProfileName, setPromptProfileName] = useState("");
   const [defaultLlmName, setDefaultLlmName] = useState("");
   const [defaultLlmModel, setDefaultLlmModel] = useState("");
   const [rerankName, setRerankName] = useState("");
@@ -340,6 +349,7 @@ export default function WorkspaceSettingsPage() {
       setName(config.name ?? "");
       setDescription(config.description ?? "");
       setRuleSetName(config.rule_set ?? "");
+      setPromptProfileName(config.prompt_profile ?? "");
       setDefaultLlmName(config.models?.default_llm ?? "");
       setDefaultLlmModel(config.models?.default_llm_model ?? "");
       setRerankName(config.models?.rerank ?? "");
@@ -386,6 +396,7 @@ export default function WorkspaceSettingsPage() {
       name: trimmedName,
       description: description.trim(),
       rule_set: ruleSetName,
+      prompt_profile: promptProfileName,
       models: {
         default_llm: defaultLlmName,
         default_llm_model: defaultLlmModel,
@@ -455,11 +466,29 @@ export default function WorkspaceSettingsPage() {
           </label>
           <label className={styles.label}>
             规则体系
-            <select className={styles.select} value={ruleSetName} onChange={(e) => setRuleSetName(e.target.value)}>
+            <select className={styles.select} value={ruleSetName} onChange={(e) => { setRuleSetName(e.target.value); setPromptProfileName(""); }}>
               <option value="">未指定</option>
               {ruleSets.map((rs) => <option key={rs.id} value={rs.name}>{rs.name}</option>)}
             </select>
           </label>
+          {ruleSetName && (
+            <label className={styles.label}>
+              创作风格提示词
+              <select
+                className={styles.select}
+                value={promptProfileName}
+                onChange={(e) => setPromptProfileName(e.target.value)}
+              >
+                <option value="">使用默认（规则集首个）</option>
+                {ruleSetProfiles.map((p) => (
+                  <option key={p.id} value={p.name}>{p.name}{p.style_notes ? ` — ${p.style_notes.slice(0, 40)}` : ""}</option>
+                ))}
+              </select>
+              {ruleSetProfiles.length === 0 && (
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>该规则集下暂无提示词，可在规则集页面创建</span>
+              )}
+            </label>
+          )}
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>模型路由</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -4, marginBottom: 8 }}>
             模型引用按名称存储，可跨设备移植。选择下拉中的配置名即可。

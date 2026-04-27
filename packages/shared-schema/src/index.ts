@@ -70,6 +70,7 @@ export interface WorkspaceConfig {
   description: string;
   created_at: string;
   rule_set: string; // rule_set name
+  prompt_profile: string; // prompt profile name scoped to the selected rule set (empty = use first)
   models: {
     default_llm: string;
     default_llm_model: string;

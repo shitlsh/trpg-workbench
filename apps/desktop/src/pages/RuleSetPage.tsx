@@ -136,25 +136,21 @@ function SetPromptModal({
   type Tab = "select" | "manual" | "ai";
   const [tab, setTab] = useState<Tab>("select");
 
-  // select tab
+  // existing profiles for this rule set (shown in "已有" tab)
   const { data: profiles = [] } = useQuery({
-    queryKey: ["prompt-profiles"],
-    queryFn: () => apiFetch<PromptProfile[]>("/prompt-profiles"),
+    queryKey: ["prompt-profiles", ruleSetId],
+    queryFn: () => apiFetch<PromptProfile[]>(`/prompt-profiles?rule_set_id=${ruleSetId}`),
   });
   const { data: llmProfiles = [] } = useQuery({
     queryKey: ["llm-profiles"],
     queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
   });
 
-  const selectMutation = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: (profileId: string) =>
-      apiFetch<PromptProfile>(`/prompt-profiles/${profileId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ rule_set_id: ruleSetId }),
-      }),
+      apiFetch(`/prompt-profiles/${profileId}`, { method: "DELETE" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompt-profiles"] });
-      onClose();
+      queryClient.invalidateQueries({ queryKey: ["prompt-profiles", ruleSetId] });
     },
   });
 
@@ -175,7 +171,7 @@ function SetPromptModal({
         }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompt-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["prompt-profiles", ruleSetId] });
       onClose();
     },
   });
@@ -254,7 +250,7 @@ function SetPromptModal({
         }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompt-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["prompt-profiles", ruleSetId] });
       onClose();
     },
   });
@@ -279,7 +275,7 @@ function SetPromptModal({
         <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
           <button style={tabStyle(tab === "select")} onClick={() => setTab("select")}>
             <MessageSquare size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
-            选择已有
+            已有提示词
           </button>
           <button style={tabStyle(tab === "manual")} onClick={() => setTab("manual")}>
             <Pencil size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
@@ -291,11 +287,11 @@ function SetPromptModal({
           </button>
         </div>
 
-        {/* Select tab */}
+        {/* Select tab — shows profiles already belonging to this rule set */}
         {tab === "select" && (
           <>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
-              选择一个已有的提示词关联到此规则集。
+              此规则集下已有的创作风格提示词。在工作空间设置中可选择其中一个使用。
             </p>
             <div className={styles.selectList}>
               {profiles.length === 0 && (
@@ -305,10 +301,10 @@ function SetPromptModal({
                 <div
                   key={p.id}
                   className={`${styles.selectListItem} ${p.id === currentProfileId ? styles.selected : ""}`}
-                  onClick={() => selectMutation.mutate(p.id)}
+                  style={{ cursor: "default" }}
                 >
-                  <MessageSquare size={14} />
-                  <div style={{ flex: 1 }}>
+                  <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 500 }}>{p.name}</div>
                     {p.style_notes && (
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
@@ -317,14 +313,18 @@ function SetPromptModal({
                     )}
                   </div>
                   {p.id === currentProfileId && (
-                    <span style={{ fontSize: 11, color: "var(--accent)" }}>当前</span>
+                    <span style={{ fontSize: 11, color: "var(--accent)", flexShrink: 0 }}>默认</span>
                   )}
+                  <button
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "2px 4px", flexShrink: 0 }}
+                    title="删除"
+                    onClick={() => { if (confirm(`确认删除「${p.name}」？`)) deleteMutation.mutate(p.id); }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               ))}
             </div>
-            {selectMutation.isError && (
-              <p className={styles.error}>{(selectMutation.error as Error).message}</p>
-            )}
           </>
         )}
 
@@ -1141,8 +1141,8 @@ export default function RuleSetPage() {
   });
 
   const { data: allProfiles = [] } = useQuery({
-    queryKey: ["prompt-profiles"],
-    queryFn: () => apiFetch<PromptProfile[]>("/prompt-profiles"),
+    queryKey: ["prompt-profiles", selectedId],
+    queryFn: () => apiFetch<PromptProfile[]>(`/prompt-profiles?rule_set_id=${selectedId}`),
     enabled: !!selectedId,
   });
 
@@ -1153,7 +1153,7 @@ export default function RuleSetPage() {
   const hasEmbedding = embeddingProfiles.length > 0;
 
   const currentPrompt = selectedId
-    ? allProfiles.find((p) => p.rule_set_id === selectedId) ?? null
+    ? allProfiles[0] ?? null  // first profile in the rule set (default)
     : null;
 
   const activeLib = libraries.find((l) => l.id === activeLibId) ?? null;

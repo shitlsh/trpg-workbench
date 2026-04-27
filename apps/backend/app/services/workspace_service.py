@@ -20,6 +20,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "description": "",
     "created_at": "",
     "rule_set": "",
+    "prompt_profile": "",  # prompt profile name within the rule set; empty = use first
     "models": {
         "default_llm": "",
         "rerank": "",

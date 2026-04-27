@@ -1,5 +1,5 @@
 """Prompt Profile CRUD API."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
@@ -13,8 +13,14 @@ router = APIRouter(prefix="/prompt-profiles", tags=["prompt-profiles"])
 
 
 @router.get("", response_model=list[PromptProfileSchema])
-def list_profiles(db: Session = Depends(get_db)):
-    return db.query(PromptProfileORM).order_by(PromptProfileORM.created_at).all()
+def list_profiles(
+    rule_set_id: str | None = Query(None, description="Filter by rule set ID"),
+    db: Session = Depends(get_db),
+):
+    q = db.query(PromptProfileORM).order_by(PromptProfileORM.created_at)
+    if rule_set_id:
+        q = q.filter(PromptProfileORM.rule_set_id == rule_set_id)
+    return q.all()
 
 
 @router.post("/generate", response_model=GeneratePromptResponse)

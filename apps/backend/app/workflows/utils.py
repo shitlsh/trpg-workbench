@@ -41,10 +41,21 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
         AssetORM.status != "deleted",
     ).all()
 
-    # style_prompt: from the PromptProfile bound to the workspace's rule set
+    # style_prompt: prefer workspace-level prompt_profile selection, fall back to rule set's first
     style_prompt = None
     if rule_set_id:
-        pp = db.query(PromptProfileORM).filter_by(rule_set_id=rule_set_id).first()
+        profile_name = config.get("prompt_profile", "")
+        if profile_name:
+            pp = (
+                db.query(PromptProfileORM)
+                .filter(
+                    PromptProfileORM.rule_set_id == rule_set_id,
+                    PromptProfileORM.name == profile_name,
+                )
+                .first()
+            )
+        else:
+            pp = db.query(PromptProfileORM).filter_by(rule_set_id=rule_set_id).first()
         if pp:
             style_prompt = pp.system_prompt
 
