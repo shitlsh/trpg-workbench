@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 
 from app.agents.model_adapter import model_from_profile, strip_code_fence
+from app.prompts import load_prompt
 
 
 # ─── Result types ─────────────────────────────────────────────────────────────
@@ -39,45 +40,6 @@ class TocNotRecognizedError(ValueError):
         super().__init__(f"Input not recognized as a TOC: {reason}")
 
 
-# ─── Prompt ───────────────────────────────────────────────────────────────────
-
-_SYSTEM_PROMPT = """\
-You are a document structure analyzer for TRPG (tabletop role-playing game) rulebooks.
-
-Your task: given the raw text extracted from the table of contents pages of a rulebook,
-return a structured JSON representation of the TOC chapters and their content types.
-
-IMPORTANT RULES:
-1. If the input text is NOT a table of contents (e.g. it's body text, an index, or random
-   page content), respond with {"is_toc": false, "reason": "<brief explanation>"}.
-2. If it IS a TOC, respond with {"is_toc": true, "sections": [...]}.
-3. Extract only the meaningful chapter/section entries — skip front-matter like
-   "Foreword", "Credits", "Legal" unless they contain substantial rule content.
-4. Include sub-sections (depth 2) only when they represent meaningfully different
-   content types from their parent.
-5. For each section, suggest the most appropriate chunk_type from this fixed list:
-   - "rule"       : rules text, mechanics, skill definitions, judgment criteria
-   - "example"    : worked examples, sample scenarios
-   - "lore"       : world-building, background narrative, setting description
-   - "table"      : stat tables, equipment lists, skill/spell tables
-   - "procedure"  : step-by-step procedures, combat flow, action sequences
-   - "flavor"     : pure narrative/atmosphere text with no rule content
-   Use null if the section is a mix and you cannot determine a dominant type.
-6. page_from is the page number shown in the TOC (not the PDF physical page).
-   page_to may be null (it will be inferred from the next section's page_from).
-
-Output JSON format (no markdown, no code fences, just raw JSON):
-{
-  "is_toc": true,
-  "sections": [
-    {"title": "Chapter 1: Core Rules", "page_from": 1, "depth": 1, "suggested_chunk_type": "rule"},
-    {"title": "1.1 Character Creation", "page_from": 1, "depth": 2, "suggested_chunk_type": "rule"},
-    ...
-  ]
-}
-"""
-
-
 # ─── Main function ────────────────────────────────────────────────────────────
 
 def analyze_toc(
@@ -93,6 +55,8 @@ def analyze_toc(
     effective_model_name = model_name or ""
     model = model_from_profile(llm_profile, effective_model_name)
 
+    system_prompt = load_prompt("toc_analyzer", "system")
+
     # Build a simple non-streaming request via Agno model's direct run
     # Agno models have a `response()` method for single-turn inference
     user_message = (
@@ -103,7 +67,7 @@ def analyze_toc(
 
     try:
         from agno.agent import Agent
-        agent = Agent(model=model, instructions=[_SYSTEM_PROMPT], markdown=False)
+        agent = Agent(model=model, instructions=[system_prompt], markdown=False)
         response = agent.run(user_message)
         raw = strip_code_fence(response.content if hasattr(response, "content") else str(response))
     except Exception as e:

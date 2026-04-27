@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,10 @@ from app.models.schemas import KnowledgeDocumentSchema, IngestTaskSchema
 from app.models.orm import EmbeddingProfileORM as _EmbeddingProfileORM
 
 router = APIRouter(prefix="/knowledge/libraries", tags=["knowledge-documents"])
+
+
+def _doc_sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 @router.get("/{library_id}/documents", response_model=list[KnowledgeDocumentSchema])
@@ -393,10 +398,12 @@ class AnalyzeTocRequest(BaseModel):
 
 @router3.post("/preview/{file_id}/analyze-toc")
 async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depends(get_db)):
-    """Parse the confirmed TOC text using an LLM → structured sections with chunk_type suggestions.
+    """Parse TOC text via SSE stream with keepalive comments.
 
-    Returns a 422 with error_type='toc_not_recognized' if the LLM determines
-    the supplied text is not a table of contents.
+    Yields:
+      `: keepalive`       — every 10s while the LLM is running
+      `event: result`     — on success, data = {sections: [...]}
+      `event: error`      — on failure, data = {message, error_type?}
     """
     _get_temp(file_id)  # validate file still exists
 
@@ -405,41 +412,56 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
 
     profile = db.get(LLMProfileORM, body.llm_profile_id)
     if not profile:
-        # Fallback: pick the first available LLM profile
         profile = db.query(LLMProfileORM).first()
     if not profile:
-        raise HTTPException(
-            status_code=422,
-            detail={"error": "No LLM profile configured. Please add an LLM profile in settings.", "error_type": "ModelNotConfiguredError"},
-        )
+        async def _no_profile():
+            yield _doc_sse("error", {"message": "No LLM profile configured.", "error_type": "ModelNotConfiguredError"})
+        return StreamingResponse(_no_profile(), media_type="text/event-stream")
 
-    try:
-        result = await asyncio.wait_for(
-            asyncio.to_thread(_analyze, body.toc_text, profile, body.llm_model_name),
-            timeout=120.0,
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="TOC analysis timed out after 120 seconds. Try a faster model.")
-    except TocNotRecognizedError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={"error": str(e), "error_type": "toc_not_recognized", "reason": e.reason},
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"TOC analysis failed: {e}")
+    toc_text = body.toc_text
+    model_name = body.llm_model_name
 
-    return {
-        "sections": [
-            {
-                "title": s.title,
-                "page_from": s.page_from,
-                "page_to": s.page_to,
-                "depth": s.depth,
-                "suggested_chunk_type": s.suggested_chunk_type,
-            }
+    def _run() -> list[dict]:
+        result = _analyze(toc_text, profile, model_name)
+        return [
+            {"title": s.title, "page_from": s.page_from, "page_to": s.page_to,
+             "depth": s.depth, "suggested_chunk_type": s.suggested_chunk_type}
             for s in result.sections
         ]
-    }
+
+    async def _stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _produce():
+            try:
+                sections = await asyncio.to_thread(_run)
+                await queue.put(("result", sections))
+            except TocNotRecognizedError as exc:
+                await queue.put(("toc_error", exc.reason))
+            except Exception as exc:
+                await queue.put(("error", str(exc)))
+
+        asyncio.create_task(_produce())
+
+        deadline = 300
+        elapsed = 0
+        while elapsed < deadline:
+            try:
+                kind, payload = await asyncio.wait_for(queue.get(), timeout=10.0)
+                if kind == "result":
+                    yield _doc_sse("result", {"sections": payload})
+                elif kind == "toc_error":
+                    yield _doc_sse("error", {"message": payload, "error_type": "toc_not_recognized"})
+                else:
+                    yield _doc_sse("error", {"message": payload})
+                return
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                elapsed += 10
+
+        yield _doc_sse("error", {"message": "TOC analysis timed out (300s). Try a faster model."})
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
 # ── 4. Ingest with confirmed TOC mapping ─────────────────────────────────────

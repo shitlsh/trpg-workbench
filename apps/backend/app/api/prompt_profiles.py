@@ -1,15 +1,24 @@
 """Prompt Profile CRUD API."""
+import asyncio
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
 from app.models.orm import PromptProfileORM, RuleSetORM, LLMProfileORM
 from app.models.schemas import (
     PromptProfileSchema, PromptProfileCreate, PromptProfileUpdate,
-    GeneratePromptRequest, GeneratePromptResponse,
+    GeneratePromptRequest,
 )
+from app.prompts import load_prompt
 
 router = APIRouter(prefix="/prompt-profiles", tags=["prompt-profiles"])
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 @router.get("", response_model=list[PromptProfileSchema])
@@ -23,9 +32,15 @@ def list_profiles(
     return q.all()
 
 
-@router.post("/generate", response_model=GeneratePromptResponse)
-def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get_db)):
-    """Generate a prompt profile using an LLM based on the rule set's info."""
+@router.post("/generate")
+async def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get_db)):
+    """Generate a prompt profile via SSE stream with keepalive comments.
+
+    Yields:
+      `: keepalive`          — every 10s while waiting
+      `event: result`        — on success, data = {name, system_prompt, style_notes}
+      `event: error`         — on failure, data = {message}
+    """
     rule_set = db.get(RuleSetORM, body.rule_set_id)
     if not rule_set:
         raise HTTPException(status_code=404, detail="Rule set not found")
@@ -34,45 +49,64 @@ def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get_db)):
     if not llm_profile:
         raise HTTPException(status_code=404, detail="LLM profile not found")
 
-    try:
-        from app.agents.model_adapter import model_from_profile
+    rule_set_name = rule_set.name
+    rule_set_desc = rule_set.description or "无"
+
+    def _run_llm() -> dict:
+        import re
+        from app.agents.model_adapter import model_from_profile, strip_code_fence
         from agno.agent import Agent
 
-        model = model_from_profile(llm_profile, body.model_name)
-
-        rs_desc = rule_set.description or "无"
         style_hint = f"\n用户风格偏好：{body.style_description}" if body.style_description else ""
+        prompt = load_prompt(
+            "prompt_profiles", "generate",
+            rule_set_name=rule_set_name,
+            rule_set_desc=rule_set_desc,
+            style_hint=style_hint,
+        )
 
-        prompt = f"""你是一位专业的 TRPG 模组创作顾问。请为以下规则集生成一份创作风格提示词（PromptProfile），指导 AI 助手进行创作。
-
-规则集名称：{rule_set.name}
-描述：{rs_desc}{style_hint}
-
-请以 JSON 格式返回，包含以下字段：
-- name: 提示词名称（简短，如"恐怖调查标准风格"）
-- system_prompt: 完整的系统提示词（200-500字，涵盖创作风格、NPC设计原则、场景描述要点、输出格式约束等）
-- style_notes: 简短的风格摘要（30-60字，供界面展示）
-
-只返回 JSON，不要其他内容。"""
-
+        model = model_from_profile(llm_profile, body.model_name)
         agent = Agent(model=model, markdown=False)
         result = agent.run(prompt)
         raw = result.content if hasattr(result, "content") else str(result)
-
-        import json, re
-        # Strip thinking tags (e.g., Qwen3 reasoning tokens)
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-        # Strip markdown code fences
-        raw = re.sub(r"^```[a-zA-Z]*\n?|```\s*$", "", raw.strip(), flags=re.MULTILINE).strip()
+        raw = strip_code_fence(raw)
         data = json.loads(raw)
+        return {
+            "name": data.get("name") or f"{rule_set_name}创作风格",
+            "system_prompt": data.get("system_prompt", ""),
+            "style_notes": data.get("style_notes", ""),
+        }
 
-        return GeneratePromptResponse(
-            name=data.get("name") or f"{rule_set.name}创作风格",
-            system_prompt=data.get("system_prompt", ""),
-            style_notes=data.get("style_notes", ""),
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"生成失败：{str(e)}")
+    async def _stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _produce():
+            try:
+                result = await asyncio.to_thread(_run_llm)
+                await queue.put(("result", result))
+            except Exception as exc:
+                await queue.put(("error", str(exc)))
+
+        asyncio.create_task(_produce())
+
+        deadline = 300  # seconds
+        elapsed = 0
+        while elapsed < deadline:
+            try:
+                kind, payload = await asyncio.wait_for(queue.get(), timeout=10.0)
+                if kind == "result":
+                    yield _sse("result", payload)
+                else:
+                    yield _sse("error", {"message": payload})
+                return
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                elapsed += 10
+
+        yield _sse("error", {"message": "生成超时（300秒），请尝试更快的模型"})
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
 @router.post("", response_model=PromptProfileSchema, status_code=201)
