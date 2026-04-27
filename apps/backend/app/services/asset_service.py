@@ -5,6 +5,7 @@ Read path:   read .md file from disk → parse frontmatter
 """
 import hashlib
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -279,6 +280,97 @@ def update_asset(
         "rel_path": str(file_path.relative_to(ws)),
         "file_hash": _file_hash(file_path),
         "revision_version": new_version,
+    }
+
+
+def relocate_asset(
+    workspace_path: str | Path,
+    current_file_path: Path,
+    new_asset_type: str,
+    new_slug: str,
+    new_name: str | None = None,
+) -> dict:
+    """Move/rename an asset to a new canonical path (type + slug). Updates frontmatter.
+
+    - Writes the file under ``{type}s/{new_slug}.md``, removes the old file if different.
+    - Renames ``.trpg/revisions/{old_slug}/`` to ``.trpg/revisions/{new_slug}/`` when present.
+    - Bumps ``version`` and sets ``updated_at`` (structural change).
+
+    Returns:
+        {rel_path, file_hash, metadata, old_slug, new_slug, old_type, new_type}
+    """
+    ws = Path(workspace_path).resolve()
+    current_file_path = Path(current_file_path).resolve()
+    if not str(current_file_path).startswith(str(ws)):
+        raise ValueError("Asset file is outside the workspace")
+    if ".." in new_slug or "/" in new_slug or "\\" in new_slug:
+        raise ValueError("Invalid slug: path separators not allowed")
+    new_slug = new_slug.strip()
+    if not new_slug:
+        raise ValueError("new_slug is required")
+    new_asset_type = (new_asset_type or "").strip()
+    parsed = read_asset_file(current_file_path)
+    if not parsed:
+        raise FileNotFoundError(f"Asset file not found or invalid: {current_file_path}")
+    meta = dict(parsed["metadata"])
+    body = parsed["body"]
+    old_slug = str(meta.get("slug", ""))
+    old_type = str(meta.get("type", ""))
+    if not old_type:
+        raise ValueError("Asset frontmatter missing type")
+    nt = new_asset_type or old_type
+    if meta.get("name") is not None and new_name is not None and new_name.strip():
+        meta["name"] = new_name.strip()
+    if old_slug == new_slug and old_type == nt:
+        return {
+            "rel_path": str(current_file_path.relative_to(ws)),
+            "file_hash": _file_hash(current_file_path),
+            "metadata": meta,
+            "old_slug": old_slug,
+            "new_slug": new_slug,
+            "old_type": old_type,
+            "new_type": nt,
+            "no_op": True,
+        }
+    new_path = asset_file_path(ws, nt, new_slug).resolve()
+    if not str(new_path).startswith(str(ws)):
+        raise ValueError("Target path escapes workspace")
+    if new_path.exists() and new_path != current_file_path:
+        raise FileExistsError(
+            f"Target already exists: {new_path.relative_to(ws)}"
+        )
+    old_version = int(meta.get("version", 1))
+    new_version = old_version + 1
+    meta["type"] = nt
+    meta["slug"] = new_slug
+    meta["version"] = new_version
+    meta["updated_at"] = _now_iso()
+
+    write_asset_file(ws, nt, new_slug, meta, body, target_path=new_path)
+    if current_file_path != new_path:
+        try:
+            current_file_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    old_rev = asset_revision_dir(ws, old_slug)
+    new_rev = asset_revision_dir(ws, new_slug)
+    if old_rev.exists() and old_slug != new_slug:
+        if new_rev.exists():
+            raise FileExistsError(
+                f"Revision directory for target slug already exists: {new_rev.relative_to(ws)}"
+            )
+        new_rev.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(old_rev), str(new_rev))
+
+    return {
+        "rel_path": str(new_path.relative_to(ws)),
+        "file_hash": _file_hash(new_path),
+        "metadata": meta,
+        "old_slug": old_slug,
+        "new_slug": new_slug,
+        "old_type": old_type,
+        "new_type": nt,
+        "no_op": False,
     }
 
 
