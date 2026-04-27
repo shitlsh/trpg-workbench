@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M23 全部完成。M24 进行中，目标是将 `library.type` 替换为 chunk 级类型标签，修复 chunker 切割边界，并将 top_k / rerank 配置化。
+核心功能链路已通过 M1–M24 全部完成。
 
 ```
 ✅ M1 基础骨架
@@ -29,7 +29,7 @@
                                                                                                                                                               └── ✅ M21 聊天会话管理
                                                                                                                                                                     └── ✅ M22 规则集 UX 打磨
                                                                                                                                                                            └── ✅ M23 Agent 澄清问题机制
-                                                                                                                                                                                  └── 🔄 M24 知识库检索质量提升
+                                                                                                                                                                                   └── ✅ M24 知识库检索质量提升
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -68,12 +68,12 @@
 
 | M22 ✅ | 规则集 UX 打磨 | 移除内置规则集限制、Setup Wizard 补充规则集步骤、展示内置 AssetType、三标签提示词弹窗 | [archive/m22-ruleset-ux-polish.md](archive/m22-ruleset-ux-polish.md) |
 | M23 ✅ | Agent 澄清问题机制 | Director 在推理中途向用户提出结构化选项问题，减少猜错方向的来回成本 | [archive/m23-agent-question-interrupt.md](archive/m23-agent-question-interrupt.md) |
+| M24 ✅ | 知识库检索质量提升 | chunk 级类型标签、chunker 修复、top_k 配置化、rerank 接入 | [archive/m24-knowledge-retrieval-quality.md](archive/m24-knowledge-retrieval-quality.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M24 🔄 | 知识库检索质量提升 | chunk 级类型标签、chunker 修复、top_k 配置化、rerank 接入 | [m24-knowledge-retrieval-quality.md](m24-knowledge-retrieval-quality.md) |
 
 ---
 

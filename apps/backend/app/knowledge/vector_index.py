@@ -93,7 +93,7 @@ def search_library(
         if "chunks" not in db.table_names():
             return []
         table = db.open_table("chunks")
-        # Detect actual vector dimension from table schema to avoid mismatch
+        _ensure_chunk_type_column(table)
         actual_dim = dimensions
         try:
             for field in table.schema:
@@ -119,8 +119,8 @@ def delete_document_chunks(index_dir: Path, document_id: str) -> None:
     try:
         db = lancedb.connect(str(index_dir))
         if "chunks" in db.table_names():
-        table = db.open_table("chunks")
-        _ensure_chunk_type_column(table)
+            table = db.open_table("chunks")
+            _ensure_chunk_type_column(table)
             table.delete(f"document_id = '{document_id}'")
     except Exception:
         pass

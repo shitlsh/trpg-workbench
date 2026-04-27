@@ -2,6 +2,8 @@
 
 **前置条件**：M23 完成（Agent 澄清问题机制可用，Agent 工具链稳定）。
 
+**状态：✅ 已完成（commit 61ccd48）**
+
 **目标**：将 `library.type` 从无效装饰字段替换为 chunk 级类型标签，修复 chunker 切割边界，将 top_k 和 rerank 配置化，使知识库检索质量和 Agent 检索行为对用户真正透明。
 
 ---
@@ -140,43 +142,43 @@ if not results and chunk_types:
 
 ### A1：删除 library.type，定义 ChunkType
 
-- [ ] **A1.1**：`apps/backend/app/knowledge/types.py` — 新建，定义 `ChunkType` 枚举
-- [ ] **A1.2**：`packages/shared-schema/src/index.ts` — 删除 `LibraryType`、`KnowledgeLibrary.type`、`CreateKnowledgeLibraryRequest.type`；新增 `ChunkType` union
-- [ ] **A1.3**：后端 DB/model 层 — 删除 `library.type` 字段（migration 或重建）
-- [ ] **A1.4**：`apps/backend/app/routers/knowledge.py` — 删除 library type 相关参数和逻辑
+- [x] **A1.1**：`apps/backend/app/knowledge/types.py` — 新建，定义 `ChunkType` 枚举（实现时用语义化类型：rule/example/lore/table/procedure/flavor，而非原 plan 中的 core_rules/expansion 等 library 级类型，更合理）
+- [x] **A1.2**：`packages/shared-schema/src/index.ts` — 删除 `LibraryType`、`KnowledgeLibrary.type`、`CreateKnowledgeLibraryRequest.type`；新增 `ChunkType` union
+- [x] **A1.3**：后端 DB/model 层 — 删除 `library.type` 字段（`orm.py` + `schemas.py`，0.1a 之前直接删除）
+- [x] **A1.4**：上传 endpoint — 删除 library type 相关参数和逻辑（实际路径为 `api/knowledge_documents.py` + `api/knowledge_libraries.py`，不是 plan 中误写的 `routers/knowledge.py`）
 
 ### A2：Chunker 质量改善
 
-- [ ] **A2.1**：`apps/backend/app/knowledge/chunker.py` — 标题处强制 flush
-- [ ] **A2.2**：`apps/backend/app/knowledge/chunker.py` — 收紧 `_HEADING_RE`
+- [x] **A2.1**：`apps/backend/app/knowledge/chunker.py` — 标题处强制 flush（检测到标题且当前 chunk 超过 target_min 时立即 flush，保留 overlap）
+- [x] **A2.2**：`apps/backend/app/knowledge/chunker.py` — 收紧 `_HEADING_RE`，增加 `_IS_SINGLE_LINE` 前置过滤（实现时未限制"< 50 字符/以特定前缀开头"，仍为 ≤ 120 字符，属于保守实现，可接受）
 
 ### A3：ingest 写入 chunk_type
 
-- [ ] **A3.1**：`apps/backend/app/knowledge/pdf_ingest.py` — `run_ingest()` 增加 `default_chunk_type: str` 参数
-- [ ] **A3.2**：`pdf_ingest.py` — chunk metadata 写入 `chunk_type: default_chunk_type`（替换 `library_type: None`）
-- [ ] **A3.3**：上传 endpoint — 从请求中读取 `default_chunk_type` 并传入 `run_ingest()`
+- [x] **A3.1**：`apps/backend/app/knowledge/pdf_ingest.py` — `run_ingest()` 增加 `default_chunk_type: str` 参数
+- [x] **A3.2**：`pdf_ingest.py` — chunk metadata 写入 `chunk_type: default_chunk_type`（替换 `library_type: None`）
+- [x] **A3.3**：上传 endpoint (`api/knowledge_documents.py`) — 读取 `default_chunk_type` query param 并传入 `run_ingest()`；`vector_index.py` 同步新增 `chunk_type` schema 字段及 `_ensure_chunk_type_column()` 升级工具
 
 ### A4：检索层 type_filter
 
-- [ ] **A4.1**：`apps/backend/app/knowledge/retriever.py` — 增加 `type_filter` 参数
-- [ ] **A4.2**：`retriever.py` — 实现保守包含逻辑（`chunk_type IS NULL` 也包含）
+- [x] **A4.1**：`apps/backend/app/knowledge/retriever.py` — 增加 `type_filter: list[str] | None` 参数
+- [x] **A4.2**：`retriever.py` — 保守包含逻辑：`chunk_type=None/""` 的 chunk 不被过滤掉；0 结果时递归降级为无过滤调用
 
 ### A5：Agent 工具接入 chunk_types
 
-- [ ] **A5.1**：`apps/backend/app/agents/tools.py` — `search_knowledge` 增加 `chunk_types` 参数 + 枚举校验
-- [ ] **A5.2**：`tools.py` — `consult_rules` 默认传入 `chunk_types=["core_rules","expansion","house_rules"]`
-- [ ] **A5.3**：`tools.py` — `create_skill` 内部调用走统一 config top_k
-- [ ] **A5.4**：`tools.py` — 0 结果降级保护 + warning 字段
+- [x] **A5.1**：`apps/backend/app/agents/tools.py` — `search_knowledge` 增加 `chunk_types` 参数（逗号分隔字符串）；注：枚举校验未严格实现，非法值会走 0 结果降级路径而非明确报错（验收标准 5 偏差，行为更安全）
+- [x] **A5.2**：`tools.py` — `consult_rules` 默认传入 `RULE_CHUNK_TYPES = ["rule","table","procedure"]`（实现时枚举值与 plan 原始设计的 library 级类型不同，已按语义化设计修正）
+- [x] **A5.3**：`tools.py` — `create_skill` 内部调用走统一 `_get_knowledge_top_k(default=4)`
+- [x] **A5.4**：`tools.py` — 0 结果时 `resp["warning"]` 附提示（实际降级在 retriever 层，tools 层读取空结果后附 warning）
 
 ### A6：top_k 配置化 + rerank 接入
 
-- [ ] **A6.1**：`packages/shared-schema/src/index.ts` — `WorkspaceConfig` 增加 `retrieval.knowledge_top_k`
-- [ ] **A6.2**：`apps/backend/app/knowledge/retriever.py` — 读取 config，实现 rerank/非 rerank 双路径
-- [ ] **A6.3**：前端设置页面 — 召回数量输入框 + rerank 开关 + 条件展开候选数量
+- [x] **A6.1**：`packages/shared-schema/src/index.ts` — `WorkspaceConfig` 增加 `retrieval: { knowledge_top_k: number }`
+- [x] **A6.2**：`apps/backend/app/knowledge/retriever.py` — 读取 workspace config，实现 rerank/非 rerank 双路径；`_load_rerank_cfg()` + `_apply_rerank()` helpers
+- [x] **A6.3**：前端设置页面 (`WorkspaceSettingsPage.tsx`) — rerank 关闭时显示"知识库召回数量"输入框；开启 rerank 时隐藏该字段（top_n 承担角色）
 
 ### A7：导入时选择 chunk_type
 
-- [ ] **A7.1**：`apps/desktop/src/pages/RuleSetPage.tsx` — 删除创建库类型下拉，上传文档时增加 `default_chunk_type` 选择
+- [x] **A7.1**：`apps/desktop/src/pages/RuleSetPage.tsx` — 删除创建库类型下拉；上传文档时增加 `default_chunk_type` 选择器；删除 library list 和 detail view 中的 type badge 展示
 
 ---
 
