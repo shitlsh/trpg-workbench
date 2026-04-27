@@ -849,9 +849,7 @@ function LibraryDetailPanel({
   const queryClient = useQueryClient();
   const { activeWorkspaceId } = useWorkspaceStore();
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [expandedDocIds, setExpandedDocIds] = useState<Set<string>>(new Set());
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [showSearchTest, setShowSearchTest] = useState(false);
@@ -859,13 +857,35 @@ function LibraryDetailPanel({
   const [renameValue, setRenameValue] = useState(library.name);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── TOC-driven ingest wizard state ────────────────────────────────────────
+  type TocSectionState = {
+    title: string; page_from: number; page_to: number;
+    depth: number; chunk_type: ChunkType | "";
+  };
+  type WizardState =
+    | { step: "idle" }
+    | { step: "uploading" }
+    | { step: "detecting_toc"; fileId: string; filename: string; fileExt: string }
+    | { step: "toc_preview"; fileId: string; filename: string; fileExt: string;
+        tocText: string; pageStart: number; pageEnd: number;
+        customStart: number; customEnd: number; redetecting: boolean; redetectError: string }
+    | { step: "analyzing_toc"; fileId: string; filename: string; fileExt: string;
+        tocText: string }
+    | { step: "section_confirm"; fileId: string; filename: string; fileExt: string;
+        sections: TocSectionState[]; pageOffset: number; analyzeError: string }
+    | { step: "ingesting" };
+
+  const [wizard, setWizard] = useState<WizardState>({ step: "idle" });
+
   const { data: embeddingProfiles = [] } = useQuery({
     queryKey: ["embedding-profiles"],
     queryFn: () => apiFetch<EmbeddingProfile[]>("/settings/embedding-profiles"),
   });
+  const { data: llmProfilesForUpload = [] } = useQuery({
+    queryKey: ["llm-profiles"],
+    queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
+  });
   const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>("");
-  const [defaultChunkType, setDefaultChunkType] = useState<ChunkType | "">("");
-  const [pageOffset, setPageOffset] = useState(0);
 
   const { data: documents = [] } = useQuery({
     queryKey: ["knowledge", "documents", library.id],
@@ -903,35 +923,140 @@ function LibraryDetailPanel({
     },
   });
 
-  async function handleUpload(file: File) {
+  // ── Wizard step functions ─────────────────────────────────────────────────
+
+  async function startWizard(file: File) {
     setUploadError(null);
-    setIsUploading(true);
+    setWizard({ step: "uploading" });
+    try {
+      // Step 1: upload to preview endpoint
+      const form = new FormData();
+      form.append("file", file);
+      const uploadRes = await fetch(`${BACKEND_URL}/knowledge/documents/upload-preview`, { method: "POST", body: form });
+      if (!uploadRes.ok) {
+        let detail = "上传失败";
+        try { const b = await uploadRes.json(); detail = b?.detail ?? detail; } catch {}
+        throw new Error(detail);
+      }
+      const { file_id, filename, file_ext } = await uploadRes.json();
+
+      // Step 2: detect TOC
+      setWizard({ step: "detecting_toc", fileId: file_id, filename, fileExt: file_ext });
+      const detectRes = await apiFetch<{ toc_text: string; page_start: number; page_end: number; is_structural: boolean; sections?: TocSectionState[] }>(
+        `/knowledge/documents/preview/${file_id}/detect-toc`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+
+      if (detectRes.is_structural && detectRes.sections) {
+        // CHM: skip toc_preview, go straight to section_confirm
+        setWizard({
+          step: "section_confirm",
+          fileId: file_id, filename, fileExt: file_ext,
+          sections: detectRes.sections.map((s) => ({ ...s, chunk_type: s.chunk_type ?? "" })),
+          pageOffset: 0,
+          analyzeError: "",
+        });
+      } else {
+        setWizard({
+          step: "toc_preview",
+          fileId: file_id, filename, fileExt: file_ext,
+          tocText: detectRes.toc_text,
+          pageStart: detectRes.page_start,
+          pageEnd: detectRes.page_end,
+          customStart: detectRes.page_start,
+          customEnd: detectRes.page_end,
+          redetecting: false,
+          redetectError: "",
+        });
+      }
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : String(e));
+      setWizard({ step: "idle" });
+    }
+  }
+
+  async function redetectToc(fileId: string, filename: string, fileExt: string, start: number, end: number) {
+    setWizard((prev) => prev.step === "toc_preview" ? { ...prev, redetecting: true, redetectError: "" } : prev);
+    try {
+      const res = await apiFetch<{ toc_text: string; page_start: number; page_end: number }>(
+        `/knowledge/documents/preview/${fileId}/detect-toc`,
+        { method: "POST", body: JSON.stringify({ toc_page_start: start, toc_page_end: end }) },
+      );
+      setWizard({
+        step: "toc_preview",
+        fileId, filename, fileExt,
+        tocText: res.toc_text,
+        pageStart: res.page_start,
+        pageEnd: res.page_end,
+        customStart: start,
+        customEnd: end,
+        redetecting: false,
+        redetectError: "",
+      });
+    } catch (e) {
+      setWizard((prev) => prev.step === "toc_preview"
+        ? { ...prev, redetecting: false, redetectError: e instanceof Error ? e.message : String(e) }
+        : prev);
+    }
+  }
+
+  async function analyzeToc(fileId: string, filename: string, fileExt: string, tocText: string) {
+    const llmProfileId = llmProfilesForUpload[0]?.id;
+    if (!llmProfileId) {
+      setUploadError("请先在模型配置中添加 LLM 模型");
+      return;
+    }
+    setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText });
+    try {
+      const res = await apiFetch<{ sections: TocSectionState[] }>(
+        `/knowledge/documents/preview/${fileId}/analyze-toc`,
+        { method: "POST", body: JSON.stringify({ toc_text: tocText, llm_profile_id: llmProfileId }) },
+      );
+      setWizard({
+        step: "section_confirm",
+        fileId, filename, fileExt,
+        sections: res.sections.map((s) => ({ ...s, chunk_type: s.chunk_type ?? "" })),
+        pageOffset: 0,
+        analyzeError: "",
+      });
+    } catch (e) {
+      // Go back to toc_preview with error shown
+      setWizard({
+        step: "section_confirm",
+        fileId, filename, fileExt,
+        sections: [],
+        pageOffset: 0,
+        analyzeError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  async function startIngest(fileId: string, sections: TocSectionState[], pageOffset: number) {
     const profileId = selectedEmbeddingId || embeddingProfiles[0]?.id;
     if (!profileId) {
       setUploadError("请先在模型配置中添加 Embedding 模型");
-      setIsUploading(false);
       return;
     }
-    const form = new FormData();
-    form.append("file", file);
-    const url = new URL(`${BACKEND_URL}/knowledge/libraries/${library.id}/documents`);
-    url.searchParams.set("embedding_profile_id", profileId);
-    if (defaultChunkType) url.searchParams.set("default_chunk_type", defaultChunkType);
-    if (pageOffset > 0) url.searchParams.set("page_offset", String(pageOffset));
+    setWizard({ step: "ingesting" });
     try {
-      const res = await fetch(url.toString(), { method: "POST", body: form });
-      if (!res.ok) {
-        let detail = "Upload failed";
-        try { const body = await res.json(); detail = body?.detail ?? detail; } catch {}
-        throw new Error(detail);
-      }
-      const data = await res.json();
-      setUploadingTaskId(data.task_id);
+      const res = await apiFetch<{ document_id: string; task_id: string }>(
+        `/knowledge/libraries/${library.id}/documents/ingest-confirmed`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            file_id: fileId,
+            embedding_profile_id: profileId,
+            page_offset: pageOffset,
+            toc_mapping: sections.map((s) => ({ title: s.title, page_from: s.page_from, page_to: s.page_to, chunk_type: s.chunk_type || null })),
+          }),
+        },
+      );
+      setUploadingTaskId(res.task_id);
       queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", library.id] });
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : String(e));
     } finally {
-      setIsUploading(false);
+      setWizard({ step: "idle" });
     }
   }
 
@@ -1021,8 +1146,9 @@ function LibraryDetailPanel({
 
       {/* Upload area */}
       {(() => {
-        const uploadDisabled = isUploading || !!uploadingTaskId || documents.length > 0;
-        const overlayMsg = isUploading ? "上传中..." : uploadingTaskId ? "处理中，请稍候..." : documents.length > 0 ? "已有文档，请先点击文档右侧删除按钮删除后再上传" : null;
+        const wizardActive = wizard.step !== "idle";
+        const uploadDisabled = wizardActive || !!uploadingTaskId || documents.length > 0;
+        const overlayMsg = wizardActive ? null : uploadingTaskId ? "处理中，请稍候..." : documents.length > 0 ? "已有文档，请先点击文档右侧删除按钮删除后再上传" : null;
         return (
           <div
             className={styles.dropzone}
@@ -1033,89 +1159,178 @@ function LibraryDetailPanel({
               e.preventDefault();
               if (uploadDisabled) return;
               const file = e.dataTransfer.files[0];
-              if (file) setPendingFile(file);
+              if (file) startWizard(file);
             }}
           >
             <Upload size={20} color="var(--text-muted)" />
             <span>{overlayMsg ?? "拖拽 PDF / CHM 到此处，或点击选择文件"}</span>
             <input
               ref={fileInputRef} type="file" accept=".pdf,.chm" style={{ display: "none" }}
-              onChange={(e) => { const file = e.target.files?.[0]; if (file) setPendingFile(file); e.target.value = ""; }}
+              onChange={(e) => { const file = e.target.files?.[0]; if (file) startWizard(file); e.target.value = ""; }}
             />
           </div>
         );
       })()}
 
-      {/* Upload confirmation modal */}
-      {pendingFile && (
-        <div className={styles.overlay} onClick={() => setPendingFile(null)}>
-          <div className={styles.modal} style={{ width: 480, maxWidth: "95vw" }} onClick={(e) => e.stopPropagation()}>
+      {/* TOC-driven import wizard modal */}
+      {wizard.step !== "idle" && wizard.step !== "ingesting" && (
+        <div className={styles.overlay} onClick={() => setWizard({ step: "idle" })}>
+          <div className={styles.modal} style={{ width: 560, maxWidth: "95vw" }} onClick={(e) => e.stopPropagation()}>
+
+            {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h2 className={styles.modalTitle} style={{ margin: 0 }}>确认导入设置</h2>
-              <button onClick={() => setPendingFile(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}><X size={16} /></button>
+              <h2 className={styles.modalTitle} style={{ margin: 0 }}>
+                {wizard.step === "uploading" && "上传文件"}
+                {wizard.step === "detecting_toc" && "检测目录页"}
+                {wizard.step === "toc_preview" && "确认目录页范围"}
+                {wizard.step === "analyzing_toc" && "AI 分析目录"}
+                {wizard.step === "section_confirm" && "章节分类确认"}
+              </h2>
+              <button onClick={() => setWizard({ step: "idle" })} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}><X size={16} /></button>
             </div>
 
-            {/* File info */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", marginBottom: 16 }}>
-              <FileText size={16} color="var(--text-muted)" />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingFile.name}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{(pendingFile.size / 1024 / 1024).toFixed(2)} MB</div>
-              </div>
-            </div>
-
-            {/* chunk_type */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                文档内容类型（可选）
-              </label>
-              <select
-                style={{ fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%" }}
-                value={defaultChunkType}
-                onChange={(e) => setDefaultChunkType(e.target.value as ChunkType | "")}
-              >
-                <option value="">— 不标记（混合内容）</option>
-                {CHUNK_TYPES.map((ct) => (
-                  <option key={ct.value} value={ct.value}>{ct.label}：{ct.description}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* page_offset — only for PDF */}
-            {pendingFile.name.toLowerCase().endsWith(".pdf") && (
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                  页码偏移（可选）
-                </label>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input
-                    type="number"
-                    min={0}
-                    value={pageOffset}
-                    onChange={(e) => setPageOffset(Math.max(0, parseInt(e.target.value) || 0))}
-                    style={{ width: 80, fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
-                  />
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
-                    若 PDF 第 N 页对应书籍第 1 页，填 N−1<br />
-                    例：正文从 PDF 第 13 页开始 → 填 12
-                  </span>
-                </div>
+            {/* File info row (shown for most steps) */}
+            {"filename" in wizard && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", marginBottom: 14 }}>
+                <FileText size={15} color="var(--text-muted)" />
+                <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{wizard.filename}</span>
               </div>
             )}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-              <button className={styles.btnSecondary} onClick={() => setPendingFile(null)}>取消</button>
-              <button
-                className={styles.btnPrimary}
-                onClick={() => {
-                  const f = pendingFile;
-                  setPendingFile(null);
-                  handleUpload(f);
-                }}
-              >
-                开始处理
-              </button>
-            </div>
+            {/* uploading / detecting_toc / analyzing_toc: spinner */}
+            {(wizard.step === "uploading" || wizard.step === "detecting_toc" || wizard.step === "analyzing_toc") && (
+              <div style={{ padding: "24px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                <div style={{ marginBottom: 10, fontSize: 20 }}>⏳</div>
+                {wizard.step === "uploading" && "正在上传文件..."}
+                {wizard.step === "detecting_toc" && "正在自动检测目录页..."}
+                {wizard.step === "analyzing_toc" && "AI 正在解析目录结构，请稍候..."}
+              </div>
+            )}
+
+            {/* toc_preview */}
+            {wizard.step === "toc_preview" && (() => {
+              const w = wizard;
+              return (
+                <>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
+                    检测到目录在第 {w.pageStart}–{w.pageEnd} 页。如果不对，可手动调整后重新扫描。
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>页码范围：</span>
+                    <input type="number" min={1} value={w.customStart}
+                      onChange={(e) => setWizard({ ...w, customStart: Math.max(1, parseInt(e.target.value) || 1) })}
+                      style={{ width: 64, fontSize: 13, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }} />
+                    <span style={{ color: "var(--text-muted)" }}>—</span>
+                    <input type="number" min={1} value={w.customEnd}
+                      onChange={(e) => setWizard({ ...w, customEnd: Math.max(1, parseInt(e.target.value) || 1) })}
+                      style={{ width: 64, fontSize: 13, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }} />
+                    <button className={styles.btnSecondary} disabled={w.redetecting}
+                      onClick={() => redetectToc(w.fileId, w.filename, w.fileExt, w.customStart, w.customEnd)}
+                      style={{ fontSize: 12, padding: "4px 10px" }}>
+                      {w.redetecting ? "扫描中..." : "重新扫描"}
+                    </button>
+                  </div>
+                  {w.redetectError && (
+                    <div style={{ marginBottom: 8, padding: "5px 8px", borderRadius: 4, background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>{w.redetectError}</div>
+                  )}
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>目录原文预览：</label>
+                    <pre style={{ maxHeight: 200, overflow: "auto", fontSize: 11, lineHeight: 1.6, padding: "8px 10px", borderRadius: 5, background: "var(--bg)", border: "1px solid var(--border)", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>
+                      {w.tocText || "（未检测到目录文字）"}
+                    </pre>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <button className={styles.btnSecondary} onClick={() => setWizard({ step: "idle" })}>取消</button>
+                    <button className={styles.btnPrimary} disabled={!w.tocText}
+                      onClick={() => analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText)}>
+                      用 AI 分析目录
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* section_confirm */}
+            {wizard.step === "section_confirm" && (() => {
+              const w = wizard;
+              const isPdf = w.fileExt.toLowerCase() === "pdf";
+              return (
+                <>
+                  {w.analyzeError && (
+                    <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 4, background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>
+                      {w.analyzeError}
+                    </div>
+                  )}
+                  {w.sections.length === 0 && !w.analyzeError && (
+                    <div style={{ marginBottom: 10, color: "var(--text-muted)", fontSize: 13 }}>未检测到章节，将按默认方式切块。</div>
+                  )}
+                  {w.sections.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>章节列表（共 {w.sections.length} 个）：</label>
+                      <div style={{ maxHeight: 280, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                              <th style={{ padding: "5px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>章节标题</th>
+                              <th style={{ padding: "5px 8px", textAlign: "center", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>页码</th>
+                              <th style={{ padding: "5px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>内容类型</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {w.sections.map((s, i) => (
+                              <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={{ padding: "5px 8px", paddingLeft: `${8 + (s.depth ?? 0) * 12}px` }}>{s.title}</td>
+                                <td style={{ padding: "5px 8px", textAlign: "center", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                                  {s.page_from}{s.page_to && s.page_to !== s.page_from ? `–${s.page_to}` : ""}
+                                </td>
+                                <td style={{ padding: "5px 4px" }}>
+                                  <select
+                                    style={{ fontSize: 12, padding: "2px 4px", borderRadius: 3, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%" }}
+                                    value={s.chunk_type}
+                                    onChange={(e) => {
+                                      const updated = [...w.sections];
+                                      updated[i] = { ...s, chunk_type: e.target.value as ChunkType | "" };
+                                      setWizard({ ...w, sections: updated });
+                                    }}
+                                  >
+                                    <option value="">— 混合</option>
+                                    {CHUNK_TYPES.map((ct) => (
+                                      <option key={ct.value} value={ct.value}>{ct.label}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {isPdf && (
+                    <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                      <label style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>页码偏移：</label>
+                      <input
+                        type="number" min={0}
+                        value={w.pageOffset}
+                        onChange={(e) => setWizard({ ...w, pageOffset: Math.max(0, parseInt(e.target.value) || 0) })}
+                        style={{ width: 72, fontSize: 13, padding: "5px 7px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+                      />
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                        正文从 PDF 第 N 页开始 → 填 N−1
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <button className={styles.btnSecondary} onClick={() => setWizard({ step: "idle" })}>取消</button>
+                    <button className={styles.btnPrimary}
+                      onClick={() => startIngest(w.fileId, w.sections, w.pageOffset)}>
+                      开始导入
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+
           </div>
         </div>
       )}

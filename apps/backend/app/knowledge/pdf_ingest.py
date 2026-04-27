@@ -52,8 +52,9 @@ async def run_ingest(
     embedder: Any,  # object with .embed(texts: list[str]) -> list[list[float]]
     embedding_snapshot: dict,  # {profile_id, provider_type, model_name, dimensions}
     progress_callback=None,  # async callable(step: int, label: str, status: str)
-    default_chunk_type: str = "",  # ChunkType value to tag all chunks in this document
+    default_chunk_type: str = "",  # ChunkType value to tag all chunks (used when no toc_mapping)
     page_offset: int = 0,  # subtract from PDF page numbers to get logical page numbers (TOC alignment)
+    toc_mapping: list[dict] | None = None,  # [{title, page_from, page_to, chunk_type}] from user-confirmed TOC
 ) -> dict:
     """
     Run the full 8-step ingest pipeline.
@@ -150,25 +151,52 @@ async def run_ingest(
     chunk_dicts = []
 
     # Convert PDF page numbers to logical (TOC-aligned) page numbers.
-    # page_offset = (PDF page number of book's "page 1") - 1
-    # e.g. if book's page 1 is PDF page 13, offset=12 → logical page = PDF page - 12
     def _logical(pdf_page: int) -> int:
         if parse_quality == "scanned_fallback" or pdf_page < 0:
             return -1
         lp = pdf_page - page_offset
-        return lp if lp > 0 else pdf_page  # don't go ≤ 0; fall back to raw if offset is wrong
+        return lp if lp > 0 else pdf_page
+
+    # Build a sorted toc_mapping list for fast lookup
+    _sorted_toc: list[tuple[int, int, str]] = []  # (page_from, page_to, chunk_type)
+    if toc_mapping:
+        for m in toc_mapping:
+            pf = m.get("page_from", 0)
+            pt = m.get("page_to", 99999)
+            ct = m.get("chunk_type", "") or ""
+            _sorted_toc.append((pf, pt, ct))
+        _sorted_toc.sort(key=lambda x: x[0])
+
+    def _chunk_type_for(logical_page: int) -> str:
+        """Return chunk_type from TOC mapping for a given logical page number."""
+        if not _sorted_toc:
+            return default_chunk_type
+        if logical_page <= 0:
+            return default_chunk_type
+        # Find the last section whose page_from <= logical_page <= page_to
+        result = default_chunk_type
+        for pf, pt, ct in _sorted_toc:
+            if pf <= logical_page:
+                if logical_page <= pt:
+                    result = ct
+                # continue — later entries with higher pf may be more specific
+            else:
+                break
+        return result
 
     for i, (rc, vec) in enumerate(zip(raw_chunks, vectors)):
         cid = f"chunk_{uuid.uuid4().hex[:16]}"
+        logical_page = _logical(rc.page_from)
+        chunk_type = _chunk_type_for(logical_page)
         chunk_records.append({
             "chunk_id": cid,
             "document_id": document_id,
             "library_id": library_id,
             "content": rc.content,
-            "page_from": _logical(rc.page_from),
+            "page_from": logical_page,
             "page_to": _logical(rc.page_to),
             "section_title": rc.section_title or "",
-            "chunk_type": default_chunk_type,
+            "chunk_type": chunk_type,
             "vector": vec,
         })
         chunk_dicts.append({
@@ -177,12 +205,12 @@ async def run_ingest(
             "chunk_index": rc.chunk_index,
             "content": rc.content,
             "embedding_ref": cid,
-            "page_from": _logical(rc.page_from),
+            "page_from": logical_page,
             "page_to": _logical(rc.page_to),
             "section_title": rc.section_title,
             "char_count": rc.char_count,
             "metadata": {
-                "chunk_type": default_chunk_type or None,
+                "chunk_type": chunk_type or None,
                 "parse_quality": parse_quality,
                 "has_table": False,
                 "has_multi_column": False,

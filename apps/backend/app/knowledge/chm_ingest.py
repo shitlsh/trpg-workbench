@@ -137,6 +137,7 @@ async def run_ingest(
     progress_callback=None,
     default_chunk_type: str = "",
     page_offset: int = 0,  # not commonly used for CHM but kept for API parity
+    toc_mapping: list[dict] | None = None,  # [{title, page_from, page_to, chunk_type}]
 ) -> dict:
     """Run the full 8-step CHM ingest pipeline."""
 
@@ -219,17 +220,37 @@ async def run_ingest(
         lp = file_page - page_offset
         return lp if lp > 0 else file_page
 
+    # Build sorted TOC mapping for chunk_type lookup
+    _sorted_toc: list[tuple[int, int, str]] = []
+    if toc_mapping:
+        for m in toc_mapping:
+            _sorted_toc.append((m.get("page_from", 0), m.get("page_to", 99999), m.get("chunk_type", "") or ""))
+        _sorted_toc.sort(key=lambda x: x[0])
+
+    def _chunk_type_for(page: int) -> str:
+        if not _sorted_toc or page <= 0:
+            return default_chunk_type
+        result = default_chunk_type
+        for pf, pt, ct in _sorted_toc:
+            if pf <= page <= pt:
+                result = ct
+            elif pf > page:
+                break
+        return result
+
     for i, (rc, vec) in enumerate(zip(raw_chunks, vectors)):
         cid = f"chunk_{uuid.uuid4().hex[:16]}"
+        lp = _logical(rc.page_from)
+        chunk_type = _chunk_type_for(lp)
         chunk_records.append({
             "chunk_id": cid,
             "document_id": document_id,
             "library_id": library_id,
             "content": rc.content,
-            "page_from": _logical(rc.page_from),
+            "page_from": lp,
             "page_to": _logical(rc.page_to),
             "section_title": rc.section_title or "",
-            "chunk_type": default_chunk_type,
+            "chunk_type": chunk_type,
             "vector": vec,
         })
         chunk_dicts.append({
@@ -237,11 +258,12 @@ async def run_ingest(
             "chunk_index": rc.chunk_index,
             "content": rc.content,
             "embedding_ref": cid,
-            "page_from": _logical(rc.page_from),
+            "page_from": lp,
             "page_to": _logical(rc.page_to),
             "section_title": rc.section_title,
             "char_count": rc.char_count,
             "metadata": {
+                "chunk_type": chunk_type or None,
                 "has_table": False,
                 "has_multi_column": False,
                 "parse_quality": parse_quality,

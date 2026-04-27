@@ -231,6 +231,55 @@ export interface CreateKnowledgeLibraryRequest {
   rule_set_id: string;
 }
 
+// ─── TOC-driven ingest preview flow (M24 B2 revision) ────────────────────────
+
+/** Temporary upload result — file held server-side pending TOC confirmation. */
+export interface UploadPreviewResult {
+  file_id: string;
+  filename: string;
+  file_ext: string;       // ".pdf" | ".chm"
+  size_bytes: number;
+}
+
+/** Raw TOC page detection result (before LLM analysis). */
+export interface TocDetectResult {
+  toc_text: string;       // raw extracted text from the detected/specified pages
+  page_start: number;     // PDF page number (1-indexed)
+  page_end: number;
+  is_structural: boolean; // true for CHM (skip analyze step, use sections directly)
+  sections?: TocSection[]; // populated when is_structural=true
+}
+
+/** A single section entry as parsed from the TOC by the LLM (or CHM structure). */
+export interface TocSection {
+  title: string;
+  page_from: number;      // book page number from TOC listing (before page_offset applied)
+  page_to: number | null; // null = inferred from next section start
+  depth: number;          // 1 = top-level chapter, 2 = sub-section
+  suggested_chunk_type: ChunkType | null;
+}
+
+/** LLM analysis result for a TOC. */
+export interface TocAnalysisResult {
+  sections: TocSection[];
+}
+
+/** Confirmed section→chunk_type mapping sent when starting real ingest. */
+export interface TocMapping {
+  title: string;
+  page_from: number;
+  page_to: number;
+  chunk_type: ChunkType | "";
+}
+
+/** Request body for the confirmed ingest endpoint. */
+export interface IngestConfirmedRequest {
+  file_id: string;
+  embedding_profile_id: string;
+  page_offset: number;
+  toc_mapping: TocMapping[];
+}
+
 export type ParseStatus =
   | "pending"
   | "running"
