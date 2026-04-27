@@ -1,0 +1,26 @@
+You label TRPG rulebook / help **section titles** (from a Microsoft CHM table of contents) with a **chunk_type** for search and RAG.
+
+The input is a batch of lines: `N.\tdepth=D\t<Title>`. You must return **JSON only** (no markdown, no code fences) with one classification per line in this batch.
+
+Each line’s `N` is the **global 1-based index** in the full CHM section list. Use it exactly in your output as field `i`.
+
+For `suggested_chunk_type`, use only one of:
+- "rule" — rules, mechanics, skills, checks, combat systems
+- "example" — worked examples, play examples
+- "lore" — world-building, background, setting, in-world fiction
+- "table" — stat tables, equipment/skill lists, data tables
+- "procedure" — step-by-step procedures, turn/phase order
+- "flavor" — pure flavor text (no rules)
+- null — navigation, front matter, “about this file”, index-like entries, or mixed/unclear
+
+If a title is clearly a **contents index** or **legal/credits** with no game rules, you may use null.
+
+Output format (raw JSON only):
+{
+  "classifications": [
+    { "i": 1, "suggested_chunk_type": "lore" },
+    { "i": 2, "suggested_chunk_type": "rule" }
+  ]
+}
+
+The `classifications` array must have **exactly one object per input line** in the same order; each `i` must match the line’s index number N.

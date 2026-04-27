@@ -874,6 +874,8 @@ function LibraryDetailPanel({
     | { step: "ingesting" };
 
   const [wizard, setWizard] = useState<WizardState>({ step: "idle" });
+  const [chmLlm, setChmLlm] = useState({ profileId: "", model: "" });
+  const [chmClassifying, setChmClassifying] = useState(false);
 
   const { data: embeddingProfiles = [] } = useQuery({
     queryKey: ["embedding-profiles"],
@@ -889,12 +891,23 @@ function LibraryDetailPanel({
   const wizardLlmProfileId = wizard.step === "select_llm" ? wizard.llmProfileId : null;
   const { models: wizardProbedModels } = useModelList(wizardLlmProfileId);
   const wizardLlmProfile = llmProfilesForUpload.find((p) => p.id === wizardLlmProfileId);
+  const chmSectionLlmId = wizard.step === "section_confirm" && wizard.fileExt.toLowerCase().endsWith("chm")
+    ? chmLlm.profileId
+    : null;
+  const { models: chmProbedModels } = useModelList(chmSectionLlmId);
+  const chmSectionLlmProfile = llmProfilesForUpload.find((p) => p.id === chmLlm.profileId);
 
   const { data: documents = [] } = useQuery({
     queryKey: ["knowledge", "documents", library.id],
     queryFn: () => apiFetch<KnowledgeDocument[]>(`/knowledge/libraries/${library.id}/documents`),
     refetchInterval: uploadingTaskId ? 3000 : false,
   });
+
+  useEffect(() => {
+    if (wizard.step === "section_confirm" && wizard.fileExt.toLowerCase().endsWith("chm") && llmProfilesForUpload.length) {
+      setChmLlm((prev) => (prev.profileId ? prev : { profileId: llmProfilesForUpload[0]!.id, model: "" }));
+    }
+  }, [wizard, llmProfilesForUpload]);
 
   const activeTask = useTaskProgress(uploadingTaskId);
   if (activeTask?.status === "completed" || activeTask?.status === "failed") {
@@ -930,6 +943,8 @@ function LibraryDetailPanel({
 
   async function startWizard(file: File) {
     setUploadError(null);
+    setChmLlm({ profileId: "", model: "" });
+    setChmClassifying(false);
     setWizard({ step: "uploading" });
     try {
       // Step 1: upload to preview endpoint
@@ -1030,7 +1045,52 @@ function LibraryDetailPanel({
         analyzeError: e instanceof Error ? e.message : String(e),
       });
     }
-  }  async function startIngest(fileId: string, sections: TocSectionState[], pageOffset: number) {
+  }
+
+  async function classifyChmToc(fileId: string) {
+    if (wizard.step !== "section_confirm") return;
+    const w = wizard;
+    const profileId = chmLlm.profileId || llmProfilesForUpload[0]?.id;
+    if (!profileId) {
+      setUploadError("请先在模型配置中添加 LLM 模型");
+      return;
+    }
+    setChmClassifying(true);
+    setUploadError(null);
+    try {
+      const res = await apiPostSSE<{ sections: TocSectionState[] }>(
+        `/knowledge/documents/preview/${fileId}/classify-chm-sections`,
+        { llm_profile_id: profileId, llm_model_name: chmLlm.model || undefined },
+      );
+      const rows = (res as { sections?: unknown[] }).sections ?? [];
+      setWizard({
+        step: "section_confirm",
+        fileId: w.fileId,
+        filename: w.filename,
+        fileExt: w.fileExt,
+        sections: rows.map((s) => {
+          const r = s as Record<string, unknown>;
+          const rawCt = (r.suggested_chunk_type ?? r.chunk_type ?? "") as string;
+          const ct = rawCt && CHUNK_TYPES.some((c) => c.value === rawCt) ? (rawCt as ChunkType) : ("" as const);
+          return {
+            title: String(r.title ?? ""),
+            page_from: Number(r.page_from ?? 0),
+            page_to: Number(r.page_to ?? 0),
+            depth: Number(r.depth ?? 1),
+            chunk_type: ct,
+          };
+        }),
+        pageOffset: w.pageOffset,
+        analyzeError: "",
+      });
+    } catch (e) {
+      setWizard({ ...w, analyzeError: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setChmClassifying(false);
+    }
+  }
+
+  async function startIngest(fileId: string, sections: TocSectionState[], pageOffset: number) {
     const profileId = selectedEmbeddingId || embeddingProfiles[0]?.id;
     if (!profileId) {
       setUploadError("请先在模型配置中添加 Embedding 模型");
@@ -1197,13 +1257,14 @@ function LibraryDetailPanel({
               </div>
             )}
 
-            {/* uploading / detecting_toc / analyzing_toc: spinner */}
-            {(wizard.step === "uploading" || wizard.step === "detecting_toc" || wizard.step === "analyzing_toc") && (
+            {/* uploading / detecting_toc / analyzing_toc / chm classifying: spinner */}
+            {(wizard.step === "uploading" || wizard.step === "detecting_toc" || wizard.step === "analyzing_toc" || (chmClassifying && wizard.step === "section_confirm")) && (
               <div style={{ padding: "24px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
                 <div style={{ marginBottom: 10, fontSize: 20 }}>⏳</div>
                 {wizard.step === "uploading" && "正在上传文件..."}
                 {wizard.step === "detecting_toc" && "正在自动检测目录页..."}
                 {wizard.step === "analyzing_toc" && "AI 正在解析目录结构，请稍候..."}
+                {chmClassifying && wizard.step === "section_confirm" && "CHM：AI 正在为浅层目录建议内容类型，大文件可能需数分钟…"}
               </div>
             )}
 
@@ -1305,14 +1366,52 @@ function LibraryDetailPanel({
             })()}
 
             {/* section_confirm */}
-            {wizard.step === "section_confirm" && (() => {
+            {wizard.step === "section_confirm" && !chmClassifying && (() => {
               const w = wizard;
               const isPdf = w.fileExt.toLowerCase() === "pdf";
+              const isChm = w.fileExt.toLowerCase().endsWith("chm");
               return (
                 <>
                   {w.analyzeError && (
                     <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 4, background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>
                       {w.analyzeError}
+                    </div>
+                  )}
+                  {isChm && (
+                    <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)" }}>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.65, marginBottom: 10 }}>
+                        CHM 已内嵌完整目录，因此不会走「抽目录页 → AI 重解析」流程。你仍可用下方让 AI
+                        为<strong>浅层</strong>目录项（默认 depth≤2，约一两百项）建议「内容类型」；更深层会按目录树
+                        继承。不会合并或删减章节，仅填写类型。
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                        <select
+                          value={chmLlm.profileId}
+                          onChange={(e) => setChmLlm({ ...chmLlm, profileId: e.target.value })}
+                          style={{ fontSize: 13, padding: "5px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", minWidth: 180 }}
+                        >
+                          {llmProfilesForUpload.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name} ({p.provider_type})</option>
+                          ))}
+                        </select>
+                        <ModelNameInput
+                          catalog="llm"
+                          providerType={chmSectionLlmProfile?.provider_type ?? ""}
+                          value={chmLlm.model}
+                          onChange={(v) => setChmLlm({ ...chmLlm, model: v })}
+                          fetchedModels={chmProbedModels}
+                          placeholder="模型（可留空）"
+                        />
+                        <button
+                          type="button"
+                          className={styles.btnPrimary}
+                          disabled={!chmLlm.profileId}
+                          onClick={() => classifyChmToc(w.fileId)}
+                          style={{ fontSize: 12, padding: "5px 12px" }}
+                        >
+                          AI 建议各节内容类型
+                        </button>
+                      </div>
                     </div>
                   )}
                   {w.sections.length === 0 && !w.analyzeError && (

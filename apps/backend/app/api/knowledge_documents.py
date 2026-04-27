@@ -329,8 +329,9 @@ class DetectTocRequest(BaseModel):
 async def detect_toc(file_id: str, body: DetectTocRequest = Body(default=DetectTocRequest())):
     """Auto-detect TOC pages in a PDF, or extract the specified page range.
 
-    For CHM files, returns the embedded directory structure directly
-    (is_structural=true) — no further LLM analysis step needed.
+    For CHM files, returns the embedded HHC structure (is_structural=true) and
+    skips the PDF "TOC text → LLM" flow. Use POST .../classify-chm-sections
+    to let the LLM fill chunk_type (shallow rows + inherit for deep entries).
     """
     entry = _get_temp(file_id)
     file_path = Path(entry["path"])
@@ -460,6 +461,93 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
                 elapsed += 10
 
         yield _doc_sse("error", {"message": "TOC analysis timed out (300s). Try a faster model."})
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# ── 3b. CHM: LLM suggest chunk_type (shallow rows + depth inherit) ───────────
+
+class ClassifyChmRequest(BaseModel):
+    llm_profile_id: str
+    llm_model_name: str = ""
+    max_classify_depth: int = 2  # only LLM-label depth ≤ this; deeper rows inherit in tree order
+
+
+@router3.post("/preview/{file_id}/classify-chm-sections")
+async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Session = Depends(get_db)):
+    """Re-read CHM from temp storage, run batched LLM on shallow TOC rows, return sections with types.
+
+    SSE: `event: result` with `{sections: [...]}` (same shape as detect-toc for CHM).
+    """
+    entry = _get_temp(file_id)
+    if entry["ext"] != ".chm":
+        raise HTTPException(status_code=400, detail="Only .chm preview uploads can use this endpoint")
+    file_path = Path(entry["path"])
+
+    from app.knowledge.toc_extractor import extract_chm_toc_sync
+    from app.knowledge.toc_analyzer import chm_structure_to_sections, assign_chm_section_chunk_types
+    from app.models.orm import LLMProfileORM
+
+    try:
+        raw_items = await asyncio.to_thread(extract_chm_toc_sync, file_path)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"CHM TOC extraction failed: {e}")
+
+    sections_orm = chm_structure_to_sections(raw_items)
+    profile = db.get(LLMProfileORM, body.llm_profile_id)
+    if not profile:
+        profile = db.query(LLMProfileORM).first()
+    if not profile:
+        async def _no_profile():
+            yield _doc_sse("error", {"message": "No LLM profile configured.", "error_type": "ModelNotConfiguredError"})
+
+        return StreamingResponse(_no_profile(), media_type="text/event-stream")
+
+    def _run():
+        return assign_chm_section_chunk_types(
+            sections_orm,
+            profile,
+            body.llm_model_name,
+            max_classify_depth=body.max_classify_depth,
+        )
+
+    async def _stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _produce():
+            try:
+                done = await asyncio.to_thread(_run)
+                rows = [
+                    {
+                        "title": s.title,
+                        "page_from": s.page_from,
+                        "page_to": s.page_to,
+                        "depth": s.depth,
+                        "suggested_chunk_type": s.suggested_chunk_type,
+                    }
+                    for s in done
+                ]
+                await queue.put(("result", rows))
+            except Exception as exc:
+                await queue.put(("error", str(exc)))
+
+        asyncio.create_task(_produce())
+
+        deadline = 600
+        elapsed = 0
+        while elapsed < deadline:
+            try:
+                kind, payload = await asyncio.wait_for(queue.get(), timeout=10.0)
+                if kind == "result":
+                    yield _doc_sse("result", {"sections": payload})
+                else:
+                    yield _doc_sse("error", {"message": payload})
+                return
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                elapsed += 10
+
+        yield _doc_sse("error", {"message": "CHM classification timed out (600s). Try a faster model or lower max_classify_depth."})
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
 

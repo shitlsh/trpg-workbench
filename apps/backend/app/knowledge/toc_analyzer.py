@@ -151,3 +151,118 @@ def chm_structure_to_sections(raw_items: list[dict]) -> list[TocSection]:
             suggested_chunk_type=None,  # user must classify
         ))
     return sections
+
+
+# ─── CHM: LLM chunk_type for shallow rows + tree inherit for deep rows ───────
+
+CHM_CLASSIFY_MAX_DEPTH = 2
+CHM_CLASSIFY_BATCH = 50
+
+
+def _inherit_chm_chunk_types(
+    sections: list[TocSection],
+    anchor_types: dict[int, str | None],
+) -> list[TocSection]:
+    """Pre-order walk: unindexed rows inherit `suggested_chunk_type` from the nearest open parent."""
+    stack: list[tuple[int, str | None]] = []
+    filled: list[str | None] = []
+    for i, s in enumerate(sections):
+        d = s.depth
+        while stack and stack[-1][0] >= d:
+            stack.pop()
+        if i in anchor_types:
+            t = anchor_types[i]
+        else:
+            t = stack[-1][1] if stack else None
+        filled.append(t)
+        stack.append((d, t))
+    return [
+        TocSection(
+            s.title,
+            s.page_from,
+            s.page_to,
+            s.depth,
+            (filled[i] if filled[i] is not None else s.suggested_chunk_type),
+        )
+        for i, s in enumerate(sections)
+    ]
+
+
+def assign_chm_section_chunk_types(
+    sections: list[TocSection],
+    llm_profile,
+    model_name: str,
+    *,
+    max_classify_depth: int = CHM_CLASSIFY_MAX_DEPTH,
+) -> list[TocSection]:
+    """Label CHM sections with `suggested_chunk_type` using LLM on shallow nodes (depth ≤ max);
+    deeper nodes inherit from parent chain in the flat HHC order.
+
+    Large CHMs (thousands of leaves) are handled by classifying only the top
+    `max_classify_depth` levels — typically a few hundred calls at most.
+    """
+    if not sections:
+        return []
+    to_label_idx = [i for i, s in enumerate(sections) if s.depth <= max_classify_depth]
+    if not to_label_idx:
+        return list(sections)
+
+    try:
+        from agno.agent import Agent
+    except Exception as e:
+        raise RuntimeError(f"agno is required for CHM classification: {e}") from e
+
+    model = model_from_profile(llm_profile, model_name or "")
+    system_prompt = load_prompt("toc_analyzer", "chm_classify_system")
+    valid = {"rule", "example", "lore", "table", "procedure", "flavor"}
+    n = len(sections)
+    anchor: dict[int, str | None] = {}
+
+    for batch_start in range(0, len(to_label_idx), CHM_CLASSIFY_BATCH):
+        batch_idx = to_label_idx[batch_start : batch_start + CHM_CLASSIFY_BATCH]
+        lines = "\n".join(
+            f"{i + 1}.\tdepth={sections[i].depth}\t{sections[i].title}"
+            for i in batch_idx
+        )
+        user_message = (
+            f"Total sections: {n}. This batch has {len(batch_idx)} lines; indices are global.\n\n" + lines
+        )
+        agent = Agent(model=model, instructions=[system_prompt], markdown=False)
+        try:
+            response = agent.run(user_message)
+            raw = strip_code_fence(
+                response.content if hasattr(response, "content") else str(response)
+            )
+        except Exception as e:
+            raise RuntimeError(f"LLM call for CHM chunk classification failed: {e}") from e
+        raw = raw.strip()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                data = json.loads(m.group())
+            else:
+                raise RuntimeError(f"CHM classifier returned non-JSON: {raw[:400]}")
+
+        classifs = data.get("classifications", [])
+        if not isinstance(classifs, list):
+            raise RuntimeError("CHM classifier: missing 'classifications' array")
+
+        for j, bi in enumerate(batch_idx):
+            item = classifs[j] if j < len(classifs) and isinstance(classifs[j], dict) else {}
+            if isinstance(item, dict) and item.get("i") is not None:
+                idx = int(item["i"]) - 1
+            else:
+                idx = bi
+            if idx < 0 or idx >= n:
+                idx = bi
+            ct = item.get("suggested_chunk_type") if isinstance(item, dict) else None
+            if ct in (None, "null", ""):
+                anchor[idx] = None
+            elif isinstance(ct, str) and ct in valid:
+                anchor[idx] = ct
+            else:
+                anchor[idx] = None
+
+    return _inherit_chm_chunk_types(sections, anchor)
