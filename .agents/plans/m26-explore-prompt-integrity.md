@@ -14,7 +14,7 @@
 |------|------|-----------|
 | **1 — 优先** | 所有 **仍内联 / 未规范** 的 prompt **迁出**或收编、**统一中文化**、**A3** P0、**A5** 清理、**A7.1–A7.2**、**A4**（含 A4.2 TOC 双文件 + user 模板；consistency/skill user 英文见 A7 §4） | 地基先干净 |
 | **2** | **A1** Explore 子 Agent、**A2** Director 边界、前端 `agent_scope`、**chat** 中按 scope 分流的非 prompt 逻辑 | 产品能力 |
-| **3** | **A6** skill/架构文档、**A7.3**（pdf-knowledge skill 更新）、验收扫尾；**内建 Help 全文不纳入本阶段**（待系统再稳定后**统一重建** `apps/desktop/src/help/`，见「非目标」） | 文档与闭环 |
+| **3** | **A6** skill/架构文档、**A7.3**（`knowledge-library-ingest` skill）、验收扫尾；**内建 Help 全文不纳入本阶段**（待系统再稳定后**统一重建** `apps/desktop/src/help/`，见「非目标」） | 文档与闭环 |
 
 > 若资源紧缺：**不得**裁掉阶段 1 去赶阶段 2；阶段 1 可拆多 PR，但**顺序**保持「先迁出、再 Explore」。
 
@@ -184,7 +184,7 @@ apps/desktop/... (chat 会话创建)                     # agent_scope UI
 
 ### A7：skill 补充（A7.3）
 
-- [ ] **A7.3**：若需，在 [pdf-knowledge-ingestion/SKILL.md](.agents/skills/pdf-knowledge-ingestion/SKILL.md) 增加一句「`system` = PDF 目录 / `chm_classify_system` = CHM 目录」。
+- [x] **A7.3**：[knowledge-library-ingest/SKILL.md](.agents/skills/knowledge-library-ingest/SKILL.md) 已整篇覆盖 PDF/CHM 与 `toc_analyzer` 双轨提示词（`system` + `user_pdf` 对印刷目录；`chm_classify_system` + `user_chm_batch` 对 CHM HHC）。
 
 ---
 
