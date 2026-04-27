@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路已通过 M1–M25 全部完成。
+核心功能链路已通过 M1–M25；**M26 进行中**（见下表）。
 
 ```
 ✅ M1 基础骨架
@@ -30,7 +30,8 @@
                                                                                                                                                                     └── ✅ M22 规则集 UX 打磨
                                                                                                                                                                            └── ✅ M23 Agent 澄清问题机制
                                                                                                                                                                                    ├── ✅ M24 知识库检索质量提升
-                                                                                                                                                                                   └── ✅ M25 LLM Profile 字段瘦身
+                                                                                                                                                                                   ├── ✅ M25 LLM Profile 字段瘦身
+                                                                                                                                                                                   └── M26 探索子 Agent 与 Prompt 体系统一
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -76,6 +77,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
+| M26 | 探索子 Agent 与 Prompt 体系统一 | 落地只读 Explore + 会话分流；**统一中文化**（含 **PDF/CHM 两套 TOC prompt**）；P0、死 prompt、`prompts` 规范；聊天摘要等；不恢复旧顺序主链；用量见 plan B1 | [m26-explore-prompt-integrity.md](m26-explore-prompt-integrity.md) |
 
 ---
 
