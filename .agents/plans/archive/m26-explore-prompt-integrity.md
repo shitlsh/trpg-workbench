@@ -2,7 +2,7 @@
 
 **前置条件**：M25 完成（LLM Profile 与聊天、模型选择基础稳定；M20 子 Agent 工具委托与 Director 流式聊天已存在）。
 
-**状态：✅ 已完成（2026-04-27）**
+**状态：✅ 已完成（2026-04-27，commit f06de12）**
 
 **目标**：以**类 vibe coding** 的「先逛后写」为目标，落地**只读探索子 Agent（Explore）** 与独立中文 system，减轻「全揉在 Director 里」的创作偏置；同步完成 **P0 契约**、**全栈 prompt 统一中文化**（含 Rules/Consistency/Skill、**PDF 与 CHM 两条 TOC 线**、散落任务句）、**死 prompt 清理**与**注册表文档纠偏**；并补齐 **聊天历史摘要** 的 `prompts/` 化与 **PromptProfile 生成** 复查。**不**在本 milestone 承诺通用 LLM 埋点落库（见 B1）。不恢复已否定的旧顺序多 Agent 主创作链。
 
