@@ -65,8 +65,9 @@ def model_from_profile(profile, model_name: str) -> Any:
 
     elif provider == "openai_compatible":
         kwargs = {"id": model_name}
-        if api_key:
-            kwargs["api_key"] = api_key
+        # Local/compatible endpoints don't require a real key, but the OpenAI client
+        # will raise if neither api_key kwarg nor OPENAI_API_KEY env var is present.
+        kwargs["api_key"] = api_key or "local"
         if base_url:
             kwargs["base_url"] = base_url
         return OpenAIChat(**kwargs)
