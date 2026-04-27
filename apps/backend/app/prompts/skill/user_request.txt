@@ -1,0 +1,6 @@
+用户请求：{user_intent}
+规则集：{rule_set}
+
+{knowledge_block}
+
+请根据以上信息生成一份 Skill（规范见 system 说明）。

@@ -26,6 +26,7 @@ from app.services.model_routing import get_llm_for_task, ModelNotConfiguredError
 from app.services.llm_defaults import task_temperature
 from app.agents.model_adapter import model_from_profile
 from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
+from app.prompts import load_prompt
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -61,16 +62,11 @@ async def _summarize_dropped_messages(
             lines.append(f"{role}: {content}")
         transcript = "\n".join(lines)
 
+        summary_system = load_prompt("chat", "summary_system")
         resp = await client.chat.completions.create(
             model=model_name,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "用一两句中文（不超过150字）概括以下对话历史的要点，"
-                        "供后续对话参考。只输出摘要，不加任何前缀或解释。"
-                    ),
-                },
+                {"role": "system", "content": summary_system},
                 {"role": "user", "content": transcript},
             ],
             max_tokens=150,

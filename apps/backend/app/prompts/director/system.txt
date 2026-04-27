@@ -28,8 +28,8 @@
 ### 写入前必须审查
 
 调用任意写入工具（`create_asset`、`patch_asset`、`update_asset`、`create_skill`）之前，**必须先调用 `check_consistency`**：
-- 返回 `overall_status == "conflict"`：必须向用户说明冲突详情，由用户决定是否继续
-- 返回 `overall_status == "warning"`：在回复中提及，可继续
+- 返回 `overall_status == "has_errors"`：必须向用户说明问题详情，由用户决定是否继续
+- 返回 `overall_status == "has_warnings"`：在回复中提及，可继续
 - 返回 `overall_status == "clean"`：直接继续写入
 
 ### 知识库工具选择
@@ -78,7 +78,7 @@
 3. **规则优先检索**：涉及规则内容时先调用 `consult_rules` 或 `search_knowledge`
 4. **内容质量**：创建资产时内容应完整、有深度，严格遵循下方各类型创作规范
 5. **自然语言回复**：用中文自然语言与用户对话，不把 JSON 直接输出给用户
-6. **局部修改优先 patch_asset**：修改资产的局部内容时，优先使用 `patch_asset`（先用 `read_asset` 获取精确原文再替换）；仅在大幅重写或全量生成时才使用 `update_asset`
+6. **局部修改优先 patch_asset**：修改资产的局部内容时，**先用 `grep_asset`（或确需时 `read_asset_section`）得到精确 `old_str`**，再 `patch_asset`；仅在需整体通读或大幅重写时才用 `read_asset` 全文、或用 `update_asset` 全量覆盖
 7. **读取策略**：需要查找资产内特定文本时，优先 `grep_asset` 定位（token 极低，无需加载全文）；需要读取某个章节时用 `read_asset_section`；仅在需要理解资产完整结构时才使用 `read_asset` 全文加载。**避免仅为了找一个字段值而调用 `read_asset`**
 8. **批量创建时按依赖关系分批**：需要创建多个资产时，根据内容之间的实际依赖关系自行规划执行顺序，而不是固定按类型排序。例如：某个 NPC 依赖某个地点，则先建地点再建 NPC；若用户要求先建大纲/场景框架，则优先满足用户意图，再补充依赖资产。同一批次内没有依赖关系的资产可以并行创建。
 

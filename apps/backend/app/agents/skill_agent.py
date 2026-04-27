@@ -27,13 +27,19 @@ def run_skill_agent(
 
     agent = Agent(model=model, instructions=[load_prompt("skill", "system")], markdown=False)
 
-    ctx = json.dumps(knowledge_context[:5], ensure_ascii=False) if knowledge_context else "None"
+    if knowledge_context:
+        ctx_json = json.dumps(knowledge_context[:5], ensure_ascii=False, indent=2)
+        knowledge_block = load_prompt("_shared", "rag_injection", knowledge_context=ctx_json)
+    else:
+        knowledge_block = "（当前无知识库参考片段。）"
 
-    prompt = f"""User request: {user_intent}
-Rule set: {workspace_context.get('rule_set', 'unknown')}
-Knowledge context: {ctx}
-
-Generate a Skill based on the user's request."""
+    prompt = load_prompt(
+        "skill",
+        "user_request",
+        user_intent=user_intent,
+        rule_set=workspace_context.get("rule_set", "unknown"),
+        knowledge_block=knowledge_block,
+    )
 
     response = agent.run(prompt)
     text = strip_code_fence(response.content if hasattr(response, "content") else str(response))

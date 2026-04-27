@@ -22,10 +22,11 @@ def build_director(model, workspace_context: dict, db, temperature: float = 0.7)
 
     system_prompt = load_prompt("director", "system")
 
-    # Inject style_prompt if present
+    # Inject style_prompt if present (template in prompts/_shared/style_prefix.txt)
     style = workspace_context.get("style_prompt")
     if style:
-        system_prompt = f"[创作风格约束]\n{style}\n\n{system_prompt}"
+        prefix = load_prompt("_shared", "style_prefix", style_prompt=style)
+        system_prompt = f"{prefix}\n\n{system_prompt}"
 
     # Inject workspace snapshot so model doesn't need to call read_config/list_assets
     snapshot = _build_workspace_snapshot(workspace_context)
