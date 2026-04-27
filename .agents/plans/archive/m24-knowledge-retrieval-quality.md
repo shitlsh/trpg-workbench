@@ -2,7 +2,7 @@
 
 **前置条件**：M23 完成（Agent 澄清问题机制可用，Agent 工具链稳定）。
 
-**状态：🔄 进行中（A 类已完成 commit 61ccd48，B 类补充实现中）**
+**状态：✅ 已完成（commit ba459a8，A 类 + B 类全部实现）**
 
 **目标**：将 `library.type` 从无效装饰字段替换为 chunk 级类型标签，修复 chunker 切割边界，将 top_k 和 rerank 配置化，使知识库检索质量和 Agent 检索行为对用户真正透明。
 
@@ -178,26 +178,26 @@ if not results and chunk_types:
 
 ### B1：CHM 格式支持
 
-- [ ] **B1.1**：安装 `pychmlib` 依赖（`requirements.txt`）
-- [ ] **B1.2**：`apps/backend/app/knowledge/chm_ingest.py` — 新建，实现 `run_chm_ingest()`，提取 CHM 目录结构 + HTML 页面文本，复用 chunker + vector_index
-- [ ] **B1.3**：`api/knowledge_documents.py` — 上传 endpoint 支持 `.chm` 文件，路由到 `run_chm_ingest()`
-- [ ] **B1.4**：前端 `RuleSetPage.tsx` — dropzone 的 `accept` 属性增加 `.chm`
+- [x] **B1.1**：`requirements.txt` 加 `pychmlib` 依赖（实现偏差：pychmlib 在 macOS/PyPI 均不可用，改用系统工具 `extract_chmLib`（chmlib），通过 subprocess 调用，无需 Python 依赖；requirements.txt 未修改）
+- [x] **B1.2**：`apps/backend/app/knowledge/chm_ingest.py` — 新建，实现 `run_ingest()`，提取 CHM 目录结构 + HTML 页面文本，strip HTML 后复用 chunker + vector_index
+- [x] **B1.3**：`api/knowledge_documents.py` — 上传 endpoint 支持 `.chm` 文件，路由到 `chm_ingest.run_ingest()`；`file_ext` 参数传入 `_run_ingest_background` 决定调度分支
+- [x] **B1.4**：前端 `RuleSetPage.tsx` — dropzone `accept` 增加 `.chm`，提示文字更新为"拖拽 PDF / CHM 到此处"
 
 ### B2：PDF 页码偏移（page_offset）
 
-- [ ] **B2.1**：`apps/backend/app/knowledge/pdf_ingest.py` — `run_ingest()` 增加 `page_offset: int = 0` 参数，chunk 的 `page_from/page_to` 存储 `pdf_page - page_offset`（结果 ≤ 0 时回退为原始 PDF 页码）
-- [ ] **B2.2**：`apps/backend/app/api/knowledge_documents.py` — 上传 endpoint 增加 `page_offset: int = 0` query 参数，传入 `run_ingest()`；同时将全部同步阻塞操作（`shutil.copy2`、`pdfplumber.open`、`_clean_pages`、`chunk_pages`、`upsert_chunks`）改为 `asyncio.to_thread()` 包装，避免阻塞事件循环导致 `/health` 误报断连
-- [ ] **B2.3**：`apps/desktop/src/pages/RuleSetPage.tsx` — 上传区域增加"页码偏移"数字输入框，带说明文字
+- [x] **B2.1**：`apps/backend/app/knowledge/pdf_ingest.py` — `run_ingest()` 增加 `page_offset: int = 0` 参数，`_logical()` helper 实现偏移换算（结果 ≤ 0 时回退为原始 PDF 页码）；同时将全部阻塞操作改为 `asyncio.to_thread()` 包装
+- [x] **B2.2**：`apps/backend/app/api/knowledge_documents.py` — 上传 endpoint 增加 `page_offset: int = 0` query param，传入 `_run_ingest_background` 再传入 `run_ingest()`
+- [x] **B2.3**：`apps/desktop/src/pages/RuleSetPage.tsx` — 上传区域增加"页码偏移"数字输入框，带说明文字"正文从 PDF 第 N 页开始 → 填 N-1"
 
 ### B3：Chunker 中英文差异化字符上限
 
-- [ ] **B3.1**：`apps/backend/app/knowledge/chunker.py` — 实现 `_is_cjk_dominant(text)` 判断函数（CJK 字符占比 > 40% 视为中文主导）
-- [ ] **B3.2**：`chunker.py` — `chunk_pages()` 根据文档 CJK 比例动态设置 `target_min/target_max`：中文主导时 `min=300, max=800`；英文时保持原值 `min=500, max=1500`
+- [x] **B3.1**：`apps/backend/app/knowledge/chunker.py` — 实现 `_is_cjk_dominant(text)` 判断函数（CJK 字符占比 ≥ 40% 视为中文主导，涵盖 CJK Unified + Extension A + Hangul + Hiragana/Katakana）
+- [x] **B3.2**：`chunker.py` — `chunk_pages()` 根据文档 CJK 比例动态设置 `target_min/target_max`：中文主导时 `min=300, max=800`；英文时保持 `min=600, max=1600`（实现值略高于 plan 原始 500/1500，更宽松）
 
 ### B4：导入预览按 chunk_type 分组展示
 
-- [ ] **B4.1**：`apps/desktop/src/pages/RuleSetPage.tsx` — 预览面板 chunk 列表中每行显示 `chunk_type` badge（用 `CHUNK_TYPES` 映射中文标签）
-- [ ] **B4.2**：预览面板增加 chunk_type 过滤下拉框，选择后只显示该类型的 chunks；选"全部"时恢复
+- [x] **B4.1**：`apps/desktop/src/pages/RuleSetPage.tsx` — 预览面板 chunk 列表每行显示 `chunk_type` badge（accent 色小标签，用 `CHUNK_TYPES` 映射中文标签）
+- [x] **B4.2**：预览面板顶部增加 chunk_type 过滤下拉框（只显示该文档存在的类型及数量），选"全部类型"时显示所有 chunk
 
 ---
 
