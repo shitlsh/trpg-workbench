@@ -1,18 +1,18 @@
 """CHM ingest pipeline — adapted from pdf_ingest.py.
 
-Uses the system `extract_chmLib` tool (from chmlib) to extract HTML files from a .chm archive,
-then strips HTML tags and feeds the plain-text pages through the standard chunker.
+Uses `pychm` (Python bindings to chmlib) to read CHM files cross-platform.
 
-Requires `chmlib` to be installed:
-  macOS: brew install chmlib
-  Linux: apt-get install libchm-bin   (provides extract_chmLib)
+Requirements:
+  macOS:   brew install chmlib && pip install pychm
+  Linux:   apt-get install libchm-dev && pip install pychm
+  Windows: pip install pychm   (pre-built wheels available on PyPI)
 
 Steps (same 8-step structure as pdf_ingest):
 1. Save original file to source/
-2. Extract text from CHM (extract_chmLib → HTML → strip tags)
+2. Extract text from CHM (pychm → iterate topics → strip HTML tags)
 3. Clean text
 4. Chunk text
-5. Page mapping (CHM files don't have physical pages — we use sequential file index)
+5. Page mapping (CHM topics use sequential index as "page" numbers)
 6. Generate embeddings
 7. Build lancedb vector index
 8. Write manifest.json and chunks.jsonl
@@ -23,8 +23,6 @@ import html
 import json
 import re
 import shutil
-import subprocess
-import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -66,47 +64,66 @@ def _strip_html(raw: str) -> str:
     return raw.strip()
 
 
+def _extract_chm_pages_sync(chm_path: Path) -> list[dict]:
+    """Extract [{page: int, text: str}] from a CHM file using pychm.
+
+    Raises RuntimeError if pychm is not installed or the file cannot be opened.
+    """
+    try:
+        from chm import chm as chmlib
+    except ImportError:
+        raise RuntimeError(
+            "pychm is not installed. "
+            "macOS: brew install chmlib && pip install pychm  |  "
+            "Linux: apt-get install libchm-dev && pip install pychm  |  "
+            "Windows: pip install pychm"
+        )
+
+    chm_file = chmlib.CHMFile()
+    if not chm_file.LoadCHM(str(chm_path)):
+        raise RuntimeError(f"pychm could not open CHM file: {chm_path}")
+
+    encoding = chm_file.GetEncoding() or "utf-8"
+
+    pages: list[dict] = []
+    page_index = 0
+
+    def _visitor(chm_obj: Any, ui: Any, ctx: Any) -> int:
+        """Called by pychm for each object in the CHM archive."""
+        nonlocal page_index
+        # Only process HTML topic files (not images, scripts, etc.)
+        path: str = ui.path.decode("utf-8", errors="replace") if isinstance(ui.path, bytes) else ui.path
+        if not path.lower().endswith((".htm", ".html")):
+            return chmlib.CHM_ENUMERATOR_CONTINUE
+        # Skip internal CHM metadata files
+        if path.startswith("/#") or path.startswith("/$"):
+            return chmlib.CHM_ENUMERATOR_CONTINUE
+
+        success, raw_bytes = chm_file.RetrieveObject(ui)
+        if not success or not raw_bytes:
+            return chmlib.CHM_ENUMERATOR_CONTINUE
+
+        try:
+            raw_html = raw_bytes.decode(encoding, errors="replace")
+        except Exception:
+            raw_html = raw_bytes.decode("utf-8", errors="replace")
+
+        text = _strip_html(raw_html)
+        if text and len(text) > 20:  # skip near-empty pages (nav frames, etc.)
+            page_index += 1
+            pages.append({"page": page_index, "text": text, "_path": path})
+
+        return chmlib.CHM_ENUMERATOR_CONTINUE
+
+    chm_file.EnumerateDir("/", chmlib.CHM_ENUMERATE_NORMAL, _visitor, None)
+    chm_file.CloseCHM()
+
+    return pages
+
+
 async def _extract_chm_pages(chm_path: Path) -> list[dict]:
-    """Extract and return [{page: int, text: str}] from a CHM file."""
+    return await asyncio.to_thread(_extract_chm_pages_sync, chm_path)
 
-    def _run() -> list[dict]:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            try:
-                subprocess.run(
-                    ["extract_chmLib", str(chm_path), tmpdir],
-                    check=True,
-                    capture_output=True,
-                    timeout=120,
-                )
-            except FileNotFoundError:
-                raise RuntimeError(
-                    "extract_chmLib not found. Install chmlib: `brew install chmlib` (macOS) or `apt-get install libchm-bin` (Linux)"
-                )
-            except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"extract_chmLib failed: {e.stderr.decode(errors='replace')}")
-
-            # Collect HTML/HTM files sorted by path (approximates book order)
-            html_files = sorted(Path(tmpdir).rglob("*.htm")) + sorted(Path(tmpdir).rglob("*.html"))
-            # Deduplicate (rglob may return duplicates on some systems)
-            seen: set[str] = set()
-            unique: list[Path] = []
-            for f in html_files:
-                if f.name not in seen:
-                    seen.add(f.name)
-                    unique.append(f)
-
-            pages: list[dict] = []
-            for i, html_file in enumerate(unique):
-                try:
-                    raw = html_file.read_text(encoding="utf-8", errors="replace")
-                    text = _strip_html(raw)
-                    if text:
-                        pages.append({"page": i + 1, "text": text, "_filename": html_file.name})
-                except Exception:
-                    pass
-            return pages
-
-    return await asyncio.to_thread(_run)
 
 
 async def run_ingest(
