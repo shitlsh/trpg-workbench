@@ -23,7 +23,10 @@ dist/
 *.local
 
 # ── Tauri / Rust ──────────────────────────────────────────────────
+# `src-tauri/target/` 只匹配「仓库根目录下」的 Tauri 工程；本仓库在 `apps/desktop/src-tauri/`，
+# 需用 `**/` 才能忽略任意深度的 `src-tauri/target`（与旧机「根目录就是 desktop」等布局不同）。
 src-tauri/target/
+**/src-tauri/target/
 *.pdb
 
 # ── App data (local runtime data, never commit) ───────────────────
