@@ -67,7 +67,7 @@ def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get_db)):
         data = json.loads(raw)
 
         return GeneratePromptResponse(
-            name=data.get("name", f"{rule_set.name}创作风格"),
+            name=data.get("name") or f"{rule_set.name}创作风格",
             system_prompt=data.get("system_prompt", ""),
             style_notes=data.get("style_notes", ""),
         )

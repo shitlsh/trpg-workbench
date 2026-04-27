@@ -38,7 +38,7 @@ export default function PromptProfilesPage() {
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "24px 16px" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-          <Link to="/" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
+          <Link to="/settings/rule-sets" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
             <ArrowLeft size={16} />
           </Link>
           <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Prompt 配置</h1>
