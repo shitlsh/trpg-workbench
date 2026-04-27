@@ -1,4 +1,3 @@
-Output rules:
-- Respond ONLY with valid JSON, no extra text, no markdown code fences
-- Do not wrap JSON in ```json ... ```
-- Do not add explanations before or after the JSON
+输出规范：
+- 只输出合法 JSON，不要其他文字，不要用 markdown 代码块包裹
+- 不要在 JSON 前后加解释

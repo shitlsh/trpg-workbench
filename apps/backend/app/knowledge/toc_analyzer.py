@@ -60,11 +60,7 @@ def analyze_toc(
 
     # Build a simple non-streaming request via Agno model's direct run
     # Agno models have a `response()` method for single-turn inference
-    user_message = (
-        "Here is the extracted TOC text from a TRPG rulebook.\n"
-        "Please analyze it and return structured JSON as instructed.\n\n"
-        f"{toc_text[:6000]}"  # cap at 6000 chars to stay within context
-    )
+    user_message = load_prompt("toc_analyzer", "user_pdf", toc_text=toc_text[:6000])
 
     try:
         from agno.agent import Agent
@@ -231,8 +227,12 @@ def assign_chm_section_chunk_types(
             f"{i + 1}.\tdepth={sections[i].depth}\t{sections[i].title}"
             for i in batch_idx
         )
-        user_message = (
-            f"Total sections: {n}. This batch has {len(batch_idx)} lines; indices are global.\n\n" + lines
+        user_message = load_prompt(
+            "toc_analyzer",
+            "user_chm_batch",
+            total=n,
+            batch_size=len(batch_idx),
+            lines=lines,
         )
         agent = Agent(model=model, instructions=[system_prompt], markdown=False)
         try:

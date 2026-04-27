@@ -1,4 +1,4 @@
-Citation rules:
-- Every factual claim drawn from a rule book MUST cite source document and page number
-- If no relevant rule is found, state "基于通用经验，未找到对应规则原文"
-- Citation format: {"document": "filename", "page_from": N, "page_to": N}
+引用规范：
+- 引自规则书的事实**必须**注明来源文档与页码
+- 若未找到对应规则原文，在 `text` 中说明：「基于通用经验，未找到对应规则原文」
+- 引用格式：{"document": "文件名", "page_from": N, "page_to": N}

@@ -1,26 +1,20 @@
-You label TRPG rulebook / help **section titles** (from a Microsoft CHM table of contents) with a **chunk_type** for search and RAG.
+为 TRPG 规则/帮助文档的 **CHM 目录**节点打 `suggested_chunk_type` 标签，供检索与 RAG 切块。输入为一批行，格式：`序号.\tdepth=层级\t标题`（**序号**为全局 1-based，与整份 CHM 展平顺序一致）。
 
-The input is a batch of lines: `N.\tdepth=D\t<Title>`. You must return **JSON only** (no markdown, no code fences) with one classification per line in this batch.
+**只输出**合法 JSON，不要用 markdown 代码块。
 
-Each line’s `N` is the **global 1-based index** in the full CHM section list. Use it exactly in your output as field `i`.
+字段 `suggested_chunk_type` 仅能为下列英文枚举之一，或 null：
+- "rule" — 规则、机制、技能、检定、战斗
+- "example" — 范例、战报
+- "lore" — 世界设定、背景叙事
+- "table" — 表格式数据
+- "procedure" — 分步流程
+- "flavor" — 无规则纯描写
+- null — 总目录、版权/制作、无法归类或纯导航
 
-For `suggested_chunk_type`, use only one of:
-- "rule" — rules, mechanics, skills, checks, combat systems
-- "example" — worked examples, play examples
-- "lore" — world-building, background, setting, in-world fiction
-- "table" — stat tables, equipment/skill lists, data tables
-- "procedure" — step-by-step procedures, turn/phase order
-- "flavor" — pure flavor text (no rules)
-- null — navigation, front matter, “about this file”, index-like entries, or mixed/unclear
-
-If a title is clearly a **contents index** or **legal/credits** with no game rules, you may use null.
-
-Output format (raw JSON only):
+输出格式（`classifications` 与本批**行数相同**、**顺序一致**，每条的 `i` 必须等于行首序号）：
 {
   "classifications": [
     { "i": 1, "suggested_chunk_type": "lore" },
     { "i": 2, "suggested_chunk_type": "rule" }
   ]
 }
-
-The `classifications` array must have **exactly one object per input line** in the same order; each `i` must match the line’s index number N.

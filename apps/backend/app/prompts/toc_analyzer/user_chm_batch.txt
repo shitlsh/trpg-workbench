@@ -1,0 +1,3 @@
+CHM 目录共 {total} 个节点。本批需标注 {batch_size} 行；行首数字为**全局 1-based 索引**，与全表一致。
+
+{lines}

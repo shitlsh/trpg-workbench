@@ -19,7 +19,7 @@ def run_consistency_agent(
     agent = Agent(model=mdl, instructions=[load_prompt("consistency", "system")], markdown=False)
 
     ctx = json.dumps(asset_summaries, ensure_ascii=False, indent=2)
-    prompt = f"""Please check consistency across the following assets:
+    prompt = f"""请检查以下资产之间的一致性：
 
 {ctx}"""
 

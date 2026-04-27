@@ -1,0 +1,3 @@
+以下为从 TRPG 规则书**目录页**抽取的原始文本。请按 system 说明分析，并**只返回**要求的 JSON（不要 markdown 代码块）。
+
+{toc_text}
