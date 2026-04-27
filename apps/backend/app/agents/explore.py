@@ -4,8 +4,7 @@ from __future__ import annotations
 import json
 
 from agno.agent import Agent
-from agno.models.message import Message
-
+from app.agents.chat_input_messages import build_chat_input_messages
 from app.agents.director import _build_workspace_snapshot
 from app.agents.tools import (
     EXPLORE_TOOLS,
@@ -61,14 +60,7 @@ async def run_explore_stream(
         )
         prompt = f"{refs_block}\n\n---\n\n{user_message}"
 
-    input_messages: list[Message] = []
-    if history:
-        for msg in history:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role in ("user", "assistant") and content:
-                input_messages.append(Message(role=role, content=content))
-    input_messages.append(Message(role="user", content=prompt))
+    input_messages = build_chat_input_messages(history, prompt)
 
     _in_think = False
     _think_buf = ""
@@ -134,12 +126,24 @@ async def run_explore_stream(
 
             elif event_type == "ToolCallCompleted":
                 tool = getattr(chunk, "tool", None)
-                raw_content = str(getattr(tool, "result", None) or getattr(chunk, "content", "") or "")
-                if tool:
+                raw_content = str(
+                    (getattr(tool, "result", None) if tool is not None else None)
+                    or getattr(chunk, "content", None)
+                    or ""
+                )
+                # Explore has no write auto-apply; never emit auto_applied
+                if tool is not None:
                     try:
                         payload = json.loads(raw_content)
                         if isinstance(payload, dict) and payload.get("auto_applied"):
-                            yield {"event": "auto_applied", "data": payload}
+                            yield {
+                                "event": "tool_call_result",
+                                "data": {
+                                    "id": tool.tool_call_id or "",
+                                    "success": not tool.tool_call_error,
+                                    "summary": raw_content[:500],
+                                },
+                            }
                             continue
                     except Exception:
                         pass
@@ -148,6 +152,15 @@ async def run_explore_stream(
                         "data": {
                             "id": tool.tool_call_id or "",
                             "success": not tool.tool_call_error,
+                            "summary": raw_content[:500],
+                        },
+                    }
+                elif raw_content:
+                    yield {
+                        "event": "tool_call_result",
+                        "data": {
+                            "id": getattr(chunk, "tool_call_id", None) or "",
+                            "success": True,
                             "summary": raw_content[:500],
                         },
                     }

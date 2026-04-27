@@ -9,6 +9,7 @@ import json
 import uuid
 from agno.agent import Agent
 from agno.models.message import Message
+from app.agents.chat_input_messages import build_chat_input_messages
 from app.agents.model_adapter import strip_code_fence
 from app.agents.tools import (
     ALL_TOOLS, configure as configure_tools, AgentQuestionInterrupt,
@@ -110,15 +111,8 @@ async def run_director_stream(
         )
         prompt = f"{refs_block}\n\n---\n\n{user_message}"
 
-    # Build messages list: history + current prompt
-    input_messages: list[Message] = []
-    if history:
-        for msg in history:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role in ("user", "assistant") and content:
-                input_messages.append(Message(role=role, content=content))
-    input_messages.append(Message(role="user", content=prompt))
+    # History may include leading role=system (compact summary); fold into first user turn
+    input_messages: list[Message] = build_chat_input_messages(history, prompt)
 
     try:
         # State machine for parsing inline <think>...</think> blocks from models
@@ -195,9 +189,12 @@ async def run_director_stream(
             # Tool call completed (result)
             elif event_type == "ToolCallCompleted":
                 tool = getattr(chunk, "tool", None)
-                # tool.result holds the actual return value of the tool function
-                raw_content = str(getattr(tool, "result", None) or getattr(chunk, "content", "") or "")
-                if tool:
+                raw_content = str(
+                    (getattr(tool, "result", None) if tool is not None else None)
+                    or getattr(chunk, "content", None)
+                    or ""
+                )
+                if tool is not None:
                     try:
                         payload = json.loads(raw_content)
                         if isinstance(payload, dict) and payload.get("auto_applied"):
@@ -210,6 +207,15 @@ async def run_director_stream(
                         "data": {
                             "id": tool.tool_call_id or "",
                             "success": not tool.tool_call_error,
+                            "summary": raw_content[:500],
+                        },
+                    }
+                elif raw_content:
+                    yield {
+                        "event": "tool_call_result",
+                        "data": {
+                            "id": getattr(chunk, "tool_call_id", None) or "",
+                            "success": True,
                             "summary": raw_content[:500],
                         },
                     }
