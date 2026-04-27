@@ -46,8 +46,9 @@ C. 应用服务层   Python 本地 HTTP 服务
    - patch 应用、任务调度、图像生成调用、配置与日志
 
 D. AI 编排层    Python + Agno
-   - Director / Rules / Plot / NPC / Monster / Lore / Consistency / Document Agent
-   - Workflow 编排、Knowledge 检索、会话与记忆
+   - Director（创作，tool-calling 读写）与 Explore（**只读**浏览，M26+，同聊天入口、按 `ChatSessionORM.agent_scope` 分流）
+   - Rules / Consistency / Skill 子 Agent 由 Director 工具委托
+   - Knowledge 检索、会话与记忆
 
 E. 数据层       文件系统（真相源） + SQLite（可重建缓存索引） + 本地向量索引
     - 文件系统: 资产 .md 文件（frontmatter + body）、config.yaml、JSONL 对话、revision 快照
