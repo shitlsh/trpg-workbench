@@ -10,7 +10,25 @@
 
 - HTTP 层已有资产 [删除](apps/backend/app/api/assets.py) 等能力，**Agent 工具集**中仍缺少对等的 `delete` / `move` 等，模型只能多轮绕路，**效率与 token** 差。
 - 用户已审阅 [2026-04-27 agent CLI proposal](../docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md)：**不采用**开放命令行，**采用**结构化批处理；本 milestone 为该决策的**工程落地**。
-- 与已完成 [batch-asset-write](docs/benchmark-reviews/completed/2026-04-26_batch-asset-write.md) 相区别：后者解决的是 **连续写入不中断**；本 milestone 解决的是 **单步文件级操作** 与 **跨多资产的批量转换**，仍通过**专用工具**完成，而非 7–8 次独立小工具调用的堆叠。
+- 与已完成 [batch-asset-write](../docs/benchmark-reviews/completed/2026-04-26_batch-asset-write.md) 相区别：后者解决的是 **连续单资产写入不中断**；**未**从协议上把「N 个新建」收束为**单次工具调用**，因此一话生成十几个 asset 仍是 **N 次 `create_asset`**，与随后 **M 次 `patch_asset`** 的 **模型往返与上下文膨胀** 问题，需在本 milestone 的 **A4** 中单独解决。
+- 用户核心场景：故事驱动 **批量新建** 与 **小范围多资产改细节**；倾向 CLI 的动机是 **脚本一次编排**——本处用 **结构化批工具** 达到「一轮工具调用提交多项」的等效，**不**用任意 shell。
+
+---
+
+## 实现手段（技术基线，开发必须遵守）
+
+以下均基于**现有写路径**扩展，**禁止**为批处理平行实现第二套落盘逻辑。
+
+| 能力 | 实现手段 | 说明 |
+|------|----------|------|
+| 单次落盘、索引、revision | 已存在 | [`execute_patch_proposal`](apps/backend/app/agents/tools.py)：`action` 为 `create` / `update` 时与 HTTP/API 及 file-first 约定一致。 |
+| **批创建** `create_assets`（名可定） | 新 `@tool` + **Python 循环** | 入参为 **一个 JSON 字符串**（或 Agno 支持的等效结构），解析为 `List[{asset_type, name, content_md, change_summary?}, ...]`。**每一项**在进程内顺序调用与 `create_asset` **相同** 的 `proposal` 拼法 + `execute_patch_proposal(..., action=create)`。一次工具返回中输出 **`results: [{index, success, slug?, asset_id?, error?}, ...]`**；**部分失败**是否继续余项由实现时定稿（建议继续并带 `partial: true`）。**不**依赖 subprocess。 |
+| **批局替** `patch_assets`（名可定） | 新 `@tool` + 循环 | 入参为 JSON 数组 `[{asset_slug, old_str, new_str, change_summary?}, ...]`。**每一项**复刻当前 `patch_asset` 的：读文件 → 唯一性校验 → 替换 1 处 → `execute_patch_proposal`（`update`）。同一次性返回 `results` 表。 |
+| **跨资产统一文本替换**（A2.1） | 可 **先** 只读扫（`Path.walk` + 读 `*.md` 或白名单内 `subprocess` 只读 `rg` 列文件）得候选 slug，再 **preview** JSON；**apply** 时或复用与单文件相同的 `patch_asset` 逻辑，或走 `patch_assets` 多行入参。 | 禁止对用户传入整段内容执行 `shell=True`。 |
+| **多轮后 snapshot** | 批创建若在同一 Director 步内还有后续 tool，需谨慎：`existing_assets` 可能来自本请求开始时的快照；**实现时**在批写工具**末尾**触发一次与工作区一致的 **列表刷新**（如复用与 `list_assets` 同源的数据，或写清文档要求模型**下一步先 `list_assets`**）。此条以 PR 中具体实现为准，须在返回 JSON 中提示若需要。 | 避免「刚建的 slug 同一轮里搜不到」类 bug。 |
+| **check_consistency** | 批写 **是否**每项前调用由产品定：默认可 **不要求** 每项都跑（防 token 爆）；**建议** 在 `director/system` 中约定「批量同主题创建可事后审查」等，与现有 P0 文案对齐。 | 与 A4 批建配套 |
+
+**为何能减 token 与轮次**：模型从「调 10 次 `create_asset`」变为「调 1 次 `create_assets` 带 10 条 spec」，**少 9 次**「assistant 声明 tool + tool_result 再进下文」的往返；批 patch 同理。单条 spec 与结果仍在上下文中，总字符未必等比例下降，**主要省的是工具协议往返与可调度的轮数**。
 
 ---
 
@@ -31,8 +49,15 @@
 
 **A3：产品化底线**
 
-- 任一批量 **apply 前**须有可展示给用户的 **preview 结果**（Agent 流式中可用 tool 结果 JSON 或专用事件，具体与前端对仗）。
+- 对 **A2.1 跨资产替换** 等会改多个文件的：**apply 前**须有可展示给用户的 **preview**（与前端对仗）。
+- 对 **A4 批建**：至少返回**逐条 `results`** 表；是否增加 **dry_run 预检** 在 Todo 可选。
 - **不**使用 `subprocess` 调用户任意 shell 字符串；若内部用 `rg` 等，仅允许**白名单、固定参数**、工作区为根。
+
+**A4：多资产批创建与批局替**（对齐全景「一话十几个 asset + 多文件小改」）
+
+- **A4.1 批创建**：`create_assets` — 实现见上文 **实现手段** 表；与单次 `create_asset` 同 `proposal` / `execute_patch_proposal` 路径。
+- **A4.2 批局替**：`patch_assets` — 实现见上文表；与单次 `patch_asset` 同一**单文件、单处**替换规则。
+- **A4.3** Director 提示：多资产新建/多 slug 小改**优先**批工具；`system` 中写清与 **snapshot**、**check_consistency** 的软约束（见上表末行）。
 
 ### B 类：后续 / 不强制本 milestone
 
@@ -49,11 +74,11 @@
 ## 文件与模块（预期）
 
 ```
-apps/backend/app/services/asset_service.py   # 移动/删逻辑复用或抽函数
-apps/backend/app/agents/tools.py             # 新工具注册
-apps/backend/app/prompts/director/system.txt  # 工具说明与顺序约束
-apps/desktop/...（可选：批量结果展示）
-packages/shared-schema/...（若 API 有新增类型）
+apps/backend/app/services/asset_service.py   # 移动/删；若有共享「单条 create/update」可抽给批工具
+apps/backend/app/agents/tools.py             # create_assets / patch_assets / 删移 + execute_patch_proposal 复用
+apps/backend/app/prompts/director/system.txt  # 批工具优先、check_consistency 与批的关系
+apps/desktop/...（可选：批量结果表格/折叠展示）
+packages/shared-schema/...（若 tool 的 JSON 形状需前后端共类型）
 ```
 
 ---
@@ -74,23 +99,30 @@ packages/shared-schema/...（若 API 有新增类型）
 - [ ] **A1.2**：`move_asset` 或 `rename_asset` 工具：源 slug → 目标 slug 或目标类型+slug；更新文件与 DB；文档化对跨资产引用的影响（若无法自动更新，在返回中提示或限制）。
 - [ ] **A1.3**：`director/system.txt` 工具列表与**写入前** `check_consistency` 的说明更新（若删除/移动也要求先检查，则写明）。
 
-### A2：批处理
+### A2：批处理（跨库文本）
 
 - [ ] **A2.1**：`preview_bulk_text_replace`（名可定）+ `apply_bulk_text_replace`（或合并为两阶段单工具 + `confirm` 参数，实现时定稿），必须含 **preview 输出**。
 - [ ] **A2.2**（可选）：批量 slug 重命名或批量「同类型下移动」。
 
+### A4：多资产批创建与批局替
+
+- [ ] **A4.1**：`create_assets`：JSON 数组，内层字段对齐 `create_asset`；内部循环 `execute_patch_proposal`；见上文「实现手段」表。
+- [ ] **A4.2**：`patch_assets`：JSON 数组，内层字段对齐 `patch_asset` 单次语义；见上文「实现手段」表。
+- [ ] **A4.3**：`director/system.txt` 补充批工具**优先**与**何时仍用单工具**的说明；批写后 **snapshot** 与后续轮行为见实现手段中「多轮后 snapshot」。
+
 ### A3：联调
 
-- [ ] **A3.1**：`ALL_TOOLS` 与 **EXPLORE_TOOLS** 显式对比文档或注释，确保 Explore 无 A1/A2 写能力。
+- [ ] **A3.1**：`ALL_TOOLS` 与 **EXPLORE_TOOLS** 显式对比文档或注释，确保 Explore 无 A1/A2/**A4** 写能力。
 
 ---
 
 ## 验收标准
 
 1. Director 在**不显式**多轮 `patch` 的情况下，能用语义清晰的工具**删除**、**移动/重命名** 指定资产，且工作区与 DB 状态一致、文件真实存在/删除。
-2. 至少一种 **批处理** 能力（以 **跨资产文本替换** 为优先）支持 **先 preview 再 apply**，单轮或两轮工具调用可完成「多文件同一替换」类任务，相较纯多次 `patch_asset` **可观测地**减少轮次与重复。
-3. 与 benchmark [accepted/2026-04-27_agent-cli-workspace-commands.md](../docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md) 的「不默认可变 shell、结构化批处理」**一致**；代码审查中**无**对用户字符串直接 `shell=True` 的调用。
-4. Explore 会话**不能**通过工具完成写删或批量改（用工具列表或 E2E 自测可证）。
+2. 至少一种 **批处理** 能力（以 **跨资产文本替换** 为优先）支持 **先 preview 再 apply**（A2.1），单轮或两轮工具调用可完成「多文件同一替换」类任务，相较纯多次 `patch_asset` **可观测地**减少轮次与重复。
+3. **A4**：可用 **一次** `create_assets` 提交**多项**创建（与多次 `create_asset` 相比 **工具调用次数** 减少）；可用 **一次** `patch_assets` 对多个 slug 做局替。实现须复用 `execute_patch_proposal`，**验收**时在日志或手测中对比「同批操作」下的 **round-trip 次数** 少于单条工具累加（不要求总 token 数学最优）。
+4. 与 benchmark [accepted/2026-04-27_agent-cli-workspace-commands.md](../docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md) 的「不默认可变 shell、结构化批处理」**一致**；代码审查中**无**对用户字符串直接 `shell=True` 的调用。
+5. Explore 会话**不能**通过工具完成写删或批量改（用工具列表或 E2E 自测可证）。
 
 ---
 
