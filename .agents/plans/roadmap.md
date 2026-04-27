@@ -29,7 +29,8 @@
                                                                                                                                                               └── ✅ M21 聊天会话管理
                                                                                                                                                                     └── ✅ M22 规则集 UX 打磨
                                                                                                                                                                            └── ✅ M23 Agent 澄清问题机制
-                                                                                                                                                                                   └── ✅ M24 知识库检索质量提升
+                                                                                                                                                                                   ├── ✅ M24 知识库检索质量提升
+                                                                                                                                                                                   └── M25 LLM Profile 字段瘦身
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -74,6 +75,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
+| M25 | LLM Profile 字段瘦身与模型选择体验 | 去掉 Profile 死字段、能力归目录、模型下拉可搜可筛可展示 | [m25-llm-profile-fields-cleanup.md](m25-llm-profile-fields-cleanup.md) |
 
 ---
 
