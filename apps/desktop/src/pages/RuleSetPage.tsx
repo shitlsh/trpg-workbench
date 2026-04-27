@@ -258,39 +258,28 @@ function SetPromptModal({
     borderBottomStyle: "solid",
   });
 
+  // "select" mode = pick-from-list only; "manual"/"ai" = create new (two tabs)
+  const isSelectMode = initialTab === "select";
+
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} style={{ width: 540, maxWidth: "95vw" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 className={styles.modalTitle} style={{ margin: 0 }}>创作风格提示词</h2>
+          <h2 className={styles.modalTitle} style={{ margin: 0 }}>
+            {isSelectMode ? "设置默认提示词" : "新建提示词"}
+          </h2>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}><X size={16} /></button>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
-          <button style={tabStyle(tab === "select")} onClick={() => setTab("select")}>
-            <MessageSquare size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
-            已有提示词
-          </button>
-          <button style={tabStyle(tab === "manual")} onClick={() => setTab("manual")}>
-            <Pencil size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
-            手动创建
-          </button>
-          <button style={tabStyle(tab === "ai")} onClick={() => setTab("ai")}>
-            <Sparkles size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
-            AI 生成
-          </button>
-        </div>
-
-        {/* Select tab — shows profiles already belonging to this rule set */}
-        {tab === "select" && (
+        {/* Select mode: no tabs, just the list */}
+        {isSelectMode && (
           <>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
-              {onSetDefault ? "点击提示词将其设为此规则集的默认创作风格。" : "此规则集下已有的创作风格提示词。"}
+              点击提示词将其设为此规则集的默认创作风格。
             </p>
             <div className={styles.selectList}>
               {profiles.length === 0 && (
-                <p className={styles.empty}>暂无提示词——请使用「手动创建」或「AI 生成」新建一个</p>
+                <p className={styles.empty}>暂无提示词——请先使用「新建」按钮创建提示词</p>
               )}
               {profiles.map((p) => (
                 <div
@@ -314,7 +303,7 @@ function SetPromptModal({
                     )}
                   </div>
                   {p.id === currentProfileId && (
-                    <span style={{ fontSize: 11, color: "var(--accent)", flexShrink: 0 }}>默认</span>
+                    <span style={{ fontSize: 11, color: "var(--accent)", flexShrink: 0 }}>当前默认</span>
                   )}
                   <button
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "2px 4px", flexShrink: 0 }}
@@ -329,9 +318,23 @@ function SetPromptModal({
           </>
         )}
 
-        {/* Manual tab */}
-        {tab === "manual" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Create mode: manual + AI tabs */}
+        {!isSelectMode && (
+          <>
+            <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
+              <button style={tabStyle(tab === "manual")} onClick={() => setTab("manual")}>
+                <Pencil size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+                手动填写
+              </button>
+              <button style={tabStyle(tab === "ai")} onClick={() => setTab("ai")}>
+                <Sparkles size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+                AI 生成
+              </button>
+            </div>
+
+            {/* Manual tab */}
+            {tab === "manual" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
               手动填写提示词内容，创建后自动关联到此规则集。
             </p>
@@ -367,10 +370,10 @@ function SetPromptModal({
               </button>
             </div>
           </div>
-        )}
+            )}
 
-        {/* AI tab */}
-        {tab === "ai" && (
+            {/* AI tab */}
+            {tab === "ai" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
               选择 LLM 模型，自动为此规则集生成创作提示词，生成后可编辑调整。
@@ -454,12 +457,14 @@ function SetPromptModal({
                     disabled={!aiName.trim() || !aiPrompt.trim() || createAiMutation.isPending}
                     onClick={() => createAiMutation.mutate()}
                   >
-                    {createAiMutation.isPending ? "保存中..." : "保存并关联"}
+                     {createAiMutation.isPending ? "保存中..." : "保存并关联"}
                   </button>
                 </div>
               </>
             )}
           </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -839,6 +844,7 @@ function LibraryDetailPanel({
   });
   const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>("");
   const [defaultChunkType, setDefaultChunkType] = useState<ChunkType | "">("");
+  const [pageOffset, setPageOffset] = useState(0);
 
   const { data: documents = [] } = useQuery({
     queryKey: ["knowledge", "documents", library.id],
@@ -890,6 +896,7 @@ function LibraryDetailPanel({
     const url = new URL(`${BACKEND_URL}/knowledge/libraries/${library.id}/documents`);
     url.searchParams.set("embedding_profile_id", profileId);
     if (defaultChunkType) url.searchParams.set("default_chunk_type", defaultChunkType);
+    if (pageOffset > 0) url.searchParams.set("page_offset", String(pageOffset));
     try {
       const res = await fetch(url.toString(), { method: "POST", body: form });
       if (!res.ok) {

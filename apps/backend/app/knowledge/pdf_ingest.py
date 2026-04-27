@@ -53,6 +53,7 @@ async def run_ingest(
     embedding_snapshot: dict,  # {profile_id, provider_type, model_name, dimensions}
     progress_callback=None,  # async callable(step: int, label: str, status: str)
     default_chunk_type: str = "",  # ChunkType value to tag all chunks in this document
+    page_offset: int = 0,  # subtract from PDF page numbers to get logical page numbers (TOC alignment)
 ) -> dict:
     """
     Run the full 8-step ingest pipeline.
@@ -82,18 +83,24 @@ async def run_ingest(
         stem = dest_path.stem
         suffix = dest_path.suffix
         dest_path = source_dir / f"{stem}_{document_id[:8]}{suffix}"
-    shutil.copy2(str(tmp_file_path), str(dest_path))
+    await asyncio.to_thread(shutil.copy2, str(tmp_file_path), str(dest_path))
 
     # ── Step 2: Extract text ─────────────────────────────────────────────────
     await report(2, STEP_LABELS[1])
     pages: list[dict] = []
     page_count = 0
-    try:
+
+    def _extract_pages() -> tuple[list[dict], int]:
+        _pages: list[dict] = []
         with pdfplumber.open(str(dest_path)) as pdf:
-            page_count = len(pdf.pages)
+            _count = len(pdf.pages)
             for i, page in enumerate(pdf.pages):
                 text = page.extract_text() or ""
-                pages.append({"page": i + 1, "text": text})
+                _pages.append({"page": i + 1, "text": text})
+        return _pages, _count
+
+    try:
+        pages, page_count = await asyncio.to_thread(_extract_pages)
     except Exception as e:
         raise RuntimeError(f"PDF text extraction failed: {e}") from e
 
@@ -105,11 +112,11 @@ async def run_ingest(
 
     # ── Step 3: Clean text ───────────────────────────────────────────────────
     await report(3, STEP_LABELS[2])
-    pages = _clean_pages(pages)
+    pages = await asyncio.to_thread(_clean_pages, pages)
 
     # ── Step 4: Chunk ────────────────────────────────────────────────────────
     await report(4, STEP_LABELS[3])
-    raw_chunks: list[RawChunk] = chunk_pages(pages)
+    raw_chunks: list[RawChunk] = await asyncio.to_thread(chunk_pages, pages)
 
     if not raw_chunks:
         # Nothing to embed — record partial status
@@ -143,13 +150,21 @@ async def run_ingest(
     chunk_dicts = []
     for i, (rc, vec) in enumerate(zip(raw_chunks, vectors)):
         cid = f"chunk_{uuid.uuid4().hex[:16]}"
+        # Apply page_offset: convert PDF page numbers to logical (TOC-aligned) page numbers.
+        # page_offset = (PDF page number of book's "page 1") - 1
+        # e.g. if book's page 1 is PDF page 13, offset=12 → logical page = PDF page - 12
+        def _logical(pdf_page: int) -> int:
+            if parse_quality == "scanned_fallback" or pdf_page < 0:
+                return -1
+            lp = pdf_page - page_offset
+            return lp if lp > 0 else pdf_page  # don't go ≤ 0; fall back to raw if offset is wrong
         chunk_records.append({
             "chunk_id": cid,
             "document_id": document_id,
             "library_id": library_id,
             "content": rc.content,
-            "page_from": rc.page_from if parse_quality != "scanned_fallback" else -1,
-            "page_to": rc.page_to if parse_quality != "scanned_fallback" else -1,
+            "page_from": _logical(rc.page_from),
+            "page_to": _logical(rc.page_to),
             "section_title": rc.section_title or "",
             "chunk_type": default_chunk_type,
             "vector": vec,
@@ -160,8 +175,8 @@ async def run_ingest(
             "chunk_index": rc.chunk_index,
             "content": rc.content,
             "embedding_ref": cid,
-            "page_from": rc.page_from if parse_quality != "scanned_fallback" else -1,
-            "page_to": rc.page_to if parse_quality != "scanned_fallback" else -1,
+            "page_from": _logical(rc.page_from),
+            "page_to": _logical(rc.page_to),
             "section_title": rc.section_title,
             "char_count": rc.char_count,
             "metadata": {
@@ -173,7 +188,7 @@ async def run_ingest(
         })
 
     try:
-        upsert_chunks(index_dir, chunk_records, dimensions=len(vectors[0]) if vectors else 1536)
+        await asyncio.to_thread(upsert_chunks, index_dir, chunk_records, len(vectors[0]) if vectors else 1536)
     except Exception as e:
         parse_notes += f" | Vector index write failed: {e}"
 

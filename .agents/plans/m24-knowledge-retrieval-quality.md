@@ -2,7 +2,7 @@
 
 **前置条件**：M23 完成（Agent 澄清问题机制可用，Agent 工具链稳定）。
 
-**状态：✅ 已完成（commit 61ccd48）**
+**状态：🔄 进行中（A 类已完成 commit 61ccd48，B 类补充实现中）**
 
 **目标**：将 `library.type` 从无效装饰字段替换为 chunk 级类型标签，修复 chunker 切割边界，将 top_k 和 rerank 配置化，使知识库检索质量和 Agent 检索行为对用户真正透明。
 
@@ -57,12 +57,12 @@
 
 创建知识库时删除类型下拉菜单，改为在上传文档时显示"此文档的默认内容类型"选择器。
 
-### B 类：后续扩展
+### B 类：扩展实现（补充完成）
 
-- **B1：CHM 格式支持**：需新增 `pychmlib` 依赖和 `chm_ingest.py`，工作量独立，建议 M25
-- **B2：PDF 目录感知分割（TOC + LLM + 确认 UI）**：交互复杂，建议独立 milestone
-- **B3：Chunker 中英文差异化字符上限**：低优先级后续优化
-- **B4：导入预览按 chunk_type 分组展示**：现有预览功能扩展，可独立 PR
+- **B1：CHM 格式支持**：新增 `chm_ingest.py` + `pychmlib` 依赖，上传支持 `.chm` 文件
+- **B2：PDF 页码偏移（page_offset）**：上传时可指定偏移值，chunk 存储逻辑页码与 TOC 对齐；不含 LLM 自动解析 TOC（复杂度过高，列为非目标）
+- **B3：Chunker 中英文差异化字符上限**：中文文本信息密度高，`TARGET_MIN/MAX_CHARS` 按 CJK 比例自适应
+- **B4：导入预览按 chunk_type 分组展示**：预览面板增加 chunk_type 标签显示与分组过滤
 
 ### C 类：明确不承诺
 
@@ -176,9 +176,28 @@ if not results and chunk_types:
 - [x] **A6.2**：`apps/backend/app/knowledge/retriever.py` — 读取 workspace config，实现 rerank/非 rerank 双路径；`_load_rerank_cfg()` + `_apply_rerank()` helpers
 - [x] **A6.3**：前端设置页面 (`WorkspaceSettingsPage.tsx`) — rerank 关闭时显示"知识库召回数量"输入框；开启 rerank 时隐藏该字段（top_n 承担角色）
 
-### A7：导入时选择 chunk_type
+### B1：CHM 格式支持
 
-- [x] **A7.1**：`apps/desktop/src/pages/RuleSetPage.tsx` — 删除创建库类型下拉；上传文档时增加 `default_chunk_type` 选择器；删除 library list 和 detail view 中的 type badge 展示
+- [ ] **B1.1**：安装 `pychmlib` 依赖（`requirements.txt`）
+- [ ] **B1.2**：`apps/backend/app/knowledge/chm_ingest.py` — 新建，实现 `run_chm_ingest()`，提取 CHM 目录结构 + HTML 页面文本，复用 chunker + vector_index
+- [ ] **B1.3**：`api/knowledge_documents.py` — 上传 endpoint 支持 `.chm` 文件，路由到 `run_chm_ingest()`
+- [ ] **B1.4**：前端 `RuleSetPage.tsx` — dropzone 的 `accept` 属性增加 `.chm`
+
+### B2：PDF 页码偏移（page_offset）
+
+- [ ] **B2.1**：`apps/backend/app/knowledge/pdf_ingest.py` — `run_ingest()` 增加 `page_offset: int = 0` 参数，chunk 的 `page_from/page_to` 存储 `pdf_page - page_offset`（结果 ≤ 0 时回退为原始 PDF 页码）
+- [ ] **B2.2**：`apps/backend/app/api/knowledge_documents.py` — 上传 endpoint 增加 `page_offset: int = 0` query 参数，传入 `run_ingest()`；同时将全部同步阻塞操作（`shutil.copy2`、`pdfplumber.open`、`_clean_pages`、`chunk_pages`、`upsert_chunks`）改为 `asyncio.to_thread()` 包装，避免阻塞事件循环导致 `/health` 误报断连
+- [ ] **B2.3**：`apps/desktop/src/pages/RuleSetPage.tsx` — 上传区域增加"页码偏移"数字输入框，带说明文字
+
+### B3：Chunker 中英文差异化字符上限
+
+- [ ] **B3.1**：`apps/backend/app/knowledge/chunker.py` — 实现 `_is_cjk_dominant(text)` 判断函数（CJK 字符占比 > 40% 视为中文主导）
+- [ ] **B3.2**：`chunker.py` — `chunk_pages()` 根据文档 CJK 比例动态设置 `target_min/target_max`：中文主导时 `min=300, max=800`；英文时保持原值 `min=500, max=1500`
+
+### B4：导入预览按 chunk_type 分组展示
+
+- [ ] **B4.1**：`apps/desktop/src/pages/RuleSetPage.tsx` — 预览面板 chunk 列表中每行显示 `chunk_type` badge（用 `CHUNK_TYPES` 映射中文标签）
+- [ ] **B4.2**：预览面板增加 chunk_type 过滤下拉框，选择后只显示该类型的 chunks；选"全部"时恢复
 
 ---
 

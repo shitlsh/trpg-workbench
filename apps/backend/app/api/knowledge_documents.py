@@ -33,6 +33,7 @@ async def upload_document(
     file: UploadFile = File(...),
     embedding_profile_id: str = Query(..., description="Embedding profile ID to use for indexing"),
     default_chunk_type: str = Query("", description="ChunkType tag for all chunks in this document"),
+    page_offset: int = Query(0, description="Subtract this from PDF page numbers to get logical page numbers matching the book's TOC. E.g. if PDF page 13 = book page 1, set page_offset=12."),
     db: Session = Depends(get_db),
 ):
     lib = db.get(KnowledgeLibraryORM, library_id)
@@ -97,6 +98,7 @@ async def upload_document(
             embedding_profile_id=embedding_profile.id,
             embedding_snapshot=embedding_snapshot,
             default_chunk_type=default_chunk_type,
+            page_offset=page_offset,
         )
     )
 
@@ -112,6 +114,7 @@ async def _run_ingest_background(
     embedding_profile_id: str,
     embedding_snapshot: dict,
     default_chunk_type: str = "",
+    page_offset: int = 0,
 ):
     from app.knowledge.pdf_ingest import run_ingest
     from app.storage.database import get_session_factory
@@ -161,6 +164,7 @@ async def _run_ingest_background(
             embedder=embedder,
             embedding_snapshot=embedding_snapshot,
             default_chunk_type=default_chunk_type,
+            page_offset=page_offset,
         )
         db = SessionLocal()
         try:
