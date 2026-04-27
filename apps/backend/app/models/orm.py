@@ -61,11 +61,6 @@ class LLMProfileORM(Base):
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False)  # openai/anthropic/google/openrouter/openai_compatible
     base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    temperature: Mapped[float] = mapped_column(Float, default=0.7)
-    max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
-    supports_json_mode: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    supports_tools: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

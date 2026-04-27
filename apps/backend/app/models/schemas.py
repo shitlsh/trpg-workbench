@@ -60,11 +60,6 @@ class LLMProfileSchema(BaseModel):
     name: str
     provider_type: str
     base_url: str | None
-    temperature: float
-    max_tokens: int
-    supports_json_mode: bool
-    supports_tools: bool
-    timeout_seconds: int
     has_api_key: bool = False
     created_at: datetime
     updated_at: datetime
@@ -75,11 +70,6 @@ class LLMProfileCreate(BaseModel):
     provider_type: str
     base_url: str | None = None
     api_key: str | None = None
-    temperature: float = 0.7
-    max_tokens: int = 4096
-    supports_json_mode: bool
-    supports_tools: bool
-    timeout_seconds: int = 60
 
 
 class LLMProfileUpdate(BaseModel):
@@ -88,11 +78,6 @@ class LLMProfileUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     clear_api_key: bool = False
-    temperature: float | None = None
-    max_tokens: int | None = None
-    supports_json_mode: bool | None = None
-    supports_tools: bool | None = None
-    timeout_seconds: int | None = None
 
 
 class LLMTestResult(BaseModel):

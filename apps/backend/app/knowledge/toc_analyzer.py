@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from app.agents.model_adapter import model_from_profile, strip_code_fence
 from app.prompts import load_prompt
+from app.services.llm_defaults import task_temperature
 
 
 # ─── Result types ─────────────────────────────────────────────────────────────
@@ -67,7 +68,13 @@ def analyze_toc(
 
     try:
         from agno.agent import Agent
-        agent = Agent(model=model, instructions=[system_prompt], markdown=False)
+        t = task_temperature("toc_analysis")
+        try:
+            agent = Agent(
+                model=model, instructions=[system_prompt], markdown=False, temperature=t,
+            )
+        except TypeError:
+            agent = Agent(model=model, instructions=[system_prompt], markdown=False)
         response = agent.run(user_message)
         raw = strip_code_fence(response.content if hasattr(response, "content") else str(response))
     except Exception as e:

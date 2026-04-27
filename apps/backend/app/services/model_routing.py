@@ -2,6 +2,7 @@
 import json
 from sqlalchemy.orm import Session
 from app.models.orm import WorkspaceORM, LLMProfileORM, EmbeddingProfileORM, KnowledgeLibraryORM, RerankProfileORM
+from app.services.llm_defaults import task_temperature
 
 
 class ModelNotConfiguredError(Exception):
@@ -19,13 +20,14 @@ class LibraryNotIndexedError(Exception):
         self.message = f"Library {library_id} has not been indexed yet"
 
 
-def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> tuple[LLMProfileORM, str]:
+def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> tuple[LLMProfileORM, str, float]:
     """
-    Resolve the LLM profile and model name to use for a given task.
-    Returns (profile, model_name).
+    Resolve the LLM profile, model name, and default sampling temperature for a task.
+    Returns (profile, model_name, temperature).
 
     profile   — LLMProfileORM with provider credentials
     model_name — resolved from workspace.default_llm_model_name
+    temperature — from :func:`task_temperature` for ``task_type``
 
     Raises ModelNotConfiguredError if no profile or model is configured.
     """
@@ -54,7 +56,7 @@ def get_llm_for_task(workspace_id: str, task_type: str, db: Session) -> tuple[LL
             "Please select a model in workspace settings."
         )
 
-    return profile, model_name
+    return profile, model_name, task_temperature(task_type)
 
 
 def get_embedding_for_query(library_id: str, db: Session) -> EmbeddingProfileORM:

@@ -16,7 +16,7 @@ from app.agents.tools import (
 from app.prompts import load_prompt
 
 
-def build_director(model, workspace_context: dict, db) -> Agent:
+def build_director(model, workspace_context: dict, db, temperature: float = 0.7) -> Agent:
     """Build a Director Agent instance with tools configured for the given workspace."""
     configure_tools(workspace_context, db, model=model)
 
@@ -31,12 +31,16 @@ def build_director(model, workspace_context: dict, db) -> Agent:
     snapshot = _build_workspace_snapshot(workspace_context)
     system_prompt = f"{system_prompt}\n\n{snapshot}"
 
-    return Agent(
+    agent_kw = dict(
         model=model,
         tools=ALL_TOOLS,
         instructions=[system_prompt],
         markdown=False,
     )
+    try:
+        return Agent(**agent_kw, temperature=temperature)
+    except TypeError:
+        return Agent(**agent_kw)
 
 
 def _build_workspace_snapshot(workspace_context: dict) -> str:
@@ -84,6 +88,7 @@ async def run_director_stream(
     history: list[dict] | None = None,
     referenced_assets: list[dict] | None = None,
     db=None,
+    temperature: float = 0.7,
 ):
     """Async generator yielding SSE event dicts.
 
@@ -94,7 +99,7 @@ async def run_director_stream(
         yield {"event": "error", "data": {"message": "未配置 LLM，请在工作区设置中配置 LLM Profile"}}
         return
 
-    agent = build_director(model, workspace_context, db)
+    agent = build_director(model, workspace_context, db, temperature=temperature)
 
     # Build full prompt (inject referenced assets if any)
     prompt = user_message

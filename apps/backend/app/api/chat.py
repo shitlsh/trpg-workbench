@@ -23,7 +23,9 @@ from app.services import chat_service
 from app.agents.director import run_director_stream
 from app.workflows.utils import get_workspace_context
 from app.services.model_routing import get_llm_for_task, ModelNotConfiguredError
+from app.services.llm_defaults import task_temperature
 from app.agents.model_adapter import model_from_profile
+from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -47,7 +49,11 @@ async def _summarize_dropped_messages(
 
         api_key = _decrypt_key(profile) or "dummy"
         base_url = profile.base_url or None
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=float(LLM_REQUEST_TIMEOUT_SECONDS),
+        )
 
         lines = []
         for m in dropped:
@@ -69,7 +75,7 @@ async def _summarize_dropped_messages(
                 {"role": "user", "content": transcript},
             ],
             max_tokens=150,
-            temperature=0.3,
+            temperature=task_temperature("summary"),
         )
         summary = (resp.choices[0].message.content or "").strip()
         return summary[:300] if summary else None
@@ -217,7 +223,7 @@ async def send_message(
 
     # Resolve model
     try:
-        profile, model_name = get_llm_for_task(body.workspace_id, "chat", db)
+        profile, model_name, temperature = get_llm_for_task(body.workspace_id, "chat", db)
         # Allow per-message model override (e.g. from AgentPanel model switcher)
         if body.model:
             model_name = body.model
@@ -292,6 +298,7 @@ async def send_message(
                     history=history,
                     referenced_assets=referenced_assets or None,
                     db=db,
+                    temperature=temperature,
                 ):
                     await queue.put(("evt", evt))
             except Exception as exc:

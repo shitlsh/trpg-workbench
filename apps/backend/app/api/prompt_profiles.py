@@ -13,6 +13,7 @@ from app.models.schemas import (
     GeneratePromptRequest,
 )
 from app.prompts import load_prompt
+from app.services.llm_defaults import task_temperature
 
 router = APIRouter(prefix="/prompt-profiles", tags=["prompt-profiles"])
 
@@ -66,7 +67,11 @@ async def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get
         )
 
         model = model_from_profile(llm_profile, body.model_name)
-        agent = Agent(model=model, markdown=False)
+        t = task_temperature("prompt_generation")
+        try:
+            agent = Agent(model=model, markdown=False, temperature=t)
+        except TypeError:
+            agent = Agent(model=model, markdown=False)
         result = agent.run(prompt)
         raw = result.content if hasattr(result, "content") else str(result)
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()

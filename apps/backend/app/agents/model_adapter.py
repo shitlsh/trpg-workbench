@@ -3,6 +3,13 @@ import re
 from typing import Any
 from agno.models.openai import OpenAIChat
 
+from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
+
+
+def _llm_timeout_kwargs() -> dict:
+    """Extra kwargs for Agno chat models (best-effort; ignored if unsupported)."""
+    return {"timeout": float(LLM_REQUEST_TIMEOUT_SECONDS)}
+
 
 def strip_code_fence(text: str) -> str:
     """Remove markdown code fences (``` or ```json etc.) from LLM responses."""
@@ -34,8 +41,10 @@ def model_from_profile(profile, model_name: str) -> Any:
     base_url = profile.base_url or None
     api_key = _decrypt_key(profile)
 
+    to = _llm_timeout_kwargs()
+
     if provider == "openai":
-        kwargs: dict = {"id": model_name}
+        kwargs: dict = {"id": model_name, **to}
         if api_key:
             kwargs["api_key"] = api_key
         if base_url:
@@ -44,27 +53,27 @@ def model_from_profile(profile, model_name: str) -> Any:
 
     elif provider == "anthropic":
         from agno.models.anthropic import Claude
-        kwargs = {"id": model_name}
+        kwargs = {"id": model_name, **to}
         if api_key:
             kwargs["api_key"] = api_key
         return Claude(**kwargs)
 
     elif provider == "google":
         from agno.models.google import Gemini
-        kwargs = {"id": model_name}
+        kwargs = {"id": model_name, **to}
         if api_key:
             kwargs["api_key"] = api_key
         return Gemini(**kwargs)
 
     elif provider == "openrouter":
-        kwargs = {"id": model_name}
+        kwargs = {"id": model_name, **to}
         if api_key:
             kwargs["api_key"] = api_key
         kwargs["base_url"] = base_url or "https://openrouter.ai/api/v1"
         return OpenAIChat(**kwargs)
 
     elif provider == "openai_compatible":
-        kwargs = {"id": model_name}
+        kwargs = {"id": model_name, **to}
         # Local/compatible endpoints don't require a real key, but the OpenAI client
         # will raise if neither api_key kwarg nor OPENAI_API_KEY env var is present.
         kwargs["api_key"] = api_key or "local"
@@ -90,7 +99,7 @@ def embedding_from_profile(profile) -> Any:
 
     from openai import OpenAI
 
-    kwargs: dict = {}
+    kwargs: dict = {"timeout": float(LLM_REQUEST_TIMEOUT_SECONDS)}
     if api_key:
         kwargs["api_key"] = api_key
     if base_url:
