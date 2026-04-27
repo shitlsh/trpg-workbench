@@ -14,7 +14,7 @@
 |------|------|-----------|
 | **1 — 优先** | 所有 **仍内联 / 未规范** 的 prompt **迁出**或收编、**统一中文化**、**A3** P0、**A5** 清理、**A7.1–A7.2**、**A4**（含 A4.2 TOC 双文件 + user 模板；consistency/skill user 英文见 A7 §4） | 地基先干净 |
 | **2** | **A1** Explore 子 Agent、**A2** Director 边界、前端 `agent_scope`、**chat** 中按 scope 分流的非 prompt 逻辑 | 产品能力 |
-| **3** | **A6** skill/架构文档、**A7.3**（pdf-knowledge 一句）、Help 与验收扫尾 | 文档与闭环 |
+| **3** | **A6** skill/架构文档、**A7.3**（pdf-knowledge skill 更新）、验收扫尾；**内建 Help 全文不纳入本阶段**（待系统再稳定后**统一重建** `apps/desktop/src/help/`，见「非目标」） | 文档与闭环 |
 
 > 若资源紧缺：**不得**裁掉阶段 1 去赶阶段 2；阶段 1 可拆多 PR，但**顺序**保持「先迁出、再 Explore」。
 
@@ -131,7 +131,7 @@ apps/desktop/... (chat 会话创建)                     # agent_scope UI
 
 ## 关键设计约束
 
-- Explore **不直接写盘**；若用户从探索会话明确要求「就帮我改掉」，**产品策略**二选一在实现中明确并写入 Help：**引导用户切换到创作会话**，或 **提示将意图再发一条到 Director**；禁止在探索会话静默写入。
+- Explore **不直接写盘**；若用户从探索会话明确要求「就帮我改掉」，**产品策略**二选一在实现中明确（**引导用户切换到创作会话**，或 **提示将意图再发一条到 Director**）；UI/会话内已有说明即可，**完整 Help 与「写入 Help」留待系统稳定后统一重建**。
 - `shared-schema` 与前后端对 `agent_scope` 的枚举若需扩展，**唯一**在 [packages/shared-schema](packages/shared-schema) 中扩展再同步后端/前端。
 
 ---
@@ -192,7 +192,7 @@ apps/desktop/... (chat 会话创建)                     # agent_scope UI
 
 1. 创建 **agent_scope=explore** 的会话时，流式端点**只**调用 Explore 流式方法，**不应**出现写资产类工具调用；创建默认/创作类会话时行为与 M25 前**一致**（无回归）。
 2. `director/system` 中关于 `check_consistency` 状态的描述与 Consistency 实际 JSON 与 TS 类型**一致**。
-3. 探索会话中，用户可仅通过对话与只读工具完成「列举/搜索/按章节阅读工作区资产」的闭环；Help 或 Session 内简短说明**探索不写盘**与如何切换到创作（若产品选择双会话）。
+3. 探索会话中，用户可仅通过对话与只读工具完成「列举/搜索/按章节阅读工作区资产」的闭环；**Session / Agent 面板**已有**探索不写盘**与切回创作之提示即可；**内建 Help 文档不强制本 milestone 更新**（见上）。
 4. 仓库内**不再**在热路径保留未使用的 clarification/planning 而无说明；`prompts/__init__.py` **无**对不存在路径的示例。
 5. `agent-workflow-patterns` 中 M20 子 Agent 表**包含 Explore**，并说明其与 Rules/Consistency/Skill 的分工，且**不**与已否定的旧顺序多 Agent 链混淆。
 6. 聊天**历史截断摘要**的 system 内容**仅**来自 `app/prompts/`（满足 A7.1），无与此重复的内联长文案。
@@ -214,6 +214,7 @@ M25（LLM Profile 与聊天基础）
 
 - 不实现**全新**的 Plot/NPC/Monster 等独立**生成**子 Agent（与 M20 技能原则一致）；Explore 仅**只读探索**。
 - 不将本 milestone 与「旧 M10 顺序阶段 Director」混为一谈；**不**以 clar/plan 文件接回为交付内容。
+- **不**在本 milestone 对内建 **Help**（`apps/desktop/src/help/` 等）做体系化补全或重排；等核心流程与 copy 再成熟一轮后，**再单独开迭代统一重建** Help，避免与仍在演进的 Agent/知识库能力重复劳动。
 
 ---
 
