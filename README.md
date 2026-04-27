@@ -111,6 +111,8 @@ cargo tauri dev
 
 运行时数据默认存储在 `~/trpg-workbench-data/`，可通过环境变量 `TRPG_DATA_DIR` 覆盖。
 
+后端（FastAPI）可选环境变量 `LLM_REQUEST_TIMEOUT_SECONDS`：设为正整数秒时，会对 OpenAI/Agno 的 LLM 与 Embedding 请求注入对应 HTTP 超时；**不设置**则不传 `timeout`，由 SDK 默认行为决定（与未接入该参数前一致）。**无应用内 UI**，需在启动进程前设置环境变量。
+
 ```
 ~/trpg-workbench-data/
   app.db               # SQLite 主数据库

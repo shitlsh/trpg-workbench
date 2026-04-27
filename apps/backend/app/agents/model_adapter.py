@@ -8,7 +8,10 @@ from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
 
 def _llm_timeout_kwargs() -> dict:
     """Extra kwargs for Agno chat models (best-effort; ignored if unsupported)."""
-    return {"timeout": float(LLM_REQUEST_TIMEOUT_SECONDS)}
+    t = LLM_REQUEST_TIMEOUT_SECONDS
+    if t is None:
+        return {}
+    return {"timeout": float(t)}
 
 
 def _instantiate_chat_model(factory, **kwargs):
@@ -108,7 +111,9 @@ def embedding_from_profile(profile) -> Any:
 
     from openai import OpenAI
 
-    kwargs: dict = {"timeout": float(LLM_REQUEST_TIMEOUT_SECONDS)}
+    kwargs: dict = {}
+    if LLM_REQUEST_TIMEOUT_SECONDS is not None:
+        kwargs["timeout"] = float(LLM_REQUEST_TIMEOUT_SECONDS)
     if api_key:
         kwargs["api_key"] = api_key
     if base_url:

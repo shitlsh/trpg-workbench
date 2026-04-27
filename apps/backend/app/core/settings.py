@@ -1,7 +1,19 @@
 """App-wide settings loaded from the environment (no per-profile secrets)."""
 import os
 
-# Per-request HTTP timeout for outbound LLM/embedding API calls (OpenAI-compatible clients, Agno models).
-# Default 600s: aligns with long SSE tasks (e.g. CHM 600s) and slow local inference (LM Studio);
-# not a second "deadline" on top of those — it only bounds each HTTP read/write. Override if needed.
-LLM_REQUEST_TIMEOUT_SECONDS: int = int(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "600"))
+
+def _optional_positive_int_env(name: str) -> int | None:
+    """Parse a positive integer from the environment, or None if unset/empty/invalid."""
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return None
+    try:
+        v = int(str(raw).strip(), 10)
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
+# If unset: do not pass ``timeout`` to OpenAI/Agno clients (SDK / httpx defaults apply).
+# If set (e.g. ``LLM_REQUEST_TIMEOUT_SECONDS=600``): per-request HTTP read timeout in seconds.
+LLM_REQUEST_TIMEOUT_SECONDS: int | None = _optional_positive_int_env("LLM_REQUEST_TIMEOUT_SECONDS")

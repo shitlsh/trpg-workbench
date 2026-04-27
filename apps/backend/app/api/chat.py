@@ -49,11 +49,10 @@ async def _summarize_dropped_messages(
 
         api_key = _decrypt_key(profile) or "dummy"
         base_url = profile.base_url or None
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=float(LLM_REQUEST_TIMEOUT_SECONDS),
-        )
+        client_kw: dict = {"api_key": api_key, "base_url": base_url}
+        if LLM_REQUEST_TIMEOUT_SECONDS is not None:
+            client_kw["timeout"] = float(LLM_REQUEST_TIMEOUT_SECONDS)
+        client = AsyncOpenAI(**client_kw)
 
         lines = []
         for m in dropped:
