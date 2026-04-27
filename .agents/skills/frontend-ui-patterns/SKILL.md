@@ -234,6 +234,54 @@ config.yaml 中的模型引用是 **名称字符串**（如 `"gemini-2.5-flash"`
 - 自定义组件通过 shadcn/ui 基础组件组合，不写裸 HTML + CSS（除非必要）
 - 主题色与设计系统在 `src/styles/globals.css` 中统一定义 CSS 变量
 
+### ModelNameInput 组件（必须使用）
+
+所有需要输入模型名称的地方**必须使用** `src/components/ModelNameInput.tsx`，禁止重复写 select/input 逻辑。
+
+```tsx
+import { ModelNameInput } from "../components/ModelNameInput";
+
+<ModelNameInput
+  catalog="llm"              // 或 "embedding"
+  providerType={form.provider_type}
+  value={modelName}
+  onChange={setModelName}
+  fetchedModels={fetchedModels}   // 动态 probe 结果（可选，默认 []）
+  placeholder="例：gemini-2.0-flash"
+  className={styles.input}
+/>
+```
+
+**行为规则：**
+- `fetchedModels.length > 0` → 渲染 `<select>` 下拉（动态 probe 结果优先）
+- 无 probe 结果但 `providerType` 在 `KNOWN_LLM_MODELS` / `KNOWN_EMBEDDING_MODELS` 中 → `<input>` + `<datalist>` 建议
+- 其余（如 `openai_compatible` 未 probe）→ 纯 `<input>`
+
+**已知模型静态列表**维护在 `src/lib/modelCatalog.ts`，新增供应商只改这一个文件：
+
+```
+KNOWN_LLM_MODELS:   anthropic / google / openai（openrouter 留空，支持 probe）
+KNOWN_EMBEDDING_MODELS: openai / google（openai_compatible 留空，支持 probe）
+```
+
+**当前覆盖的 5 处入口：**
+
+| 文件 | 位置 | catalog |
+|------|------|---------|
+| `WorkspaceSettingsPage.tsx` | 工作空间设置 — 默认 LLM 模型 | llm |
+| `SettingsPage.tsx` | 模型配置 — LLM 测试用模型名称 | llm |
+| `SettingsPage.tsx` | 模型配置 — Embedding 模型名称 | embedding |
+| `RuleSetPage.tsx` | 规则集 — AI 生成提示词模型名称 | llm |
+| `WizardStep2Embedding.tsx` | Setup Wizard — Embedding 模型名称 | embedding |
+
+**AgentPanel 底部模型选择器**（`src/components/agent/AgentPanel.tsx`）是 `<select>` 形式，不使用 `ModelNameInput`，但同样从 `KNOWN_LLM_MODELS` 取 fallback：
+
+```tsx
+const modelOptions = availableModels.length > 0
+  ? availableModels
+  : (KNOWN_LLM_MODELS[activeProfile?.provider_type ?? ""] ?? []);
+```
+
 ---
 
 ## Agent 面板规范（M19）
