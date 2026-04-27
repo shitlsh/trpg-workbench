@@ -851,6 +851,7 @@ function LibraryDetailPanel({
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [expandedDocIds, setExpandedDocIds] = useState<Set<string>>(new Set());
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [showSearchTest, setShowSearchTest] = useState(false);
@@ -1018,42 +1019,6 @@ function LibraryDetailPanel({
         </div>
       )}
 
-      {/* chunk_type selector for upload */}
-      <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-          文档内容类型（可选，标记所有 chunk 的语义分类）
-        </label>
-        <select
-          style={{ fontSize: 12, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%" }}
-          value={defaultChunkType}
-          onChange={(e) => setDefaultChunkType(e.target.value as ChunkType | "")}
-        >
-          <option value="">— 不标记（混合内容）</option>
-          {CHUNK_TYPES.map((ct) => (
-            <option key={ct.value} value={ct.value}>{ct.label}：{ct.description}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* page_offset input */}
-      <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-          页码偏移（可选）
-        </label>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="number"
-            min={0}
-            value={pageOffset}
-            onChange={(e) => setPageOffset(Math.max(0, parseInt(e.target.value) || 0))}
-            style={{ width: 80, fontSize: 12, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
-          />
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            若 PDF 第 N 页对应书籍第 1 页，填 N−1。例：正文从 PDF 第 13 页开始 → 填 12
-          </span>
-        </div>
-      </div>
-
       {/* Upload area */}
       {(() => {
         const uploadDisabled = isUploading || !!uploadingTaskId || documents.length > 0;
@@ -1068,18 +1033,92 @@ function LibraryDetailPanel({
               e.preventDefault();
               if (uploadDisabled) return;
               const file = e.dataTransfer.files[0];
-              if (file) handleUpload(file);
+              if (file) setPendingFile(file);
             }}
           >
             <Upload size={20} color="var(--text-muted)" />
             <span>{overlayMsg ?? "拖拽 PDF / CHM 到此处，或点击选择文件"}</span>
             <input
               ref={fileInputRef} type="file" accept=".pdf,.chm" style={{ display: "none" }}
-              onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUpload(file); e.target.value = ""; }}
+              onChange={(e) => { const file = e.target.files?.[0]; if (file) setPendingFile(file); e.target.value = ""; }}
             />
           </div>
         );
       })()}
+
+      {/* Upload confirmation modal */}
+      {pendingFile && (
+        <div className={styles.overlay} onClick={() => setPendingFile(null)}>
+          <div className={styles.modal} style={{ width: 480, maxWidth: "95vw" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 className={styles.modalTitle} style={{ margin: 0 }}>确认导入设置</h2>
+              <button onClick={() => setPendingFile(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}><X size={16} /></button>
+            </div>
+
+            {/* File info */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", marginBottom: 16 }}>
+              <FileText size={16} color="var(--text-muted)" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingFile.name}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{(pendingFile.size / 1024 / 1024).toFixed(2)} MB</div>
+              </div>
+            </div>
+
+            {/* chunk_type */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                文档内容类型（可选）
+              </label>
+              <select
+                style={{ fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%" }}
+                value={defaultChunkType}
+                onChange={(e) => setDefaultChunkType(e.target.value as ChunkType | "")}
+              >
+                <option value="">— 不标记（混合内容）</option>
+                {CHUNK_TYPES.map((ct) => (
+                  <option key={ct.value} value={ct.value}>{ct.label}：{ct.description}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* page_offset — only for PDF */}
+            {pendingFile.name.toLowerCase().endsWith(".pdf") && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                  页码偏移（可选）
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number"
+                    min={0}
+                    value={pageOffset}
+                    onChange={(e) => setPageOffset(Math.max(0, parseInt(e.target.value) || 0))}
+                    style={{ width: 80, fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+                  />
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                    若 PDF 第 N 页对应书籍第 1 页，填 N−1<br />
+                    例：正文从 PDF 第 13 页开始 → 填 12
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+              <button className={styles.btnSecondary} onClick={() => setPendingFile(null)}>取消</button>
+              <button
+                className={styles.btnPrimary}
+                onClick={() => {
+                  const f = pendingFile;
+                  setPendingFile(null);
+                  handleUpload(f);
+                }}
+              >
+                开始处理
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {uploadError && (
         <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>
