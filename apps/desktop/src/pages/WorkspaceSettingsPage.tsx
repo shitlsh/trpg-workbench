@@ -16,6 +16,32 @@ import { HelpButton } from "../components/HelpButton";
 
 // ─── Skills Section ────────────────────────────────────────────────────────────
 
+const KNOWN_MODELS: Record<string, string[]> = {
+  anthropic: [
+    "claude-opus-4-5",
+    "claude-sonnet-4-5",
+    "claude-haiku-3-5",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+  ],
+  google: [
+    "gemini-2.5-pro-preview-06-05",
+    "gemini-2.5-flash-preview-05-20",
+    "gemini-2.0-flash",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+  ],
+  openai: [
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4-turbo",
+    "o1",
+    "o1-mini",
+    "o3-mini",
+  ],
+};
+
 const AGENT_TYPE_OPTIONS = [
   { value: "npc", label: "NPC" },
   { value: "monster", label: "怪物/实体" },
@@ -523,13 +549,23 @@ export default function WorkspaceSettingsPage() {
                     {probedModels.map((m) => <option key={m} value={m}>{m}</option>)}
                   </select>
                 ) : (
-                  <input
-                    className={styles.input}
-                    style={{ flex: 1 }}
-                    value={defaultLlmModel}
-                    onChange={(e) => setDefaultLlmModel(e.target.value)}
-                    placeholder={selectedLlmProfile?.provider_type === "openai_compatible" ? "例：qwen3.5-35b-a3b" : "例：gemini-2.0-flash"}
-                  />
+                  <>
+                    {selectedLlmProfile?.provider_type && KNOWN_MODELS[selectedLlmProfile.provider_type] && (
+                      <datalist id="llm-known-models-list">
+                        {KNOWN_MODELS[selectedLlmProfile.provider_type].map((m) => (
+                          <option key={m} value={m} />
+                        ))}
+                      </datalist>
+                    )}
+                    <input
+                      className={styles.input}
+                      style={{ flex: 1 }}
+                      value={defaultLlmModel}
+                      onChange={(e) => setDefaultLlmModel(e.target.value)}
+                      placeholder={selectedLlmProfile?.provider_type === "openai_compatible" ? "例：qwen3.5-35b-a3b" : "例：gemini-2.0-flash"}
+                      list={selectedLlmProfile?.provider_type && KNOWN_MODELS[selectedLlmProfile.provider_type] ? "llm-known-models-list" : undefined}
+                    />
+                  </>
                 )}
                 {selectedLlmProfile?.base_url && (
                   <button
