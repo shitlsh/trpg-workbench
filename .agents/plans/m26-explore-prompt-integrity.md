@@ -168,19 +168,19 @@ apps/desktop/... (chat 会话创建)                     # agent_scope UI
 
 ### A1：Explore 子 Agent 与会话分支
 
-- [ ] **A1.1**：`app/prompts/explore/system.txt` 与 `run_explore_stream` 行为就绪。
-- [ ] **A1.2**：`chat.py` 中按 `agent_scope` 分支；默认会话行为与现网一致（向后兼容）。
-- [ ] **A1.3**：前端可创建/展示「探索」与「创作」会话（`agent_scope` 贯通 API）。
+- [x] **A1.1**：`app/prompts/explore/system.txt` 与 `run_explore_stream` 行为就绪。
+- [x] **A1.2**：`chat.py` 中按 `agent_scope` 分支；默认会话行为与现网一致（向后兼容）。
+- [x] **A1.3**：前端可创建/展示「探索」与「创作」会话（`agent_scope` 贯通 API）。
 
 ### A2：Director 与 Explore 边界
 
-- [ ] **A2.1**：`director/system.txt` 与 Explore 无职责重叠的冗长段已收束，并显式引导探索类会话使用 Explore。
+- [x] **A2.1**：`director/system.txt` 与 Explore 无职责重叠的冗长段已收束，并显式引导探索类会话使用 Explore。
 
 ### 阶段 3
 
 ### A6：技能文档
 
-- [ ] **A6.1**：`agent-workflow-patterns` / `trpg-workbench-architecture` 已反映 Explore 与已有子 Agent 关系。
+- [x] **A6.1**：`agent-workflow-patterns` / `trpg-workbench-architecture` 已反映 Explore 与已有子 Agent 关系。
 
 ### A7：skill 补充（A7.3）
 
