@@ -44,6 +44,8 @@ STEP_LABELS = [
     "正在写入 manifest...",
 ]
 
+CHM_OVERLAP_CHARS = 80
+
 
 def _lib_dir(library_id: str) -> Path:
     d = get_data_dir() / "knowledge" / "libraries" / library_id
@@ -61,14 +63,24 @@ def _append_parse_note(existing: str, note: str) -> str:
 
 def _strip_html(raw: str) -> str:
     """Strip HTML/XML tags and unescape entities."""
+    # Preserve structural breaks before stripping tags; otherwise many CHM pages
+    # collapse into one giant paragraph and produce highly-overlapped chunks.
+    raw = re.sub(r"(?is)<br\s*/?>", "\n", raw)
+    raw = re.sub(
+        r"(?is)</(p|div|li|tr|table|section|article|h[1-6]|ul|ol|dl|dt|dd|blockquote)>",
+        "\n\n",
+        raw,
+    )
+    raw = re.sub(r"(?is)<li[^>]*>", "\n- ", raw)
     # Remove script/style blocks first
     raw = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", raw, flags=re.DOTALL | re.IGNORECASE)
     # Remove tags
     raw = re.sub(r"<[^>]+>", " ", raw)
     # Unescape HTML entities
     raw = html.unescape(raw)
-    # Collapse whitespace
-    raw = re.sub(r"[ \t]+", " ", raw)
+    # Normalize and collapse whitespace while keeping paragraph boundaries.
+    raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+    raw = re.sub(r"[ \t\f\v]+", " ", raw)
     raw = re.sub(r"\n{3,}", "\n\n", raw)
     return raw.strip()
 
@@ -236,7 +248,11 @@ async def run_ingest(
 
     # ── Step 4: Chunk ────────────────────────────────────────────────────────
     await report(4, STEP_LABELS[3])
-    raw_chunks: list[RawChunk] = await asyncio.to_thread(chunk_pages, pages)
+    raw_chunks: list[RawChunk] = await asyncio.to_thread(
+        chunk_pages,
+        pages,
+        overlap=CHM_OVERLAP_CHARS,
+    )
 
     if not raw_chunks:
         return {

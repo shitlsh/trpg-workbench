@@ -159,7 +159,9 @@ def chm_structure_to_sections(raw_items: list[dict]) -> list[TocSection]:
 # ─── CHM: LLM chunk_type for shallow rows + tree inherit for deep rows ───────
 
 CHM_CLASSIFY_MAX_DEPTH = 2
-CHM_CLASSIFY_BATCH = 50
+# Larger batch significantly reduces request round-trips for CHM catalogs.
+# For common depth<=2 catalogs, 120 usually fits in one or two calls.
+CHM_CLASSIFY_BATCH = 120
 
 
 def _inherit_chm_chunk_types(
