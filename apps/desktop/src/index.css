@@ -146,6 +146,14 @@ input, textarea, select {
   outline: none;
 }
 
+/* Ensure native number-input spinner arrows stay visible in both themes. */
+[data-theme="dark"] input[type="number"] {
+  color-scheme: dark;
+}
+[data-theme="light"] input[type="number"] {
+  color-scheme: light;
+}
+
 a {
   text-decoration: none;
   color: inherit;

@@ -535,7 +535,7 @@ function DocumentPreviewPanel({
   return (
     <div style={{
       position: "fixed", right: 0, top: 0, bottom: 0, width: 480,
-      background: "var(--surface, #1a1a1a)", borderLeft: "1px solid var(--border)",
+      background: "var(--bg-surface)", borderLeft: "1px solid var(--border)",
       zIndex: 100, display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -608,7 +608,7 @@ function DocumentPreviewPanel({
                 )}
                 {selectedChunkId === chunk.chunk_id && chunkDetail?.content && (
                   <div style={{
-                    marginTop: 8, padding: "6px 8px", background: "var(--bg, #111)",
+                    marginTop: 8, padding: "6px 8px", background: "var(--bg)",
                     borderRadius: 4, fontSize: 12, lineHeight: 1.5,
                     whiteSpace: "pre-wrap", maxHeight: 200, overflow: "auto",
                   }}>
@@ -627,7 +627,7 @@ function DocumentPreviewPanel({
               <input
                 type="number" min={1} value={pageNumber}
                 onChange={(e) => setPageNumber(Math.max(1, parseInt(e.target.value) || 1))}
-                style={{ width: 60, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", fontSize: 13 }}
+                style={{ width: 60, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
               />
             </div>
             {pagePreview ? (
@@ -636,7 +636,7 @@ function DocumentPreviewPanel({
                   Chunks: {pagePreview.chunk_ids.length} 个
                 </div>
                 <div style={{
-                  padding: "8px 10px", background: "var(--bg, #111)", borderRadius: 6,
+                  padding: "8px 10px", background: "var(--bg)", borderRadius: 6,
                   fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", maxHeight: 500, overflow: "auto",
                 }}>
                   {pagePreview.cleaned_text || pagePreview.raw_text || "（无文本内容）"}
@@ -704,7 +704,7 @@ function SearchTestDialog({
     }} onClick={onClose}>
       <div
         style={{
-          background: "var(--surface, #1a1a1a)", borderRadius: 10, padding: 24,
+          background: "var(--bg-surface)", borderRadius: 10, padding: 24,
           width: 640, maxWidth: "95vw", maxHeight: "85vh", overflow: "auto",
           border: "1px solid var(--border)",
         }}
