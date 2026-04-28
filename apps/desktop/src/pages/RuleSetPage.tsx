@@ -875,7 +875,8 @@ function LibraryDetailPanel({
     | { step: "detecting_toc"; fileId: string; filename: string; fileExt: string }
     | { step: "toc_preview"; fileId: string; filename: string; fileExt: string;
         tocText: string; pageStart: number; pageEnd: number;
-        customStart: number; customEnd: number; redetecting: boolean; redetectError: string }
+        /** 页码范围手动输入，用字符串便于清空后再输入（不使用 number 控件避免强留最小值） */
+        customStart: string; customEnd: string; redetecting: boolean; redetectError: string }
     | { step: "select_llm"; fileId: string; filename: string; fileExt: string;
         tocText: string; llmProfileId: string; llmModelName: string }
     | { step: "analyzing_toc"; fileId: string; filename: string; fileExt: string;
@@ -1005,8 +1006,8 @@ function LibraryDetailPanel({
           tocText: detectRes.toc_text,
           pageStart: detectRes.page_start,
           pageEnd: detectRes.page_end,
-          customStart: detectRes.page_start,
-          customEnd: detectRes.page_end,
+          customStart: String(detectRes.page_start),
+          customEnd: String(detectRes.page_end),
           redetecting: false,
           redetectError: "",
         });
@@ -1030,8 +1031,8 @@ function LibraryDetailPanel({
         tocText: res.toc_text,
         pageStart: res.page_start,
         pageEnd: res.page_end,
-        customStart: start,
-        customEnd: end,
+        customStart: String(start),
+        customEnd: String(end),
         redetecting: false,
         redetectError: "",
       });
@@ -1130,7 +1131,12 @@ function LibraryDetailPanel({
             file_id: fileId,
             embedding_profile_id: profileId,
             page_offset: pageOffset,
-            toc_mapping: sections.map((s) => ({ title: s.title, page_from: s.page_from, page_to: s.page_to, chunk_type: s.chunk_type || null })),
+            toc_mapping: sections.map((s) => ({
+              title: s.title,
+              page_from: s.page_from,
+              page_to: s.page_to,
+              chunk_type: s.chunk_type ? String(s.chunk_type) : "",
+            })),
           }),
         },
       );
@@ -1300,17 +1306,43 @@ function LibraryDetailPanel({
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
                     检测到目录在第 {w.pageStart}–{w.pageEnd} 页。如果不对，可手动调整后重新扫描。
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, color: "var(--text-muted)" }}>页码范围：</span>
-                    <input type="number" min={1} value={w.customStart}
-                      onChange={(e) => setWizard({ ...w, customStart: Math.max(1, parseInt(e.target.value) || 1) })}
-                      style={{ width: 64, fontSize: 13, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }} />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      aria-label="目录起始页"
+                      value={w.customStart}
+                      onChange={(e) => setWizard({ ...w, customStart: e.target.value.replace(/[^\d]/g, "") })}
+                      placeholder="起始"
+                      style={{ width: 72, fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+                    />
                     <span style={{ color: "var(--text-muted)" }}>—</span>
-                    <input type="number" min={1} value={w.customEnd}
-                      onChange={(e) => setWizard({ ...w, customEnd: Math.max(1, parseInt(e.target.value) || 1) })}
-                      style={{ width: 64, fontSize: 13, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }} />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      aria-label="目录结束页"
+                      value={w.customEnd}
+                      onChange={(e) => setWizard({ ...w, customEnd: e.target.value.replace(/[^\d]/g, "") })}
+                      placeholder="结束"
+                      style={{ width: 72, fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+                    />
                     <button className={styles.btnSecondary} disabled={w.redetecting}
-                      onClick={() => redetectToc(w.fileId, w.filename, w.fileExt, w.customStart, w.customEnd)}
+                      onClick={() => {
+                        const a = parseInt(w.customStart.trim(), 10);
+                        const b = parseInt(w.customEnd.trim(), 10);
+                        if (!Number.isFinite(a) || !Number.isFinite(b) || a < 1 || b < 1) {
+                          setWizard({ ...w, redetectError: "请填写有效的起止页码（正整数）" });
+                          return;
+                        }
+                        if (a > b) {
+                          setWizard({ ...w, redetectError: "起始页不能大于结束页" });
+                          return;
+                        }
+                        void redetectToc(w.fileId, w.filename, w.fileExt, a, b);
+                      }}
                       style={{ fontSize: 12, padding: "4px 10px" }}>
                       {w.redetecting ? "扫描中..." : "重新扫描"}
                     </button>
@@ -1347,26 +1379,41 @@ function LibraryDetailPanel({
             {/* select_llm */}
             {wizard.step === "select_llm" && (() => {
               const w = wizard;
+              const modelOk = w.llmModelName.trim().length > 0;
               return (
                 <>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
-                    选择用于解析目录结构的 LLM 供应商和模型。建议使用支持 JSON 输出的模型（如 GPT-4o、Claude 3.5 Sonnet）。
+                    目录结构需由 LLM 解析为 JSON。请选择已配置且可用的 LLM 与具体模型 id（与「模型配置」中测试用模型一致）。需能稳定输出 JSON（如多数现代 Sonnet / GPT-4o 等）。
                   </div>
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>供应商配置</label>
+                    <label style={{ fontSize: 12, color: "var(--text)", display: "block", marginBottom: 4, fontWeight: 600 }}>LLM 供应商 *</label>
                     <select
-                      style={{ width: "100%", fontSize: 13, padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+                      style={{ width: "100%", fontSize: 13, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
                       value={w.llmProfileId}
-                      onChange={(e) => setWizard({ ...w, llmProfileId: e.target.value })}
+                      onChange={(e) => setWizard({ ...w, llmProfileId: e.target.value, llmModelName: "" })}
                     >
                       {llmProfilesForUpload.map((p) => (
                         <option key={p.id} value={p.id}>{p.name} ({p.provider_type})</option>
                       ))}
                     </select>
                   </div>
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>模型名称（可选，留空则用供应商默认）</label>
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: "12px 12px 14px",
+                      borderRadius: 8,
+                      border: "1px solid rgba(124,106,247,0.45)",
+                      background: "rgba(124,106,247,0.06)",
+                    }}
+                  >
+                    <label style={{ fontSize: 12, color: "var(--text)", display: "block", marginBottom: 6, fontWeight: 600 }}>
+                      分析用模型名称 <span style={{ color: "var(--error, #e05252)" }}>*</span>
+                    </label>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 8px", lineHeight: 1.5 }}>
+                      必填。请从下拉选择或手输与供应商一致的模型 id；无「留空用默认」——各供应商需显式指定。
+                    </p>
                     <ModelNameInput
+                      className={styles.input}
                       catalog="llm"
                       providerType={wizardLlmProfile?.provider_type ?? ""}
                       value={w.llmModelName}
@@ -1374,16 +1421,23 @@ function LibraryDetailPanel({
                       catalogEntries={wizardCatalog}
                       fetchedModels={wizardProbedModels}
                       requireJsonMode
-                      placeholder="例：gpt-4o / claude-3-5-sonnet-20241022"
+                      placeholder="选择或输入模型 id（必填）"
                     />
                   </div>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                     <button className={styles.btnSecondary}
-                      onClick={() => setWizard({ step: "toc_preview", fileId: w.fileId, filename: w.filename, fileExt: w.fileExt, tocText: w.tocText, pageStart: 1, pageEnd: 1, customStart: 1, customEnd: 1, redetecting: false, redetectError: "" })}>
+                      onClick={() => setWizard({
+                        step: "toc_preview",
+                        fileId: w.fileId, filename: w.filename, fileExt: w.fileExt, tocText: w.tocText,
+                        pageStart: 1, pageEnd: 1, customStart: "1", customEnd: "1", redetecting: false, redetectError: "",
+                      })}>
                       ← 返回
                     </button>
-                    <button className={styles.btnPrimary} disabled={!w.llmProfileId}
-                      onClick={() => analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText, w.llmProfileId, w.llmModelName)}>
+                    <button
+                      className={styles.btnPrimary}
+                      disabled={!w.llmProfileId || !modelOk}
+                      onClick={() => analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText, w.llmProfileId, w.llmModelName.trim())}
+                    >
                       开始分析
                     </button>
                   </div>

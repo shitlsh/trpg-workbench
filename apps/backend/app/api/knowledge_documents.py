@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
@@ -558,7 +558,14 @@ class TocMappingItem(BaseModel):
     title: str
     page_from: int
     page_to: int
-    chunk_type: str = ""  # ChunkType value or ""
+    chunk_type: str | None = None  # 前端可能传 null；下游统一为字符串
+
+    @field_validator("chunk_type", mode="before")
+    @classmethod
+    def _chunk_type_to_str(cls, v: object) -> str:
+        if v is None:
+            return ""
+        return str(v)
 
 
 class IngestConfirmedRequest(BaseModel):
@@ -616,7 +623,10 @@ async def ingest_confirmed(
         "dimensions": embedding_profile.dimensions,
     }
 
-    toc_mapping = [{"title": m.title, "page_from": m.page_from, "page_to": m.page_to, "chunk_type": m.chunk_type} for m in body.toc_mapping]
+    toc_mapping = [
+        {"title": m.title, "page_from": m.page_from, "page_to": m.page_to, "chunk_type": m.chunk_type or ""}
+        for m in body.toc_mapping
+    ]
 
     # Remove file from temp store before background task takes ownership
     _TEMP_FILES.pop(body.file_id, None)
