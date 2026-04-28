@@ -16,10 +16,6 @@ class ProviderCapabilityPolicy:
 def resolve_policy(profile, model_name: str) -> ProviderCapabilityPolicy:
     provider = (getattr(profile, "provider_type", "") or "").strip().lower()
     strict = bool(getattr(profile, "strict_compatible", False))
-    base = (getattr(profile, "base_url", "") or "").lower()
-    model = (model_name or "").lower()
-    looks_like_deepseek = ("deepseek" in base) or ("deepseek" in model) or model.startswith("ds-")
-
     role_map = {
         "system": "system",
         "developer": "developer",
@@ -36,7 +32,9 @@ def resolve_policy(profile, model_name: str) -> ProviderCapabilityPolicy:
     supports_tools = provider in {"openai", "openrouter", "openai_compatible", "anthropic", "google"}
     supports_reasoning = provider in {"openai", "openrouter", "openai_compatible"}
     supports_stream = provider in {"openai", "openrouter", "openai_compatible", "anthropic"}
-    disable_thinking = strict or looks_like_deepseek
+    # Decoupled from strict role mapping:
+    # strict_compatible only controls role aliases, not thinking mode.
+    disable_thinking = False
 
     return ProviderCapabilityPolicy(
         provider=provider,

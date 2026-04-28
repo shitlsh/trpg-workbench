@@ -23,6 +23,7 @@ class RuntimeRequest:
     tools: list[Any]
     temperature: float
     max_tool_rounds: int = 12
+    force_disable_thinking: bool = False
 
 
 def _decrypt_key(profile) -> str | None:
@@ -141,6 +142,7 @@ async def _chat_openai_like(
 
         stream = await client.chat.completions.create(**payload, stream=True)
         text_parts: list[str] = []
+        reasoning_parts: list[str] = []
         tool_acc: dict[int, dict[str, Any]] = {}
         finish_reason: str | None = None
 
@@ -160,6 +162,7 @@ async def _chat_openai_like(
 
             reasoning = getattr(delta, "reasoning_content", None)
             if isinstance(reasoning, str) and reasoning:
+                reasoning_parts.append(reasoning)
                 yield {"event": "thinking_delta", "data": {"content": reasoning}}
 
             d_tool_calls = getattr(delta, "tool_calls", None) or []
@@ -203,6 +206,7 @@ async def _chat_openai_like(
                 finish_reason = fr
 
         text = "".join(text_parts)
+        reasoning_content = "".join(reasoning_parts)
         tool_calls: list[dict[str, Any]] = []
         for idx in sorted(tool_acc.keys()):
             item = tool_acc[idx]
@@ -247,6 +251,8 @@ async def _chat_openai_like(
                 for tc in tool_calls
             ],
         }
+        if reasoning_content:
+            assistant_msg["reasoning_content"] = reasoning_content
         messages.append(assistant_msg)
 
         for tc in tool_calls:
@@ -424,10 +430,11 @@ async def run_provider_runtime(req: RuntimeRequest):
     policy = resolve_policy(req.profile, req.model_name)
     provider = policy.provider
     if provider in {"openai", "openrouter", "openai_compatible"}:
+        disable_thinking = bool(policy.disable_thinking or req.force_disable_thinking)
         async for evt in _chat_openai_like(
             req,
             role_map=policy.role_map,
-            disable_thinking=policy.disable_thinking,
+            disable_thinking=disable_thinking,
         ):
             yield evt
         return

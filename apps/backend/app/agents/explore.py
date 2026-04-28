@@ -58,6 +58,7 @@ async def run_explore_stream(
             messages=input_messages,
             tools=EXPLORE_TOOLS,
             temperature=temperature,
+            force_disable_thinking=bool(model.get("force_disable_thinking")),
         )
         async for evt in run_provider_runtime(req):
             if evt.get("event") == "text_delta":

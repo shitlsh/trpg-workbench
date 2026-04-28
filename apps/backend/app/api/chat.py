@@ -308,9 +308,8 @@ async def send_message(
                             msg = str((evt.get("data") or {}).get("message", "")).lower()
                             if "reasoning_content" in msg or "thinking mode" in msg:
                                 # one-shot fallback: force strict-compatible behavior
-                                prof = model.get("profile") if isinstance(model, dict) else None
-                                if prof is not None:
-                                    setattr(prof, "strict_compatible", True)
+                                if isinstance(model, dict):
+                                    model["force_disable_thinking"] = True
                                 retried_protocol = True
                                 saw_retry_error = True
                                 break
