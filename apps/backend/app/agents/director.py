@@ -119,6 +119,8 @@ async def run_director_stream(
 
     try:
         call_name_by_id: dict[str, str] = {}
+        _in_think = False
+        _think_buf = ""
         req = RuntimeRequest(
             profile=model["profile"],
             model_name=model["model_name"],
@@ -128,6 +130,37 @@ async def run_director_stream(
             temperature=temperature,
         )
         async for evt in run_provider_runtime(req):
+            if evt.get("event") == "text_delta":
+                raw = _think_buf + str((evt.get("data") or {}).get("content", ""))
+                _think_buf = ""
+                while raw:
+                    if _in_think:
+                        end = raw.find("</think>")
+                        if end == -1:
+                            safe = max(0, len(raw) - 8)
+                            if safe > 0:
+                                yield {"event": "thinking_delta", "data": {"content": raw[:safe]}}
+                            _think_buf = raw[safe:]
+                            raw = ""
+                        else:
+                            if end > 0:
+                                yield {"event": "thinking_delta", "data": {"content": raw[:end]}}
+                            _in_think = False
+                            raw = raw[end + len("</think>") :]
+                    else:
+                        start = raw.find("<think>")
+                        if start == -1:
+                            safe = max(0, len(raw) - 7)
+                            if safe > 0:
+                                yield {"event": "text_delta", "data": {"content": raw[:safe]}}
+                            _think_buf = raw[safe:]
+                            raw = ""
+                        else:
+                            if start > 0:
+                                yield {"event": "text_delta", "data": {"content": raw[:start]}}
+                            _in_think = True
+                            raw = raw[start + len("<think>") :]
+                continue
             if evt.get("event") == "tool_call_start":
                 data = evt.get("data", {})
                 call_name_by_id[data.get("id", "")] = data.get("name", "")
@@ -139,6 +172,9 @@ async def run_director_stream(
                 ws_mut = name in _WORKSPACE_MUTATING_TOOL_NAMES and bool(raw_content)
                 evt["data"]["workspace_mutating"] = ws_mut
             yield evt
+        if _think_buf:
+            evt_name = "thinking_delta" if _in_think else "text_delta"
+            yield {"event": evt_name, "data": {"content": _think_buf}}
         yield {"event": "done", "data": {}}
 
     except AgentQuestionInterrupt as e:

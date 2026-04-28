@@ -49,6 +49,8 @@ async def run_explore_stream(
     input_messages = build_chat_input_messages(history, prompt)
 
     try:
+        _in_think = False
+        _think_buf = ""
         req = RuntimeRequest(
             profile=model["profile"],
             model_name=model["model_name"],
@@ -58,7 +60,41 @@ async def run_explore_stream(
             temperature=temperature,
         )
         async for evt in run_provider_runtime(req):
+            if evt.get("event") == "text_delta":
+                raw = _think_buf + str((evt.get("data") or {}).get("content", ""))
+                _think_buf = ""
+                while raw:
+                    if _in_think:
+                        end = raw.find("</think>")
+                        if end == -1:
+                            safe = max(0, len(raw) - 8)
+                            if safe > 0:
+                                yield {"event": "thinking_delta", "data": {"content": raw[:safe]}}
+                            _think_buf = raw[safe:]
+                            raw = ""
+                        else:
+                            if end > 0:
+                                yield {"event": "thinking_delta", "data": {"content": raw[:end]}}
+                            _in_think = False
+                            raw = raw[end + len("</think>") :]
+                    else:
+                        start = raw.find("<think>")
+                        if start == -1:
+                            safe = max(0, len(raw) - 7)
+                            if safe > 0:
+                                yield {"event": "text_delta", "data": {"content": raw[:safe]}}
+                            _think_buf = raw[safe:]
+                            raw = ""
+                        else:
+                            if start > 0:
+                                yield {"event": "text_delta", "data": {"content": raw[:start]}}
+                            _in_think = True
+                            raw = raw[start + len("<think>") :]
+                continue
             yield evt
+        if _think_buf:
+            evt_name = "thinking_delta" if _in_think else "text_delta"
+            yield {"event": evt_name, "data": {"content": _think_buf}}
         yield {"event": "done", "data": {}}
 
     except Exception as e:

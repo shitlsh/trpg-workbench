@@ -63,6 +63,44 @@ async def _call_tool(fn: Any, args: dict[str, Any]) -> str:
     return json.dumps(res, ensure_ascii=False)
 
 
+def _best_effort_json_args(raw: str) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, dict) else {}
+    except Exception:
+        return {}
+
+
+def _iter_text_chunks(text: str, size: int = 48):
+    if not text:
+        return
+    for i in range(0, len(text), size):
+        yield text[i : i + size]
+
+
+def _delta_text_content(delta: Any) -> str:
+    content = getattr(delta, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                t = item.get("text")
+                if isinstance(t, str):
+                    parts.append(t)
+            else:
+                t = getattr(item, "text", None)
+                if isinstance(t, str):
+                    parts.append(t)
+        return "".join(parts)
+    return ""
+
+
 async def _chat_openai_like(
     req: RuntimeRequest,
     *,
@@ -101,16 +139,96 @@ async def _chat_openai_like(
         if extra_body:
             payload["extra_body"] = extra_body
 
-        resp = await client.chat.completions.create(**payload)
-        choice = resp.choices[0].message
-        text = choice.content or ""
-        reasoning = getattr(choice, "reasoning_content", None)
-        if reasoning:
-            yield {"event": "thinking_delta", "data": {"content": reasoning}}
-        if text:
-            yield {"event": "text_delta", "data": {"content": text}}
+        stream = await client.chat.completions.create(**payload, stream=True)
+        text_parts: list[str] = []
+        tool_acc: dict[int, dict[str, Any]] = {}
+        finish_reason: str | None = None
 
-        tool_calls = list(choice.tool_calls or [])
+        async for chunk in stream:
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            ch = choices[0]
+            delta = getattr(ch, "delta", None)
+            if delta is None:
+                continue
+
+            content = _delta_text_content(delta)
+            if content:
+                text_parts.append(content)
+                yield {"event": "text_delta", "data": {"content": content}}
+
+            reasoning = getattr(delta, "reasoning_content", None)
+            if isinstance(reasoning, str) and reasoning:
+                yield {"event": "thinking_delta", "data": {"content": reasoning}}
+
+            d_tool_calls = getattr(delta, "tool_calls", None) or []
+            for tc in d_tool_calls:
+                idx = int(getattr(tc, "index", 0) or 0)
+                item = tool_acc.setdefault(
+                    idx,
+                    {
+                        "id": "",
+                        "name": "",
+                        "arguments": "",
+                        "started": False,
+                    },
+                )
+                tc_id = getattr(tc, "id", None)
+                if isinstance(tc_id, str) and tc_id:
+                    item["id"] = tc_id
+                fn = getattr(tc, "function", None)
+                if fn is not None:
+                    fn_name = getattr(fn, "name", None)
+                    fn_args = getattr(fn, "arguments", None)
+                    if isinstance(fn_name, str) and fn_name:
+                        item["name"] = fn_name
+                    if isinstance(fn_args, str) and fn_args:
+                        item["arguments"] += fn_args
+                if not item["started"] and (item["id"] or item["name"]):
+                    yield {
+                        "event": "tool_call_start",
+                        "data": {
+                            "id": item["id"] or f"call_{idx}",
+                            "name": item["name"] or "",
+                            "arguments": json.dumps(
+                                _best_effort_json_args(item["arguments"]), ensure_ascii=False
+                            ),
+                        },
+                    }
+                    item["started"] = True
+
+            fr = getattr(ch, "finish_reason", None)
+            if isinstance(fr, str) and fr:
+                finish_reason = fr
+
+        text = "".join(text_parts)
+        tool_calls: list[dict[str, Any]] = []
+        for idx in sorted(tool_acc.keys()):
+            item = tool_acc[idx]
+            call_id = item["id"] or f"call_{idx}"
+            name = item["name"] or ""
+            raw_args = item["arguments"] or "{}"
+            if not item["started"]:
+                yield {
+                    "event": "tool_call_start",
+                    "data": {
+                        "id": call_id,
+                        "name": name,
+                        "arguments": json.dumps(_best_effort_json_args(raw_args), ensure_ascii=False),
+                    },
+                }
+            tool_calls.append(
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {"name": name, "arguments": raw_args},
+                }
+            )
+
+        if not tool_calls and finish_reason != "tool_calls":
+            break
+
         if not tool_calls:
             break
 
@@ -119,9 +237,12 @@ async def _chat_openai_like(
             "content": text,
             "tool_calls": [
                 {
-                    "id": tc.id,
+                    "id": tc["id"],
                     "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
+                    "function": {
+                        "name": tc["function"]["name"],
+                        "arguments": tc["function"]["arguments"] or "{}",
+                    },
                 }
                 for tc in tool_calls
             ],
@@ -129,16 +250,10 @@ async def _chat_openai_like(
         messages.append(assistant_msg)
 
         for tc in tool_calls:
-            name = tc.function.name or ""
-            raw_args = tc.function.arguments or "{}"
-            try:
-                args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-            except Exception:
-                args = {}
-            yield {
-                "event": "tool_call_start",
-                "data": {"id": tc.id or "", "name": name, "arguments": json.dumps(args, ensure_ascii=False)},
-            }
+            name = tc["function"]["name"] or ""
+            raw_args = tc["function"]["arguments"] or "{}"
+            args = _best_effort_json_args(raw_args)
+            tc_id = tc["id"] or ""
             fn = tool_map.get(name)
             if fn is None:
                 result = json.dumps({"success": False, "error": f"Unknown tool: {name}"}, ensure_ascii=False)
@@ -152,10 +267,10 @@ async def _chat_openai_like(
                         raise
                     result = f"Tool execution failed: {exc}"
                     success = False
-            messages.append({"role": "tool", "tool_call_id": tc.id, "name": name, "content": result})
+            messages.append({"role": "tool", "tool_call_id": tc_id, "name": name, "content": result})
             yield {
                 "event": "tool_call_result",
-                "data": {"id": tc.id or "", "success": success, "summary": result[:500]},
+                "data": {"id": tc_id, "success": success, "summary": result[:500]},
             }
 
 
@@ -236,7 +351,8 @@ async def _chat_anthropic(req: RuntimeRequest):
 
         text = "".join(text_parts)
         if text:
-            yield {"event": "text_delta", "data": {"content": text}}
+            for part in _iter_text_chunks(text):
+                yield {"event": "text_delta", "data": {"content": part}}
 
         if not tool_uses:
             break
@@ -299,7 +415,8 @@ async def _chat_google_fallback(req: RuntimeRequest):
     resp = await asyncio.to_thread(client.models.generate_content, model=req.model_name, contents=prompt)
     text = getattr(resp, "text", "") or ""
     if text:
-        yield {"event": "text_delta", "data": {"content": text}}
+        for part in _iter_text_chunks(text):
+            yield {"event": "text_delta", "data": {"content": part}}
 
 
 async def run_provider_runtime(req: RuntimeRequest):
