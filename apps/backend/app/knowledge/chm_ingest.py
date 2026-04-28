@@ -163,7 +163,9 @@ async def run_ingest(
 
     lib_dir = _lib_dir(library_id)
     source_dir = lib_dir / "source"
+    parsed_dir = lib_dir / "parsed"
     source_dir.mkdir(parents=True, exist_ok=True)
+    parsed_dir.mkdir(parents=True, exist_ok=True)
     index_dir = lib_dir / "index"
 
     parse_notes = ""
@@ -193,7 +195,7 @@ async def run_ingest(
             "manifest_path": "",
         }
 
-    parse_quality = "ok"
+    parse_quality = "good"
 
     # ── Step 3: Clean text ───────────────────────────────────────────────────
     await report(3, STEP_LABELS[2])
@@ -272,6 +274,8 @@ async def run_ingest(
             "vector": vec,
         })
         chunk_dicts.append({
+            "id": cid,
+            "document_id": document_id,
             "chunk_id": cid,
             "chunk_index": rc.chunk_index,
             "content": rc.content,
@@ -294,32 +298,42 @@ async def run_ingest(
         parse_notes = _append_parse_note(parse_notes, f"Vector index write failed: {e}")
         raise RuntimeError(parse_notes) from e
 
-    # ── Step 8: Write manifest ───────────────────────────────────────────────
+    # ── Step 8: Write manifest & chunks.jsonl (same layout as PDF) ──────────
     await report(8, STEP_LABELS[7])
     manifest = {
         "document_id": document_id,
         "library_id": library_id,
-        "original_filename": original_filename,
-        "source_path": str(dest_path),
+        "filename": original_filename,
         "page_count": page_count,
         "chunk_count": len(raw_chunks),
-        "parse_quality": parse_quality,
-        "parse_notes": parse_notes.strip(" |"),
-        "embedding_snapshot": embedding_snapshot,
-        "ingested_at": datetime.now(timezone.utc).isoformat(),
+        "parse_status": "success" if parse_quality == "good" else parse_quality,
+        "parse_quality_notes": parse_notes or None,
+        "embedding_profile_id": embedding_snapshot["profile_id"],
+        "embedding_provider": embedding_snapshot["provider_type"],
+        "embedding_model": embedding_snapshot["model_name"],
+        "indexed_at": datetime.now(timezone.utc).isoformat(),
     }
-    manifest_path = lib_dir / f"manifest_{document_id[:8]}.json"
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+    manifest_path = parsed_dir / "manifest.json"
+    manifests = []
+    if manifest_path.exists():
+        try:
+            manifests = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(manifests, list):
+                manifests = [manifests]
+        except Exception:
+            manifests = []
+    manifests.append(manifest)
+    manifest_path.write_text(json.dumps(manifests, ensure_ascii=False, indent=2))
 
-    chunks_path = lib_dir / f"chunks_{document_id[:8]}.jsonl"
-    chunks_path.write_text(
-        "\n".join(json.dumps(c, ensure_ascii=False) for c in chunk_dicts)
-    )
+    chunks_path = parsed_dir / "chunks.jsonl"
+    with chunks_path.open("a", encoding="utf-8") as f:
+        for c in chunk_dicts:
+            f.write(json.dumps(c, ensure_ascii=False) + "\n")
 
     await report(8, "处理完成", "completed")
 
     return {
-        "parse_status": "ok" if not parse_notes else "partial",
+        "parse_status": "success" if parse_quality == "good" else parse_quality,
         "parse_notes": parse_notes.strip(" |"),
         "page_count": page_count,
         "chunk_count": len(raw_chunks),

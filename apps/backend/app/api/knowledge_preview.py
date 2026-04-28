@@ -43,7 +43,9 @@ def _load_chunks_jsonl(library_id: str) -> list[dict]:
     return chunks
 
 
-def _load_manifest_for_document(library_id: str, document_id: str) -> dict | None:
+def _load_manifest_for_document(doc: KnowledgeDocumentORM) -> dict | None:
+    library_id = doc.library_id
+    document_id = doc.id
     """Return manifest entry for this document. Supports legacy single-object file or list (multi-doc)."""
     path = _parsed_dir(library_id) / "manifest.json"
     if not path.exists():
@@ -56,12 +58,18 @@ def _load_manifest_for_document(library_id: str, document_id: str) -> dict | Non
         mid = data.get("document_id")
         if mid is None:
             return data
-        return data if mid == document_id else None
+        if mid == document_id:
+            return data
     if isinstance(data, list):
         for entry in data:
             if isinstance(entry, dict) and entry.get("document_id") == document_id:
                 return entry
     return None
+
+
+def _load_document_chunks(doc: KnowledgeDocumentORM) -> list[dict]:
+    all_chunks = _load_chunks_jsonl(doc.library_id)
+    return [c for c in all_chunks if c.get("document_id") == doc.id]
 
 
 def _build_quality_warnings(doc: KnowledgeDocumentORM, manifest: dict | None) -> list[QualityWarningSchema]:
@@ -167,7 +175,7 @@ def list_document_summaries(library_id: str, db: Session = Depends(get_db)):
 
     summaries = []
     for doc in docs:
-        manifest = _load_manifest_for_document(library_id, doc.id)
+        manifest = _load_manifest_for_document(doc)
         summaries.append(_doc_to_summary(doc, manifest))
     return summaries
 
@@ -180,7 +188,7 @@ def get_document_summary(document_id: str, db: Session = Depends(get_db)):
     doc = db.get(KnowledgeDocumentORM, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    manifest = _load_manifest_for_document(doc.library_id, doc.id)
+    manifest = _load_manifest_for_document(doc)
     return _doc_to_summary(doc, manifest)
 
 
@@ -201,8 +209,7 @@ def list_chunks(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    all_chunks = _load_chunks_jsonl(doc.library_id)
-    doc_chunks = [c for c in all_chunks if c.get("document_id") == document_id]
+    doc_chunks = _load_document_chunks(doc)
     doc_chunks.sort(key=lambda c: c.get("chunk_index", 0))
     response.headers["X-Total-Count"] = str(len(doc_chunks))
     page = doc_chunks[offset: offset + limit]
@@ -238,7 +245,7 @@ def get_chunk(document_id: str, chunk_id: str, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    all_chunks = _load_chunks_jsonl(doc.library_id)
+    all_chunks = _load_document_chunks(doc)
     chunk = next(
         (c for c in all_chunks if c.get("id") == chunk_id or c.get("chunk_id") == chunk_id),
         None,
@@ -292,8 +299,7 @@ def get_page_text(document_id: str, page_number: int, db: Session = Depends(get_
             raw_text = ""
 
     # Find chunk_ids for this page
-    all_chunks = _load_chunks_jsonl(doc.library_id)
-    doc_chunks = [c for c in all_chunks if c.get("document_id") == document_id]
+    doc_chunks = _load_document_chunks(doc)
 
     def _cid(c: dict) -> str:
         return c.get("id") or c.get("chunk_id", "")
