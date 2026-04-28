@@ -339,7 +339,11 @@ async def _chat_anthropic(req: RuntimeRequest):
         }
         if tool_specs:
             req_kw["tools"] = tool_specs
-        resp = await client.messages.create(**req_kw)
+        async with client.messages.stream(**req_kw) as stream:
+            async for text in stream.text_stream:
+                if text:
+                    yield {"event": "text_delta", "data": {"content": text}}
+            resp = await stream.get_final_message()
 
         text_parts: list[str] = []
         tool_uses: list[Any] = []
@@ -350,9 +354,6 @@ async def _chat_anthropic(req: RuntimeRequest):
                 tool_uses.append(block)
 
         text = "".join(text_parts)
-        if text:
-            for part in _iter_text_chunks(text):
-                yield {"event": "text_delta", "data": {"content": part}}
 
         if not tool_uses:
             break
