@@ -33,14 +33,18 @@ def build_chat_input_messages(
         i += 1
     prefix = "\n\n".join(system_parts) if system_parts else ""
 
-    rest: list[tuple[str, str]] = []
+    rest: list[dict] = []
     for msg in h[i:]:
         role = msg.get("role", "user")
         content = msg.get("content")
         if not isinstance(content, str) or not content.strip():
             continue
         if role in ("user", "assistant"):
-            rest.append((role, content))
+            item: dict = {"role": role, "content": content}
+            rc = msg.get("reasoning_content")
+            if role == "assistant" and isinstance(rc, str) and rc.strip():
+                item["reasoning_content"] = rc
+            rest.append(item)
 
     if not rest:
         if prefix:
@@ -48,13 +52,19 @@ def build_chat_input_messages(
         return [Message(role="user", content=final_user_content)]
 
     out: list[Message] = []
-    for idx, (role, content) in enumerate(rest):
+    for idx, item in enumerate(rest):
+        role = item["role"]
+        content = item["content"]
+        reasoning_content = item.get("reasoning_content")
         if idx == 0 and prefix:
             if role == "user":
                 content = f"{prefix}\n\n{content}"
             else:
                 out.append(Message(role="user", content=prefix))
-        out.append(Message(role=role, content=content))
+        if role == "assistant" and isinstance(reasoning_content, str) and reasoning_content.strip():
+            out.append(Message(role=role, content=content, reasoning_content=reasoning_content))
+        else:
+            out.append(Message(role=role, content=content))
 
     out.append(Message(role="user", content=final_user_content))
     return out

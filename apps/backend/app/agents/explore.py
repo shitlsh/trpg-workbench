@@ -150,6 +150,11 @@ async def run_explore_stream(
                         },
                     }
 
+        # Flush parser tail to avoid truncating the final characters.
+        if _think_buf:
+            evt = "thinking_delta" if _in_think else "text_delta"
+            yield {"event": evt, "data": {"content": _think_buf}}
+            _think_buf = ""
         yield {"event": "done", "data": {}}
 
     except Exception as e:

@@ -241,6 +241,12 @@ async def run_director_stream(
                         },
                     }
 
+        # Flush parser tail: if stream ended with partial tag window, emit it
+        # instead of silently dropping the last 7-8 chars.
+        if _think_buf:
+            evt = "thinking_delta" if _in_think else "text_delta"
+            yield {"event": evt, "data": {"content": _think_buf}}
+            _think_buf = ""
         yield {"event": "done", "data": {}}
 
     except AgentQuestionInterrupt as e:

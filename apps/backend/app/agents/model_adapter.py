@@ -99,6 +99,23 @@ def _openai_compatible_role_map() -> dict[str, str]:
     }
 
 
+def _openai_compatible_extra_body(profile, base_url: str | None, model_name: str) -> dict[str, Any] | None:
+    """Optional request extras for strict OpenAI-compatible endpoints.
+
+    Some providers (notably DeepSeek thinking mode) require round-tripping
+    reasoning_content across internal tool-call turns. Agno's tool loop does not
+    reliably satisfy that requirement for all compatible endpoints, so we disable
+    provider-side thinking in strict mode to keep tool-calling stable.
+    """
+    strict = bool(getattr(profile, "strict_compatible", False))
+    base = (base_url or "").lower()
+    model = (model_name or "").lower()
+    looks_like_deepseek = ("deepseek" in base) or ("deepseek" in model) or model.startswith("ds-")
+    if strict or looks_like_deepseek:
+        return {"thinking": {"type": "disabled"}}
+    return None
+
+
 def model_from_profile(profile, model_name: str) -> Any:
     """
     Given a LLMProfileORM instance and an explicit model_name, return the Agno model object.
@@ -153,6 +170,9 @@ def model_from_profile(profile, model_name: str) -> Any:
             kwargs["base_url"] = base_url
         if bool(getattr(profile, "strict_compatible", False)):
             kwargs["role_map"] = _openai_compatible_role_map()
+        extra_body = _openai_compatible_extra_body(profile, base_url, model_name)
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         return _instantiate_chat_model(OpenAIChat, **kwargs)
 
     else:

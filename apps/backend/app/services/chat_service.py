@@ -138,7 +138,14 @@ def read_recent_messages(workspace_path: str | Path, session_id: str, limit: int
                         content = " ".join(summary_parts)
             except (json.JSONDecodeError, TypeError):
                 pass
-        result.append({"role": role, "content": content})
+        item: dict = {"role": role, "content": content}
+        if role == "assistant":
+            rc = msg.get("thinking_json")
+            if isinstance(rc, str) and rc.strip():
+                # Preserve provider reasoning traces for models/endpoints that
+                # require reasoning_content to be echoed in follow-up turns.
+                item["reasoning_content"] = rc
+        result.append(item)
     return result
 
 
