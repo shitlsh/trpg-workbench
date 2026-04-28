@@ -46,6 +46,14 @@ def _lib_dir(library_id: str) -> Path:
     return d
 
 
+def _append_parse_note(existing: str, note: str) -> str:
+    note = (note or "").strip()
+    if not note:
+        return existing
+    existing = (existing or "").strip()
+    return f"{existing} | {note}" if existing else note
+
+
 async def run_ingest(
     *,
     document_id: str,
@@ -144,9 +152,7 @@ async def run_ingest(
     try:
         vectors = await asyncio.to_thread(embedder.embed, texts)
     except Exception as e:
-        # Embedding failure: save chunks without vectors
-        parse_quality = "partial" if parse_quality == "good" else parse_quality
-        parse_notes += f" | Embedding failed: {e}"
+        parse_notes = _append_parse_note(parse_notes, f"Embedding failed: {e}")
         _log.warning(
             "PDF ingest embedding failed document_id=%s library_id=%s: %s",
             document_id,
@@ -154,8 +160,8 @@ async def run_ingest(
             e,
             exc_info=True,
         )
-        dimensions = embedding_snapshot.get("dimensions") or 1536
-        vectors = [[0.0] * dimensions for _ in raw_chunks]
+        # Strict mode: embedding failure means ingest failure (no partial success fallback).
+        raise RuntimeError(parse_notes) from e
 
     # ── Step 7: Build vector index ───────────────────────────────────────────
     await report(7, STEP_LABELS[6])
@@ -232,7 +238,7 @@ async def run_ingest(
     try:
         await asyncio.to_thread(upsert_chunks, index_dir, chunk_records, len(vectors[0]) if vectors else 1536)
     except Exception as e:
-        parse_notes += f" | Vector index write failed: {e}"
+        parse_notes = _append_parse_note(parse_notes, f"Vector index write failed: {e}")
 
     # ── Step 8: Write manifest & chunks.jsonl ────────────────────────────────
     await report(8, STEP_LABELS[7])
