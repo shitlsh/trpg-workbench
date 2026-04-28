@@ -1175,12 +1175,17 @@ function LibraryDetailPanel({
       setUploadError("请先在模型配置中添加 LLM 模型");
       return;
     }
+    const modelName = chmLlm.model.trim();
+    if (!modelName) {
+      setUploadError("CHM 目录分类需要选择模型（必填）");
+      return;
+    }
     setChmClassifying(true);
     setUploadError(null);
     try {
       const res = await apiPostSSE<{ sections: TocSectionState[] }>(
         `/knowledge/documents/preview/${fileId}/classify-chm-sections`,
-        { llm_profile_id: profileId, llm_model_name: chmLlm.model || undefined },
+        { llm_profile_id: profileId, llm_model_name: modelName },
       );
       const rows = (res as { sections?: unknown[] }).sections ?? [];
       setWizard({
@@ -1577,12 +1582,12 @@ function LibraryDetailPanel({
                           catalogEntries={chmModelCatalog}
                           fetchedModels={chmProbedModels}
                           requireJsonMode
-                          placeholder="模型（可留空）"
+                          placeholder="模型（必填）"
                         />
                         <button
                           type="button"
                           className={styles.btnPrimary}
-                          disabled={!chmLlm.profileId}
+                          disabled={!chmLlm.profileId || !chmLlm.model.trim()}
                           onClick={() => classifyChmToc(w.fileId)}
                           style={{ fontSize: 12, padding: "5px 12px" }}
                         >

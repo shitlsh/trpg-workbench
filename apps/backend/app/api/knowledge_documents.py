@@ -760,6 +760,8 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
     entry = _get_temp(file_id)
     if entry["ext"] != ".chm":
         raise HTTPException(status_code=400, detail="Only .chm preview uploads can use this endpoint")
+    if not body.llm_model_name.strip():
+        raise HTTPException(status_code=422, detail="llm_model_name is required for CHM section classification")
     file_path = Path(entry["path"])
 
     from app.knowledge.toc_extractor import extract_chm_toc_sync
