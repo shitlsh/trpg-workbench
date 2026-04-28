@@ -253,6 +253,7 @@ function knowledgeResultSummary(raw: string): string | null {
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
+  const [traceExpanded, setTraceExpanded] = useState(false);
 
   let args: Record<string, unknown> = {};
   try {
@@ -407,6 +408,30 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
                     >
                       {resultExpanded ? "收起" : "展开全部"}
                     </button>
+                  )}
+                </div>
+              )}
+              {toolCall.trace_logs && toolCall.trace_logs.length > 0 && (
+                <div style={{ marginTop: 6, borderTop: "1px solid var(--border)", paddingTop: 6 }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setTraceExpanded(!traceExpanded); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4,
+                      fontSize: 10, background: "none", border: "none", cursor: "pointer",
+                      color: "var(--text-muted)", padding: 0,
+                    }}
+                  >
+                    {traceExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                    执行过程（{toolCall.trace_logs.length}）
+                  </button>
+                  {traceExpanded && (
+                    <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 4 }}>
+                      {toolCall.trace_logs.map((line, idx) => (
+                        <div key={idx} style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                          {idx + 1}. {line}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}

@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
+from typing import Literal
 
 
 class RuleSetSchema(BaseModel):
@@ -309,6 +310,7 @@ class SendMessageRequest(BaseModel):
     workspace_id: str
     referenced_asset_ids: list[str] = []
     model: str | None = None  # optional per-message model override
+    turn_scope: Literal["director", "explore"] | None = None
 
 
 class ApplyPatchRequest(BaseModel):

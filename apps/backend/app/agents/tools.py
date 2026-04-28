@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,32 @@ _workspace_context: dict = {}
 _db = None  # SQLAlchemy Session
 _model = None  # LLM model instance (for sub-agent delegation)
 _embedder = None  # Embedding model instance (for semantic search)
+_trace_emitter: ContextVar[Any] = ContextVar("tool_trace_emitter", default=None)
+_trace_call_id: ContextVar[str | None] = ContextVar("tool_trace_call_id", default=None)
+
+
+def set_tool_trace_context(tool_call_id: str, emitter) -> tuple[Any, Any]:
+    """Bind a per-tool-call trace emitter in current execution context."""
+    t1 = _trace_call_id.set(tool_call_id)
+    t2 = _trace_emitter.set(emitter)
+    return t1, t2
+
+
+def reset_tool_trace_context(tokens: tuple[Any, Any]) -> None:
+    t1, t2 = tokens
+    _trace_call_id.reset(t1)
+    _trace_emitter.reset(t2)
+
+
+def _trace_line(trace: list[str], line: str) -> None:
+    trace.append(line)
+    emitter = _trace_emitter.get()
+    call_id = _trace_call_id.get()
+    if emitter and call_id:
+        try:
+            emitter(call_id, line)
+        except Exception:
+            pass
 
 
 def configure(workspace_context: dict, db, model=None) -> None:
@@ -1384,9 +1411,13 @@ def check_consistency(draft_content_md: str = "", focus: str = "") -> str:
     focus：可选，检查重点描述（如 "NPC 命名" / "时间线"）。
     返回 ConsistencyReport JSON，包含 issues 列表和 overall_status。"""
     from app.agents.consistency import run_consistency_agent
+    import time
 
+    t0 = time.monotonic()
+    trace: list[str] = []
     model = _get_model()
     assets = _workspace_context.get("existing_assets", [])
+    _trace_line(trace, f"加载资产快照：{len(assets)} 项")
 
     # Build summaries: type/name/slug + content (truncated)
     asset_summaries = []
@@ -1406,11 +1437,17 @@ def check_consistency(draft_content_md: str = "", focus: str = "") -> str:
             "slug": "__draft__",
             "summary": draft_content_md[:800],
         })
+        _trace_line(trace, "附加草稿内容用于冲突检查")
 
     if focus:
         asset_summaries.append({"_focus_hint": focus})
+        _trace_line(trace, f"应用 focus 约束：{focus[:40]}")
 
     report = run_consistency_agent(asset_summaries=asset_summaries, model=model)
+    elapsed = int((time.monotonic() - t0) * 1000)
+    _trace_line(trace, f"一致性推理完成：{elapsed}ms")
+    if isinstance(report, dict):
+        report["_trace"] = trace
     return json.dumps(report, ensure_ascii=False)
 
 
@@ -1421,9 +1458,13 @@ def consult_rules(question: str, review_mode: bool = False) -> str:
     review_mode：True 时以结构化审查模式运行（含 severity/suggestion_patch 字段）。
     返回 {"suggestions": [...], "summary": str} JSON。"""
     from app.agents.rules import run_rules_agent
+    import time
 
+    t0 = time.monotonic()
+    trace: list[str] = []
     model = _get_model()
     library_ids = _workspace_context.get("library_ids", [])
+    _trace_line(trace, f"绑定知识库：{len(library_ids)} 个")
 
     knowledge_context: list[dict] = []
     if library_ids and _db is not None:
@@ -1438,7 +1479,9 @@ def consult_rules(question: str, review_mode: bool = False) -> str:
                 type_filter=RULE_CHUNK_TYPES,
                 workspace_path=_workspace_context.get("workspace_path"),
             )
+            _trace_line(trace, f"RAG 检索完成：{len(knowledge_context)} 条引用")
         except Exception:
+            _trace_line(trace, "RAG 检索失败，回退为空上下文")
             pass
 
     result = run_rules_agent(
@@ -1447,6 +1490,10 @@ def consult_rules(question: str, review_mode: bool = False) -> str:
         model=model,
         review_mode=review_mode,
     )
+    elapsed = int((time.monotonic() - t0) * 1000)
+    _trace_line(trace, f"规则推理完成：{elapsed}ms")
+    if isinstance(result, dict):
+        result["_trace"] = trace
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -1456,12 +1503,16 @@ def create_skill(user_intent: str) -> str:
     user_intent：描述想要的技能功能，如"COC 探索者人格创建框架"。
     返回 JSON，含 success/slug/asset_id 字段。"""
     from app.agents.skill_agent import run_skill_agent
+    import time
 
     if _db is None:
         return json.dumps({"success": False, "error": "数据库未配置"}, ensure_ascii=False)
 
+    t0 = time.monotonic()
+    trace: list[str] = []
     model = _get_model()
     library_ids = _workspace_context.get("library_ids", [])
+    _trace_line(trace, f"绑定知识库：{len(library_ids)} 个")
 
     knowledge_context: list[dict] = []
     if library_ids and _db is not None:
@@ -1474,7 +1525,9 @@ def create_skill(user_intent: str) -> str:
                 top_k=_get_knowledge_top_k(default=4),
                 workspace_path=_workspace_context.get("workspace_path"),
             )
+            _trace_line(trace, f"Skill 参考检索完成：{len(knowledge_context)} 条")
         except Exception:
+            _trace_line(trace, "Skill 参考检索失败，继续无引用生成")
             pass
 
     content_md = run_skill_agent(
@@ -1483,6 +1536,7 @@ def create_skill(user_intent: str) -> str:
         workspace_context=_workspace_context,
         model=model,
     )
+    _trace_line(trace, "Skill 文本生成完成")
 
     # Extract skill name from frontmatter
     skill_name = user_intent[:60]
@@ -1503,6 +1557,10 @@ def create_skill(user_intent: str) -> str:
         "change_summary": f"新建 Skill：{skill_name}",
     }
     result = execute_patch_proposal(proposal, ws_path, _db)
+    _trace_line(trace, f"Skill 写入结果：{'成功' if bool(result.get('success')) else '失败'}")
+    _trace_line(trace, f"总耗时：{int((time.monotonic() - t0) * 1000)}ms")
+    if isinstance(result, dict):
+        result["_trace"] = trace
     return json.dumps(result, ensure_ascii=False)
 
 

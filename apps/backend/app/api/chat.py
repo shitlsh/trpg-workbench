@@ -235,7 +235,7 @@ async def send_message(
     # Get workspace context
     ws_ctx = get_workspace_context(db, body.workspace_id)
 
-    scope = (session.agent_scope or "").strip().lower()
+    scope = (body.turn_scope or session.agent_scope or "").strip().lower()
     run_stream = run_explore_stream if scope == "explore" else run_director_stream
 
     # Multi-turn history
@@ -371,6 +371,15 @@ async def send_message(
                             tc["status"] = "auto_applied" if ws_mut else "done"
                             tc["result_summary"] = data.get("summary", "")
                     yield _sse("tool_call_result", data)
+
+                elif event_type == "tool_trace":
+                    tc_id = data.get("id", "")
+                    trace = data.get("trace", [])
+                    if isinstance(trace, list):
+                        for tc in tool_calls_emitted:
+                            if tc["id"] == tc_id:
+                                tc["trace_logs"] = [str(x) for x in trace]
+                    yield _sse("tool_trace", data)
 
                 elif event_type == "done":
                     # Save assistant message

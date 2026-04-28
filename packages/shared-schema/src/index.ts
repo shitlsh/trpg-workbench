@@ -491,6 +491,8 @@ export interface ToolCall {
   status: "running" | "done" | "error" | "auto_applied" | "pending_confirm";
   /** Brief human-readable summary of the result */
   result_summary: string | null;
+  /** Optional execution trace lines for delegated sub-agent tools */
+  trace_logs?: string[];
 }
 
 export interface ToolResult {
@@ -548,6 +550,11 @@ export interface SSEToolCallResult {
   data: { id: string; success: boolean; summary: string; workspace_mutating?: boolean };
 }
 
+export interface SSEToolTrace {
+  event: "tool_trace";
+  data: { id: string; trace: string[] };
+}
+
 export interface SSEDone {
   event: "done";
   data: Record<string, never>;
@@ -585,6 +592,7 @@ export interface SSEAgentQuestion {
 export type SSEEvent =
   | SSETextDelta
   | SSEToolCallStart
+  | SSEToolTrace
   | SSEToolCallResult
   | SSEAgentQuestion
   | SSEDone
@@ -595,6 +603,8 @@ export interface SendMessageRequest {
   workspace_id: string;
   /** Asset IDs to inject as full context (@mention) */
   referenced_asset_ids?: string[];
+  /** Turn-level mode override in same session */
+  turn_scope?: "director" | "explore";
 }
 
 // ─── M5: Prompt Profiles ──────────────────────────────────────────────────────

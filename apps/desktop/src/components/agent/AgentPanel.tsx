@@ -438,6 +438,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
   const [modelWarning, setModelWarning] = useState<string | null>(null);
   const [sessionModel, setSessionModel] = useState<string>(""); // "" = use workspace default
+  const [turnScope, setTurnScope] = useState<"director" | "explore">("director");
   const bottomRef = useRef<HTMLDivElement>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
@@ -511,6 +512,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   // Switch to a session and load its messages
   const switchToSession = useCallback(async (s: ChatSession) => {
     setActiveSession(s, []);
+    setTurnScope(s.agent_scope === "explore" ? "explore" : "director");
     localStorage.setItem(`last_session_${workspaceId}`, s.id);
     try {
       const msgs = await apiFetch<ChatMessage[]>(`/chat/sessions/${s.id}/messages?workspace_id=${workspaceId}`);
@@ -531,6 +533,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           body: JSON.stringify(body),
         });
         setActiveSession(s, []);
+        setTurnScope(s.agent_scope === "explore" ? "explore" : "director");
         localStorage.setItem(`last_session_${workspaceId}`, s.id);
         qc.invalidateQueries({ queryKey: ["sessions", workspaceId] });
       } catch (e) {
@@ -614,6 +617,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           content,
           workspace_id: workspaceId,
           ...(sessionModel ? { model: sessionModel } : {}),
+          turn_scope: turnScope,
           ...(mentionedAssetIds.length > 0 ? { referenced_asset_ids: mentionedAssetIds } : {}),
         }),
         signal: combinedSignal,
@@ -679,10 +683,28 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 arguments: (data.arguments as string) ?? "{}",
                 status: "running",
                 result_summary: null,
+                trace_logs: [],
               };
               accToolCallsById[tc.id] = tc;
               accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
               setStreamingEvents([...accEvents]);
+
+            } else if (currentEvent === "tool_trace") {
+              const tcId = (data.id as string) ?? "";
+              const trace = Array.isArray(data.trace) ? data.trace.map((x) => String(x)) : [];
+              if (accToolCallsById[tcId]) {
+                const updated: ToolCall = {
+                  ...accToolCallsById[tcId],
+                  trace_logs: trace,
+                };
+                accToolCallsById[tcId] = updated;
+                accEvents = accEvents.map((e) =>
+                  e.kind === "tool_call" && e.toolCall.id === tcId
+                    ? { kind: "tool_call", toolCall: updated }
+                    : e
+                );
+                setStreamingEvents([...accEvents]);
+              }
 
             } else if (currentEvent === "tool_call_result") {
               const tcId = (data.id as string) ?? "";
@@ -715,6 +737,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                   arguments: JSON.stringify({ slug: parsed.slug, asset_id: parsed.asset_id }),
                   status: "auto_applied" as ToolCall["status"],
                   result_summary: (data.summary as string) ?? null,
+                  trace_logs: [],
                 };
                 accToolCallsById[tc.id] = tc;
                 accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
@@ -876,7 +899,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         >
           <MessageSquare size={13} />
         </button>
-        <span>AI 助手{session?.agent_scope === "explore" ? "（探索）" : ""}</span>
+        <span>AI 助手（本轮：{turnScope === "explore" ? "只读" : "可写"}）</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
           <button
             onClick={handleReset}
@@ -909,9 +932,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 24 }}>
               {session?.agent_scope === "explore" ? (
                 <>
-                  探索模式只读，可搜索、浏览资产与规则，不会修改工作区。<br />
+                  当前可按下方“本轮模式”切换只读/可写。<br />
                   例如：「列出所有地点」「用 grep 找某某 NPC 的提到」<br />
-                  若要改内容，请用侧栏<strong>新对话</strong>打开创作会话。
+                  想执行改动时，切到“执行（可写）”即可。
                 </>
               ) : (
                 <>
@@ -1014,31 +1037,64 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       }}>
         {/* Bottom bar: model selector + hints */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 8 }}>
-          <select
-            value={sessionModel}
-            onChange={(e) => setSessionModel(e.target.value)}
-            title="本次对话使用的模型（临时覆盖，不修改工作空间设置）"
-            style={{
-              fontSize: 11,
-              color: sessionModel ? "var(--text)" : "var(--text-muted)",
-              background: "var(--bg)",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              padding: "2px 6px",
-              cursor: "pointer",
-              maxWidth: 220,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            <option value="">
-              {defaultLlmModel ? `默认: ${defaultLlmModel}` : defaultLlmName ? `${defaultLlmName}（未选模型）` : "未配置模型"}
-            </option>
-            {modelOptions.length > 0
-              ? modelOptions.map((m) => <option key={m} value={m}>{m}</option>)
-              : null
-            }
-          </select>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <select
+              value={sessionModel}
+              onChange={(e) => setSessionModel(e.target.value)}
+              title="本次对话使用的模型（临时覆盖，不修改工作空间设置）"
+              style={{
+                fontSize: 11,
+                color: sessionModel ? "var(--text)" : "var(--text-muted)",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                padding: "2px 6px",
+                cursor: "pointer",
+                maxWidth: 220,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              <option value="">
+                {defaultLlmModel ? `默认: ${defaultLlmModel}` : defaultLlmName ? `${defaultLlmName}（未选模型）` : "未配置模型"}
+              </option>
+              {modelOptions.length > 0
+                ? modelOptions.map((m) => <option key={m} value={m}>{m}</option>)
+                : null
+              }
+            </select>
+            <div style={{ display: "inline-flex", border: "1px solid var(--border)", borderRadius: 5, overflow: "hidden" }}>
+              <button
+                onClick={() => setTurnScope("explore")}
+                title="只读讨论与检索，不执行写入工具"
+                style={{
+                  fontSize: 10,
+                  padding: "2px 8px",
+                  border: "none",
+                  borderRight: "1px solid var(--border)",
+                  background: turnScope === "explore" ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "var(--bg)",
+                  color: turnScope === "explore" ? "var(--accent)" : "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                讨论（只读）
+              </button>
+              <button
+                onClick={() => setTurnScope("director")}
+                title="可执行创作与修改"
+                style={{
+                  fontSize: 10,
+                  padding: "2px 8px",
+                  border: "none",
+                  background: turnScope === "director" ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "var(--bg)",
+                  color: turnScope === "director" ? "var(--accent)" : "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                执行（可写）
+              </button>
+            </div>
+          </div>
           <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
             Enter 发送 · Shift+Enter 换行 · @ 引用资产
           </span>

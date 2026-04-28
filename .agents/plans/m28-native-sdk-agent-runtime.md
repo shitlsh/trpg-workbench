@@ -120,6 +120,8 @@ apps/backend/app/agents/runtime/
 - [ ] **A2.1**：`apps/backend/app/agents/tools.py` — 校验 ask_user payload 与中断语义，补齐边界处理
 - [ ] **A2.2**：`apps/backend/app/api/chat.py` — tool_call_start/result、agent_question、done 事件顺序一致性保障
 - [ ] **A2.3**：`apps/desktop/src/components/agent/AgentPanel.tsx` — 工具卡片与问题卡片流式显示回归修复
+- [ ] **A2.4**：`apps/backend/app/api/chat.py` + `apps/desktop/src/components/agent/AgentPanel.tsx` — 同一会话支持 turn-level `explore/director` 模式切换（不再强制分会话）
+- [ ] **A2.5**：`apps/backend/app/agents/tools.py` + `apps/backend/app/agents/runtime/provider_runtime.py` + `apps/desktop/src/components/agent/ToolCallCard.tsx` — 子 Agent 执行轨迹（trace）透传与 UI 展示
 
 ### A3：provider 能力矩阵与降级策略
 

@@ -55,13 +55,31 @@ def _normalize_messages(messages: list[dict], role_map: dict[str, str]) -> list[
     return out
 
 
-async def _call_tool(fn: Any, args: dict[str, Any]) -> str:
+def _start_tool_call(
+    fn: Any,
+    args: dict[str, Any],
+    tool_call_id: str,
+    loop: asyncio.AbstractEventLoop,
+) -> tuple[asyncio.Task, asyncio.Queue]:
     sig = inspect.signature(fn)
     accepted = {k: v for k, v in args.items() if k in sig.parameters}
-    res = await asyncio.to_thread(fn, **accepted)
-    if isinstance(res, str):
-        return res
-    return json.dumps(res, ensure_ascii=False)
+
+    trace_q: asyncio.Queue = asyncio.Queue()
+
+    def _trace_emitter(_call_id: str, line: str) -> None:
+        loop.call_soon_threadsafe(trace_q.put_nowait, line)
+
+    def _run():
+        from app.agents.tools import set_tool_trace_context, reset_tool_trace_context
+
+        tokens = set_tool_trace_context(tool_call_id, _trace_emitter)
+        try:
+            return fn(**accepted)
+        finally:
+            reset_tool_trace_context(tokens)
+
+    task = asyncio.create_task(asyncio.to_thread(_run))
+    return task, trace_q
 
 
 def _best_effort_json_args(raw: str) -> dict[str, Any]:
@@ -72,6 +90,23 @@ def _best_effort_json_args(raw: str) -> dict[str, Any]:
         return v if isinstance(v, dict) else {}
     except Exception:
         return {}
+
+
+def _extract_trace_lines(raw: str) -> list[str]:
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(data, dict):
+        return []
+    trace = data.get("_trace")
+    if not isinstance(trace, list):
+        return []
+    out: list[str] = []
+    for t in trace:
+        if isinstance(t, str):
+            out.append(t)
+    return out
 
 
 def _iter_text_chunks(text: str, size: int = 48):
@@ -265,8 +300,34 @@ async def _chat_openai_like(
                 result = json.dumps({"success": False, "error": f"Unknown tool: {name}"}, ensure_ascii=False)
                 success = False
             else:
+                trace_lines: list[str] = []
+                loop = asyncio.get_running_loop()
+                tool_task, trace_q = _start_tool_call(fn, args, tc_id, loop)
+                while True:
+                    if tool_task.done():
+                        break
+                    try:
+                        line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
+                    except asyncio.TimeoutError:
+                        continue
+                    trace_lines.append(str(line))
+                    yield {
+                        "event": "tool_trace",
+                        "data": {"id": tc_id, "trace": trace_lines.copy()},
+                    }
+                while True:
+                    try:
+                        line = trace_q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    trace_lines.append(str(line))
+                    yield {
+                        "event": "tool_trace",
+                        "data": {"id": tc_id, "trace": trace_lines.copy()},
+                    }
                 try:
-                    result = await _call_tool(fn, args)
+                    raw = await tool_task
+                    result = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
                     success = True
                 except Exception as exc:
                     if exc.__class__.__name__ == "AgentQuestionInterrupt":
@@ -274,6 +335,9 @@ async def _chat_openai_like(
                     result = f"Tool execution failed: {exc}"
                     success = False
             messages.append({"role": "tool", "tool_call_id": tc_id, "name": name, "content": result})
+            trace_lines = _extract_trace_lines(result)
+            if trace_lines:
+                yield {"event": "tool_trace", "data": {"id": tc_id, "trace": trace_lines}}
             yield {
                 "event": "tool_call_result",
                 "data": {"id": tc_id, "success": success, "summary": result[:500]},
@@ -388,8 +452,34 @@ async def _chat_anthropic(req: RuntimeRequest):
                 result = json.dumps({"success": False, "error": f"Unknown tool: {tu.name}"}, ensure_ascii=False)
                 success = False
             else:
+                trace_lines: list[str] = []
+                loop = asyncio.get_running_loop()
+                tool_task, trace_q = _start_tool_call(fn, args, tu.id or "", loop)
+                while True:
+                    if tool_task.done():
+                        break
+                    try:
+                        line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
+                    except asyncio.TimeoutError:
+                        continue
+                    trace_lines.append(str(line))
+                    yield {
+                        "event": "tool_trace",
+                        "data": {"id": tu.id or "", "trace": trace_lines.copy()},
+                    }
+                while True:
+                    try:
+                        line = trace_q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    trace_lines.append(str(line))
+                    yield {
+                        "event": "tool_trace",
+                        "data": {"id": tu.id or "", "trace": trace_lines.copy()},
+                    }
                 try:
-                    result = await _call_tool(fn, args)
+                    raw = await tool_task
+                    result = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
                     success = True
                 except Exception as exc:
                     if exc.__class__.__name__ == "AgentQuestionInterrupt":
@@ -397,6 +487,9 @@ async def _chat_anthropic(req: RuntimeRequest):
                     result = f"Tool execution failed: {exc}"
                     success = False
             messages.append({"role": "tool", "tool_call_id": tu.id, "name": tu.name, "content": result})
+            trace_lines = _extract_trace_lines(result)
+            if trace_lines:
+                yield {"event": "tool_trace", "data": {"id": tu.id or "", "trace": trace_lines}}
             yield {
                 "event": "tool_call_result",
                 "data": {"id": tu.id or "", "success": success, "summary": result[:500]},
