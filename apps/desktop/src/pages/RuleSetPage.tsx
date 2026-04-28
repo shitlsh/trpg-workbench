@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ModelNameInput } from "../components/ModelNameInput";
 import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
-  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check,
+  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check, RotateCcw,
 } from "lucide-react";
 import { apiFetch, apiPostSSE, apiFetchWithTotalCount, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
@@ -806,10 +806,10 @@ function SearchTestDialog({
 // ─── Document Row ──────────────────────────────────────────────────────────────
 
 function DocumentRow({
-  doc, expanded, onToggle, onPreview, isPreviewing, onDelete,
+  doc, expanded, onToggle, onPreview, isPreviewing, onDelete, onReindex,
 }: {
   doc: KnowledgeDocument; expanded: boolean; onToggle: () => void;
-  onPreview: () => void; isPreviewing: boolean; onDelete: () => void;
+  onPreview: () => void; isPreviewing: boolean; onDelete: () => void; onReindex: () => void;
 }) {
   const summaryEnabled =
     expanded && doc.parse_status !== "pending" && doc.parse_status !== "running";
@@ -850,6 +850,23 @@ function DocumentRow({
             onClick={(e) => { e.stopPropagation(); onPreview(); }}
           >
             预览
+          </button>
+        )}
+        {canPreview && (
+          <button
+            style={{
+              fontSize: 11, padding: "2px 8px", borderRadius: 4,
+              border: "1px solid var(--border)", background: "transparent",
+              color: "var(--text-muted)", cursor: "pointer",
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm(`重建文档「${doc.filename}」索引？\n将复用已解析 chunks，不会重新上传/重新分析目录。`)) onReindex();
+            }}
+            title="重建索引（不重新上传）"
+          >
+            <RotateCcw size={11} style={{ marginRight: 4, verticalAlign: "middle" }} />
+            重建索引
           </button>
         )}
         <button
@@ -1024,6 +1041,20 @@ function LibraryDetailPanel({
     mutationFn: (docId: string) => apiFetch(`/knowledge/documents/${docId}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", library.id] });
+    },
+  });
+  const reindexDocMutation = useMutation({
+    mutationFn: (docId: string) =>
+      apiFetch<{ document_id: string; task_id: string }>(`/knowledge/documents/${docId}/reindex`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (res) => {
+      setUploadingTaskId(res.task_id);
+      queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", library.id] });
+    },
+    onError: (e) => {
+      setUploadError((e as Error).message);
     },
   });
 
@@ -1668,6 +1699,7 @@ function LibraryDetailPanel({
             onPreview={() => setPreviewDocId(previewDocId === doc.id ? null : doc.id)}
             isPreviewing={previewDocId === doc.id}
             onDelete={() => deleteDocMutation.mutate(doc.id)}
+            onReindex={() => reindexDocMutation.mutate(doc.id)}
           />
         ))}
       </div>

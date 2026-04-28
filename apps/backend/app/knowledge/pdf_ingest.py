@@ -239,6 +239,7 @@ async def run_ingest(
         await asyncio.to_thread(upsert_chunks, index_dir, chunk_records, len(vectors[0]) if vectors else 1536)
     except Exception as e:
         parse_notes = _append_parse_note(parse_notes, f"Vector index write failed: {e}")
+        raise RuntimeError(parse_notes) from e
 
     # ── Step 8: Write manifest & chunks.jsonl ────────────────────────────────
     await report(8, STEP_LABELS[7])

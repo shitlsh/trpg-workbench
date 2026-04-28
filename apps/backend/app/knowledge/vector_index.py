@@ -1,6 +1,7 @@
 """Vector index management using lancedb."""
 from __future__ import annotations
 import json
+import shutil
 from pathlib import Path
 import lancedb
 import pyarrow as pa
@@ -55,6 +56,31 @@ def upsert_chunks(
     dimensions: int = 1536,
 ) -> None:
     """Insert chunk vectors into the index."""
+    if not records:
+        return
+    incoming_dim = len(records[0].get("vector") or [])
+    if incoming_dim <= 0:
+        raise ValueError("Empty embedding vector is not allowed")
+
+    # If an existing table uses a different vector dimension, rebuild the index.
+    # A library's index must be homogeneous; mixed dimensions are not searchable.
+    if index_dir.exists() and (index_dir / "chunks.lance").exists():
+        try:
+            db = lancedb.connect(str(index_dir))
+            if "chunks" in db.table_names():
+                table = db.open_table("chunks")
+                existing_dim: int | None = None
+                for field in table.schema:
+                    if field.name == "vector":
+                        existing_dim = field.type.list_size
+                        break
+                if existing_dim and existing_dim != incoming_dim:
+                    shutil.rmtree(index_dir / "chunks.lance", ignore_errors=True)
+        except Exception:
+            # If we cannot inspect old index metadata, continue with normal path.
+            pass
+
+    dimensions = incoming_dim
     table = get_table(index_dir, dimensions)
     rows = []
     for r in records:

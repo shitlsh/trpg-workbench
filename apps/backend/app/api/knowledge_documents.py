@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import shutil
 import tempfile
 import time
 import uuid
@@ -275,6 +276,257 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
     # Remove from DB
     db.delete(doc)
     db.commit()
+
+
+class ReindexDocumentRequest(BaseModel):
+    embedding_profile_id: str | None = None
+
+
+@router2.post("/{document_id}/reindex", status_code=202)
+async def reindex_document(
+    document_id: str,
+    body: ReindexDocumentRequest = Body(default=ReindexDocumentRequest()),
+    db: Session = Depends(get_db),
+):
+    """Rebuild vector index from existing chunks without re-upload/TOC analysis."""
+    doc = db.get(KnowledgeDocumentORM, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    lib = db.get(KnowledgeLibraryORM, doc.library_id)
+    if not lib:
+        raise HTTPException(status_code=404, detail="Library not found")
+
+    profile_id = body.embedding_profile_id
+    if not profile_id:
+        if lib.embedding_model_snapshot:
+            try:
+                profile_id = (json.loads(lib.embedding_model_snapshot) or {}).get("profile_id")
+            except Exception:
+                profile_id = None
+    if not profile_id:
+        profile_id = lib.embedding_profile_id
+    if not profile_id:
+        raise HTTPException(status_code=422, detail="No embedding profile configured for this library")
+
+    profile = db.get(_EmbeddingProfileORM, profile_id)
+    if not profile:
+        raise HTTPException(status_code=422, detail=f"Embedding profile {profile_id} not found")
+
+    embedding_snapshot = {
+        "profile_id": profile.id,
+        "provider_type": profile.provider_type,
+        "model_name": profile.model_name,
+        "dimensions": profile.dimensions,
+    }
+
+    task = IngestTaskORM(
+        document_id=document_id,
+        status="pending",
+        current_step=0,
+        total_steps=4,
+        step_label="准备重建索引",
+    )
+    db.add(task)
+    doc.parse_status = "running"
+    db.commit()
+    db.refresh(task)
+
+    asyncio.create_task(
+        _run_reindex_background(
+            document_id=document_id,
+            library_id=doc.library_id,
+            task_id=task.id,
+            embedding_profile_id=profile.id,
+            embedding_snapshot=embedding_snapshot,
+        )
+    )
+    return {"document_id": document_id, "task_id": task.id}
+
+
+def _strip_embedding_fail_notes(notes: str | None) -> str | None:
+    text = (notes or "").strip()
+    if not text:
+        return None
+    kept = []
+    for part in [p.strip() for p in text.split(" | ")]:
+        if not part:
+            continue
+        low = part.lower()
+        if "embedding failed" in low or "vector index write failed" in low:
+            continue
+        kept.append(part)
+    return " | ".join(kept) if kept else None
+
+
+async def _run_reindex_background(
+    *,
+    document_id: str,
+    library_id: str,
+    task_id: str,
+    embedding_profile_id: str,
+    embedding_snapshot: dict,
+):
+    from app.storage.database import get_session_factory
+    from app.agents.model_adapter import embedding_from_profile
+    from app.knowledge.vector_index import upsert_chunks
+    from app.utils.paths import get_data_dir
+
+    SessionLocal = get_session_factory()
+
+    async def report(step: int, label: str, status: str = "running"):
+        db = SessionLocal()
+        try:
+            task = db.get(IngestTaskORM, task_id)
+            if task:
+                task.current_step = step
+                task.step_label = label
+                task.status = "running" if status == "running" else status
+                db.commit()
+        finally:
+            db.close()
+
+    db = SessionLocal()
+    try:
+        task = db.get(IngestTaskORM, task_id)
+        if task:
+            task.status = "running"
+            db.commit()
+        profile = db.get(_EmbeddingProfileORM, embedding_profile_id)
+        if not profile:
+            raise RuntimeError(f"Embedding profile {embedding_profile_id} not found")
+        embedder = embedding_from_profile(profile)
+    finally:
+        db.close()
+
+    try:
+        await report(1, "正在读取已解析分块...")
+        parsed_dir = get_data_dir() / "knowledge" / "libraries" / library_id / "parsed"
+        chunks_path = parsed_dir / "chunks.jsonl"
+        if not chunks_path.exists():
+            raise RuntimeError("chunks.jsonl not found; cannot rebuild index")
+
+        all_chunks: list[dict] = []
+        target_count = 0
+        with chunks_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    c = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not c.get("document_id"):
+                    continue
+                if not (c.get("content") or "").strip():
+                    continue
+                all_chunks.append(c)
+                if c.get("document_id") == document_id:
+                    target_count += 1
+        if target_count == 0:
+            raise RuntimeError("No chunks found for this document")
+        if not all_chunks:
+            raise RuntimeError("No chunks found in library parsed data")
+
+        await report(2, "正在生成向量...")
+        batch_size = 32
+        vectors_by_id: dict[str, list[float]] = {}
+        for i in range(0, len(all_chunks), batch_size):
+            batch = all_chunks[i : i + batch_size]
+            texts = [(c.get("content") or "") for c in batch]
+            vectors = await asyncio.to_thread(embedder.embed, texts)
+            if len(vectors) != len(batch):
+                raise RuntimeError("Embedding provider returned unexpected vector count")
+            for c, vec in zip(batch, vectors):
+                cid = c.get("id") or c.get("chunk_id")
+                if cid:
+                    vectors_by_id[cid] = vec
+
+        await report(3, "正在重建向量索引...")
+        idx_dir = get_data_dir() / "knowledge" / "libraries" / library_id / "index"
+        idx_dir.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(idx_dir / "chunks.lance", ignore_errors=True)
+        records: list[dict] = []
+        for c in all_chunks:
+            cid = c.get("id") or c.get("chunk_id")
+            if not cid or cid not in vectors_by_id:
+                continue
+            meta = c.get("metadata", {}) or {}
+            records.append({
+                "chunk_id": cid,
+                "document_id": c.get("document_id", ""),
+                "library_id": library_id,
+                "content": c.get("content", ""),
+                "page_from": c.get("page_from", -1),
+                "page_to": c.get("page_to", -1),
+                "section_title": c.get("section_title") or "",
+                "chunk_type": meta.get("chunk_type") or c.get("chunk_type") or "",
+                "vector": vectors_by_id[cid],
+            })
+        await asyncio.to_thread(upsert_chunks, idx_dir, records, len(records[0]["vector"]) if records else 1536)
+
+        await report(4, "正在更新索引元数据...")
+        manifest_path = parsed_dir / "manifest.json"
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        if manifest_path.exists():
+            try:
+                m = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if isinstance(m, dict):
+                    m["embedding_profile_id"] = embedding_snapshot["profile_id"]
+                    m["embedding_provider"] = embedding_snapshot["provider_type"]
+                    m["embedding_model"] = embedding_snapshot["model_name"]
+                    m["indexed_at"] = now_iso
+                    m["parse_quality_notes"] = _strip_embedding_fail_notes(m.get("parse_quality_notes"))
+                elif isinstance(m, list):
+                    for item in m:
+                        if not isinstance(item, dict):
+                            continue
+                        item["embedding_profile_id"] = embedding_snapshot["profile_id"]
+                        item["embedding_provider"] = embedding_snapshot["provider_type"]
+                        item["embedding_model"] = embedding_snapshot["model_name"]
+                        item["indexed_at"] = now_iso
+                        item["parse_quality_notes"] = _strip_embedding_fail_notes(item.get("parse_quality_notes"))
+                manifest_path.write_text(json.dumps(m, ensure_ascii=False, indent=2))
+            except Exception:
+                pass
+
+        db = SessionLocal()
+        try:
+            lib = db.get(KnowledgeLibraryORM, library_id)
+            if lib:
+                lib.embedding_profile_id = embedding_profile_id
+                lib.embedding_model_snapshot = json.dumps(embedding_snapshot, ensure_ascii=False)
+            doc = db.get(KnowledgeDocumentORM, document_id)
+            if doc and doc.metadata_json:
+                try:
+                    meta = json.loads(doc.metadata_json)
+                    if isinstance(meta, dict):
+                        meta["ingest_parse_notes"] = _strip_embedding_fail_notes(meta.get("ingest_parse_notes"))
+                        doc.metadata_json = json.dumps(meta, ensure_ascii=False)
+                except Exception:
+                    pass
+            task = db.get(IngestTaskORM, task_id)
+            if task:
+                task.status = "completed"
+                task.current_step = 4
+                task.step_label = "重建完成"
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        _log.exception("reindex failed document_id=%s library_id=%s task_id=%s: %s", document_id, library_id, task_id, e)
+        db = SessionLocal()
+        try:
+            task = db.get(IngestTaskORM, task_id)
+            if task:
+                task.status = "failed"
+                task.error_message = str(e)
+            doc = db.get(KnowledgeDocumentORM, document_id)
+            if doc:
+                doc.parse_status = "failed"
+            db.commit()
+        finally:
+            db.close()
 
 
 # ─── TOC-driven ingest preview flow ──────────────────────────────────────────
