@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import json
 import re
+import asyncio
 from dataclasses import dataclass
 
-from app.agents.model_adapter import model_from_profile, strip_code_fence
+from app.agents.model_adapter import strip_code_fence, complete_text_once
 from app.prompts import load_prompt
 from app.services.llm_defaults import task_temperature
 
@@ -54,25 +55,23 @@ def analyze_toc(
     Raises RuntimeError on LLM/parse failures.
     """
     effective_model_name = model_name or ""
-    model = model_from_profile(llm_profile, effective_model_name)
 
     system_prompt = load_prompt("toc_analyzer", "system")
 
-    # Build a simple non-streaming request via Agno model's direct run
-    # Agno models have a `response()` method for single-turn inference
     user_message = load_prompt("toc_analyzer", "user_pdf", toc_text=toc_text[:6000])
 
     try:
-        from agno.agent import Agent
         t = task_temperature("toc_analysis")
-        try:
-            agent = Agent(
-                model=model, instructions=[system_prompt], markdown=False, temperature=t,
+        raw = asyncio.run(
+            complete_text_once(
+                profile=llm_profile,
+                model_name=effective_model_name,
+                system_prompt=system_prompt,
+                user_prompt=user_message,
+                temperature=t,
             )
-        except TypeError:
-            agent = Agent(model=model, instructions=[system_prompt], markdown=False)
-        response = agent.run(user_message)
-        raw = strip_code_fence(response.content if hasattr(response, "content") else str(response))
+        )
+        raw = strip_code_fence(raw)
     except Exception as e:
         raise RuntimeError(f"LLM call for TOC analysis failed: {e}") from e
 
@@ -212,12 +211,7 @@ def assign_chm_section_chunk_types(
     if not to_label_idx:
         return list(sections)
 
-    try:
-        from agno.agent import Agent
-    except Exception as e:
-        raise RuntimeError(f"agno is required for CHM classification: {e}") from e
-
-    model = model_from_profile(llm_profile, model_name or "")
+    effective_model_name = model_name or ""
     system_prompt = load_prompt("toc_analyzer", "chm_classify_system")
     valid = {"rule", "example", "lore", "table", "procedure", "flavor"}
     n = len(sections)
@@ -236,12 +230,17 @@ def assign_chm_section_chunk_types(
             batch_size=len(batch_idx),
             lines=lines,
         )
-        agent = Agent(model=model, instructions=[system_prompt], markdown=False)
         try:
-            response = agent.run(user_message)
-            raw = strip_code_fence(
-                response.content if hasattr(response, "content") else str(response)
+            raw = asyncio.run(
+                complete_text_once(
+                    profile=llm_profile,
+                    model_name=effective_model_name,
+                    system_prompt=system_prompt,
+                    user_prompt=user_message,
+                    temperature=task_temperature("toc_analysis"),
+                )
             )
+            raw = strip_code_fence(raw)
         except Exception as e:
             raise RuntimeError(f"LLM call for CHM chunk classification failed: {e}") from e
         raw = raw.strip()

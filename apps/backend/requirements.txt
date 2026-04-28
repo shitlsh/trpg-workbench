@@ -21,8 +21,6 @@ aiofiles>=24.1.0
 pychm>=0.8.6
 # M17: Skill file parsing
 python-frontmatter>=1.1.0
-# M4: Agent framework
-agno>=2.5.0
 ddgs>=9.0.0
 anthropic>=0.96.0
 google-genai>=1.0.0

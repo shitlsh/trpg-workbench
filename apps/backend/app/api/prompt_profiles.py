@@ -56,8 +56,8 @@ async def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get
 
     def _run_llm() -> dict:
         import re
-        from app.agents.model_adapter import model_from_profile, strip_code_fence
-        from agno.agent import Agent
+        import asyncio
+        from app.agents.model_adapter import strip_code_fence, complete_text_once
 
         style_hint = f"\n用户风格偏好：{body.style_description}" if body.style_description else ""
         prompt = load_prompt(
@@ -67,14 +67,16 @@ async def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get
             style_hint=style_hint,
         )
 
-        model = model_from_profile(llm_profile, body.model_name)
         t = task_temperature("prompt_generation")
-        try:
-            agent = Agent(model=model, markdown=False, temperature=t)
-        except TypeError:
-            agent = Agent(model=model, markdown=False)
-        result = agent.run(prompt)
-        raw = result.content if hasattr(result, "content") else str(result)
+        raw = asyncio.run(
+            complete_text_once(
+                profile=llm_profile,
+                model_name=body.model_name,
+                system_prompt=None,
+                user_prompt=prompt,
+                temperature=t,
+            )
+        )
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         raw = strip_code_fence(raw)
         data = parse_json_object_from_llm(raw)
