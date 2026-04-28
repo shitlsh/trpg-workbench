@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
@@ -69,9 +69,22 @@ function LLMSection() {
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
   const [testModelName, setTestModelName] = useState<string>("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  /** 云端供应商（OpenAI / Anthropic / Google / OpenRouter）新建时必须填 API Key；本地兼容可留空或随意字符 */
+  const apiKeyRequiredForCreate =
+    !editTarget && form.provider_type !== "openai_compatible";
 
   // When editing an existing profile, auto-fetch its available models (works for all providers)
   const { models: profileModels, isLoading: fetchingProfileModels } = useModelList(editTarget?.id ?? null);
+
+  // 供应商只返回一个模型时自动填入测试框，避免首次点「测试」时 state 仍为空
+  useEffect(() => {
+    if (!editTarget) return;
+    if (profileModels.length !== 1) return;
+    if (testModelName.trim() !== "") return;
+    setTestModelName(profileModels[0]!);
+  }, [editTarget?.id, profileModels, testModelName]);
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["llm-profiles"],
@@ -105,7 +118,7 @@ function LLMSection() {
   });
 
   function openNew() {
-    setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setShowForm(true);
+    setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setFormError(null); setShowForm(true);
   }
   function openEdit(p: LLMProfile) {
     setEditTarget(p);
@@ -113,10 +126,10 @@ function LLMSection() {
       name: p.name, provider_type: p.provider_type as LLMProviderType,
       base_url: p.base_url ?? "", api_key: "",
     });
-    setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setShowForm(true);
+    setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setFormError(null); setShowForm(true);
   }
   function closeForm() {
-    setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName("");
+    setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setFormError(null);
   }
   function handleProviderChange(prov: LLMProviderType) {
     setForm((f) => ({ ...f, provider_type: prov }));
@@ -145,6 +158,11 @@ function LLMSection() {
   }
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setFormError(null);
+    if (apiKeyRequiredForCreate && !form.api_key?.trim()) {
+      setFormError("请填写 API Key（OpenAI / Anthropic / Google / OpenRouter 新建时必填）");
+      return;
+    }
     const body = { ...form };
     if (!body.api_key) delete (body as Record<string, unknown>).api_key;
     if (!body.base_url) delete (body as Record<string, unknown>).base_url;
@@ -156,16 +174,23 @@ function LLMSection() {
       createMutation.mutate(body);
     }
   }
+  function handleRefreshModelList() {
+    if (!editTarget) return;
+    void queryClient.invalidateQueries({ queryKey: ["model-list", editTarget.id] });
+    void queryClient.invalidateQueries({ queryKey: ["model-catalog", form.provider_type] });
+  }
+
   async function handleTest() {
     if (!editTarget) return;
-    if (!testModelName) {
-      setTestResult({ success: false, error: "请先在上方「测试用模型名称」字段输入或选择模型名称" });
+    const model = testModelName.trim();
+    if (!model) {
+      setTestResult({ success: false, error: "请先在「测试用模型名称」中输入或从下拉选择模型（含内置建议），再点测试" });
       return;
     }
     setTesting(true); setTestResult(null);
     try {
       const result = await apiFetch<LLMTestResult>(
-        `/settings/llm-profiles/${editTarget.id}/test?model_name=${encodeURIComponent(testModelName)}`,
+        `/settings/llm-profiles/${editTarget.id}/test?model_name=${encodeURIComponent(model)}`,
         { method: "POST" }
       );
       setTestResult(result);
@@ -178,6 +203,10 @@ function LLMSection() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
   const showBaseUrl = form.provider_type === "openrouter" || form.provider_type === "openai_compatible";
+  const saveDisabled =
+    isPending ||
+    !form.name.trim() ||
+    (apiKeyRequiredForCreate && !form.api_key?.trim());
 
   return (
     <div>
@@ -264,28 +293,50 @@ function LLMSection() {
                   {fetchedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 获取到 {fetchedModels.length} 个模型</span>}
                 </label>
               )}
-               {editTarget && (
+              <label className={styles.label}>
+                API Key{" "}
+                {apiKeyRequiredForCreate ? <span style={{ color: "var(--error, #e05252)" }}>*</span> : null}
+                {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
+                <input className={styles.input} type="password" value={form.api_key ?? ""} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="sk-..." />
+                {apiKeyRequiredForCreate && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>OpenAI / Anthropic / Google / OpenRouter 新建时必须填写；OpenAI 兼容可留空（本地服务）</span>
+                )}
+              </label>
+              {editTarget && (
                 <label className={styles.label}>
                   测试用模型名称
-                   <ModelNameInput
-                    catalog="llm"
-                    providerType={form.provider_type}
-                    value={testModelName}
-                    onChange={setTestModelName}
-                    catalogEntries={formLlmCatalog}
-                    fetchedModels={profileModels.length > 0 ? profileModels : fetchedModels}
-                    placeholder="例：gemini-2.0-flash / qwen3.5-35b-a3b"
-                    className={styles.input}
-                  />
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                    {fetchingProfileModels ? "正在获取模型列表..." : profileModels.length > 0 ? `✓ 已获取 ${profileModels.length} 个模型` : "输入模型名称后点击「测试连接」验证供应商配置"}
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <ModelNameInput
+                        catalog="llm"
+                        providerType={form.provider_type}
+                        value={testModelName}
+                        onChange={setTestModelName}
+                        catalogEntries={formLlmCatalog}
+                        fetchedModels={profileModels.length > 0 ? profileModels : fetchedModels}
+                        placeholder="例：claude-sonnet-4-20250514 / gemini-2.0-flash"
+                        className={styles.input}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.btnSecondary}
+                      style={{ whiteSpace: "nowrap", fontSize: 11, marginTop: 2 }}
+                      onClick={handleRefreshModelList}
+                      disabled={fetchingProfileModels}
+                    >
+                      {fetchingProfileModels ? "刷新中…" : "刷新模型列表"}
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginTop: 4 }}>
+                    {fetchingProfileModels
+                      ? "正在从供应商拉取模型列表（需已保存本配置且 API Key 有效）…"
+                      : profileModels.length > 0
+                        ? `✓ 已从供应商获取 ${profileModels.length} 个模型，并与本地「模型发现」目录合并显示`
+                        : "若列表为空，多为 Key 未配置或保存后尚未刷新；可点「刷新模型列表」或直接从下拉中的内置建议选择，再点「测试连接」"}
                   </span>
                 </label>
               )}
-              <label className={styles.label}>
-                API Key {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
-                <input className={styles.input} type="password" value={form.api_key ?? ""} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="sk-..." />
-              </label>
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={closeForm}>取消</button>
                 {editTarget && (
@@ -293,10 +344,11 @@ function LLMSection() {
                     {testing ? "测试中..." : "测试连接"}
                   </button>
                 )}
-                <button type="submit" className={styles.btnPrimary} disabled={isPending || !form.name}>
+                <button type="submit" className={styles.btnPrimary} disabled={saveDisabled}>
                   {isPending ? "保存中..." : "保存"}
                 </button>
               </div>
+              {formError && <p className={styles.error}>{formError}</p>}
               {testResult && (
                 <div style={{ fontSize: 12, padding: "8px 10px", borderRadius: 4, background: testResult.success ? "rgba(82,201,126,0.1)" : "rgba(224,82,82,0.1)", color: testResult.success ? "#52c97e" : "#e05252" }}>
                   {testResult.success ? `✓ 连接成功 (${testResult.latency_ms}ms)` : `✗ ${testResult.error}`}

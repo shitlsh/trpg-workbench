@@ -28,6 +28,40 @@ def strip_code_fence(text: str) -> str:
     return re.sub(r"^```[a-zA-Z]*\n?|```\s*$", "", text.strip(), flags=re.MULTILINE).strip()
 
 
+def parse_json_object_from_llm(text: str) -> dict:
+    """Parse a single JSON object from model output; tolerates leading/trailing prose and fences.
+
+    Many models still emit a short preamble or put JSON after ``strip_code_fence``; some
+    also break JSON by using raw newlines or unescaped ``"`` inside string values — that
+    cannot be fixed here and will still raise with a clear error.
+    """
+    import json
+
+    s = text.strip()
+    for candidate in (s, _first_brace_to_last_brace(s)):
+        if not candidate:
+            continue
+        try:
+            out = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(out, dict):
+            return out
+        raise ValueError("模型返回的 JSON 根类型必须是对象 {}，不能是数组或标量")
+    raise ValueError(
+        "无法解析为 JSON 对象。常见原因：1) 输出中混有说明文字；2) 字符串里含未转义的双引号；"
+        "3) 在 JSON 字符串内写了未转义的换行。请重试，或换用温度更低的模型。"
+    )
+
+
+def _first_brace_to_last_brace(text: str) -> str:
+    a = text.find("{")
+    b = text.rfind("}")
+    if a < 0 or b <= a:
+        return ""
+    return text[a : b + 1]
+
+
 def _decrypt_key(profile) -> str | None:
     try:
         from app.utils.secrets import decrypt_secret

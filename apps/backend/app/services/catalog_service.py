@@ -1,9 +1,11 @@
 """Catalog service: load static catalog on startup, support dynamic fetch for OpenRouter/Google."""
 import json
 import logging
+import re
 import httpx
 from datetime import datetime, timezone
 from pathlib import Path
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.models.orm import ModelCatalogEntryORM, EmbeddingCatalogEntryORM, LLMProfileORM
 
@@ -11,38 +13,119 @@ logger = logging.getLogger(__name__)
 
 _DATA_DIR = Path(__file__).parent.parent / "data"
 
+# static_llm_catalog.json — ``supports_json_mode`` 语义：
+# - OpenAI：接近官方 ``response_format`` / JSON 行为。
+# - Anthropic：为 True 表示官方 **Structured Outputs**（``output_config.format`` + JSON Schema），
+#   见 https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs ；GA 含 Haiku / Sonnet / Opus 4.5 等，
+#   与 OpenAI 的 json_object 不是同一参数名。
+# - ``null``：未在静态表按文档逐条核对（非「不支持」）。
+
+# Anthropic 常见 ``claude-…-20251001`` 形模型 id；去掉末尾 -YYYYMMDD 可与无日期/另一日期的静态行对齐
+_ANTHROPIC_DATE_SUFFIX = re.compile(r"-\d{8}$")
+
 
 def _now():
     return datetime.now(timezone.utc)
 
 
+_STATIC_LLM_KEYS = (
+    "display_name",
+    "context_window",
+    "max_output_tokens",
+    "supports_json_mode",
+    "supports_tools",
+    "input_price_per_1m",
+    "output_price_per_1m",
+)
+
+
+def _merge_static_llm_row(db: Session, e: dict) -> None:
+    """Insert or update one LLM row from static JSON. Preserves ``source == 'user'`` rows."""
+    entry_id = f"{e['provider_type']}:{e['model_name']}"
+    existing = db.get(ModelCatalogEntryORM, entry_id)
+    if existing is None:
+        db.add(ModelCatalogEntryORM(
+            id=entry_id,
+            provider_type=e["provider_type"],
+            model_name=e["model_name"],
+            display_name=e.get("display_name"),
+            context_window=e.get("context_window"),
+            max_output_tokens=e.get("max_output_tokens"),
+            supports_json_mode=e.get("supports_json_mode"),
+            supports_tools=e.get("supports_tools"),
+            input_price_per_1m=e.get("input_price_per_1m"),
+            output_price_per_1m=e.get("output_price_per_1m"),
+            source="static",
+        ))
+        return
+    if existing.source == "user":
+        return
+    for key in _STATIC_LLM_KEYS:
+        if key not in e:
+            continue
+        setattr(existing, key, e[key])
+
+
+def _static_llm_index(
+    entries: list[dict],
+) -> dict[tuple[str, str], dict]:
+    return {(e["provider_type"], e["model_name"]): e for e in entries}
+
+
+def _resolve_static_template(
+    index: dict[tuple[str, str], dict],
+    provider_type: str,
+    model_name: str,
+) -> dict | None:
+    k = (provider_type, model_name)
+    if k in index:
+        return index[k]
+    # Anthropic：API id 与静态表日期不一致时，用去掉末尾 -YYYYMMDD 的“基名”找模板
+    if provider_type == "anthropic":
+        m = model_name
+        for _ in range(2):
+            m2 = _ANTHROPIC_DATE_SUFFIX.sub("", m)
+            if m2 == m:
+                break
+            if (provider_type, m2) in index:
+                return index[(provider_type, m2)]
+            m = m2
+    return None
+
+
+def _fuzzy_backfill_static_llm(db: Session, entries: list[dict]) -> None:
+    """把静态模板套到“仅 id 与静态不完全一致”的库内行上（以 Anthropic 日期后缀为主）。"""
+    index = _static_llm_index(entries)
+    for row in db.scalars(select(ModelCatalogEntryORM)):
+        if row.source == "user":
+            continue
+        if (row.provider_type, row.model_name) in index:
+            continue
+        tmpl = _resolve_static_template(index, row.provider_type, row.model_name)
+        if tmpl is None:
+            continue
+        for key in _STATIC_LLM_KEYS:
+            if key not in tmpl:
+                continue
+            setattr(row, key, tmpl[key])
+
+
 def load_static_catalog(db: Session) -> None:
     """Load static LLM and Embedding catalog entries into DB on startup.
-    Only inserts entries that don't already exist (static seeding, no overwrite).
+
+    LLM: inserts new rows and **merges** known fields into existing non-user rows so
+    shipping updates to ``static_llm_catalog.json`` refreshes context/token metadata
+    (e.g. after probe created ``api_fetched`` stubs without limits).
     """
     # LLM catalog
     llm_path = _DATA_DIR / "static_llm_catalog.json"
     if llm_path.exists():
         entries = json.loads(llm_path.read_text())
         for e in entries:
-            entry_id = f"{e['provider_type']}:{e['model_name']}"
-            existing = db.get(ModelCatalogEntryORM, entry_id)
-            if existing is None:
-                db.add(ModelCatalogEntryORM(
-                    id=entry_id,
-                    provider_type=e["provider_type"],
-                    model_name=e["model_name"],
-                    display_name=e.get("display_name"),
-                    context_window=e.get("context_window"),
-                    max_output_tokens=e.get("max_output_tokens"),
-                    supports_json_mode=e.get("supports_json_mode"),
-                    supports_tools=e.get("supports_tools"),
-                    input_price_per_1m=e.get("input_price_per_1m"),
-                    output_price_per_1m=e.get("output_price_per_1m"),
-                    source="static",
-                ))
+            _merge_static_llm_row(db, e)
+        _fuzzy_backfill_static_llm(db, entries)
         db.commit()
-        logger.info("Static LLM catalog loaded: %d entries", len(entries))
+        logger.info("Static LLM catalog merged: %d entries (incl. fuzzy id match)", len(entries))
 
     # Embedding catalog
     emb_path = _DATA_DIR / "static_embedding_catalog.json"

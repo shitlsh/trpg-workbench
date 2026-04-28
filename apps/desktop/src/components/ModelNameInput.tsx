@@ -1,10 +1,12 @@
 /**
  * ModelNameInput — LLM or embedding model picker with optional catalog + probe merge,
  * search, capability filters, and token hints (LLM catalog mode).
+ *
+ * LLM 下拉仅合并：本地「模型发现」条目 + 供应商 probe 返回的 id，不再混入内置字符串列表。
  */
 import { useId, useMemo, useState, useEffect, useRef } from "react";
 import type { ModelCatalogEntry } from "@trpg-workbench/shared-schema";
-import { KNOWN_LLM_MODELS, KNOWN_EMBEDDING_MODELS } from "../lib/modelCatalog";
+import { KNOWN_EMBEDDING_MODELS } from "../lib/modelCatalog";
 import styles from "./ModelNameInput.module.css";
 
 export type ModelCatalogType = "llm" | "embedding";
@@ -35,6 +37,7 @@ type MergedRow = {
   max_output_tokens: number | null;
   supports_json_mode: boolean | null;
   supports_tools: boolean | null;
+  /** catalog=模型发现库；probe_only=供应商返回 id，本地目录尚无对应条目 */
   source: "catalog" | "probe_only";
 };
 
@@ -75,9 +78,11 @@ function buildMergedRows(
       source: "probe_only",
     });
   }
+  const rank = (s: MergedRow["source"]) => (s === "catalog" ? 0 : 1);
   const rows = Array.from(byName.values());
   rows.sort((a, b) => {
-    if (a.source !== b.source) return a.source === "catalog" ? -1 : 1;
+    const d = rank(a.source) - rank(b.source);
+    if (d !== 0) return d;
     return a.model_name.localeCompare(b.model_name);
   });
   return rows;
@@ -111,8 +116,7 @@ export function ModelNameInput({
   disabled,
 }: ModelNameInputProps) {
   const listId = useId();
-  const knownMap = catalog === "llm" ? KNOWN_LLM_MODELS : KNOWN_EMBEDDING_MODELS;
-  const knownModels = knownMap[providerType] ?? [];
+  const knownModels = catalog === "embedding" ? (KNOWN_EMBEDDING_MODELS[providerType] ?? []) : [];
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -200,7 +204,7 @@ export function ModelNameInput({
     );
   }
 
-  // ─── LLM: legacy when no catalog/probe rows to merge ───
+  // ─── LLM: 无目录且未 probe 到任何 id 时，仅用纯输入（不混静态型号表）───
   if (!canLlmRich) {
     if (fetchedModels.length > 0) {
       return (
@@ -218,26 +222,6 @@ export function ModelNameInput({
             </option>
           ))}
         </select>
-      );
-    }
-    if (knownModels.length > 0) {
-      return (
-        <>
-          <datalist id={listId}>
-            {knownModels.map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
-          <input
-            list={listId}
-            className={className}
-            style={style}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            disabled={disabled}
-          />
-        </>
       );
     }
     return (
@@ -309,7 +293,7 @@ export function ModelNameInput({
             ) : (
               filtered.map((row) => {
                 const active = row.model_name === value;
-                const unknown = row.source === "probe_only";
+                const isProbeOnly = row.source === "probe_only";
                 return (
                   <div
                     key={row.model_name}
@@ -342,9 +326,13 @@ export function ModelNameInput({
                               ? styles.badgeOff
                               : styles.badgeUnknown
                         }`}
-                        title={unknown ? "未在模型目录中，请至「模型发现」同步" : "Tool calling"}
+                        title={
+                          isProbeOnly
+                            ? "供应商已返回此 id；本地「模型发现」中尚无该条。同步目录后可看精确能力。"
+                            : "Tool calling（来自「模型发现」）"
+                        }
                       >
-                        {unknown ? "?" : ""}🛠
+                        🛠
                       </span>
                       <span
                         className={`${styles.badge} ${
@@ -354,11 +342,15 @@ export function ModelNameInput({
                               ? styles.badgeOff
                               : styles.badgeUnknown
                         }`}
-                        title="JSON 输出能力"
+                        title={
+                          isProbeOnly
+                            ? "能力未知，同步「模型发现」后可见目录内标注。"
+                            : "JSON 输出能力（来自「模型发现」）"
+                        }
                       >
-                        {unknown ? "?" : ""}JSON
+                        JSON
                       </span>
-                      <span className={styles.tokenLine} title="Context / 最大输出（来自目录）">
+                      <span className={styles.tokenLine} title="Context / 最大输出（来自「模型发现」；probe-only 为 —）">
                         {formatTokens(row.context_window)} ctx / {formatTokens(row.max_output_tokens)} out
                       </span>
                     </div>

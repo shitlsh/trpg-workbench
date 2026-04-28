@@ -12,6 +12,7 @@ from app.models.schemas import (
     PromptProfileSchema, PromptProfileCreate, PromptProfileUpdate,
     GeneratePromptRequest,
 )
+from app.agents.model_adapter import parse_json_object_from_llm
 from app.prompts import load_prompt
 from app.services.llm_defaults import task_temperature
 
@@ -76,7 +77,7 @@ async def generate_prompt(body: GeneratePromptRequest, db: Session = Depends(get
         raw = result.content if hasattr(result, "content") else str(result)
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         raw = strip_code_fence(raw)
-        data = json.loads(raw)
+        data = parse_json_object_from_llm(raw)
         return {
             "name": data.get("name") or f"{rule_set_name}创作风格",
             "system_prompt": data.get("system_prompt", ""),
