@@ -815,6 +815,7 @@ function DocumentRow({
     expanded && doc.parse_status !== "pending" && doc.parse_status !== "running";
   const canPreview =
     ["success", "partial", "scanned_fallback"].includes(doc.parse_status) && (doc.chunk_count ?? 0) > 0;
+  const canReindex = (doc.chunk_count ?? 0) > 0;
 
   const { data: summary } = useQuery({
     queryKey: ["knowledge", "doc", doc.id, "summary"],
@@ -840,7 +841,7 @@ function DocumentRow({
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {new Date(doc.created_at).toLocaleDateString("zh-CN")}
         </span>
-        {canPreview && (
+        {canReindex && (
           <button
             style={{
               fontSize: 11, padding: "2px 8px", borderRadius: 4,

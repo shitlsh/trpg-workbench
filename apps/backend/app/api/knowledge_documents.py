@@ -327,7 +327,6 @@ async def reindex_document(
         step_label="准备重建索引",
     )
     db.add(task)
-    doc.parse_status = "running"
     db.commit()
     db.refresh(task)
 
@@ -521,9 +520,6 @@ async def _run_reindex_background(
             if task:
                 task.status = "failed"
                 task.error_message = str(e)
-            doc = db.get(KnowledgeDocumentORM, document_id)
-            if doc:
-                doc.parse_status = "failed"
             db.commit()
         finally:
             db.close()
