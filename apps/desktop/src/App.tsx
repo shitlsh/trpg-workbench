@@ -29,6 +29,7 @@ export default function App() {
   const { hasCompletedSetup, resetSetup } = useSettingsStore();
   const startTimeRef = useRef(Date.now());
   const reconnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const failedHealthChecksRef = useRef(0);
 
   // Apply persisted theme on mount
   useEffect(() => {
@@ -68,7 +69,13 @@ export default function App() {
 
     const interval = setInterval(async () => {
       const ok = await checkHealth();
-      if (!ok) {
+      if (ok) {
+        failedHealthChecksRef.current = 0;
+      } else {
+        failedHealthChecksRef.current += 1;
+      }
+      // Avoid false-positive disconnect banners during long file upload/index calls.
+      if (failedHealthChecksRef.current >= 3) {
         setStatus("disconnected");
       }
     }, 3000);
@@ -84,6 +91,7 @@ export default function App() {
     const interval = setInterval(async () => {
       const ok = await checkHealth();
       if (ok) {
+        failedHealthChecksRef.current = 0;
         clearInterval(interval);
         setStatus("ready");
       }

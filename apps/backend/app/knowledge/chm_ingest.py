@@ -221,7 +221,7 @@ async def run_ingest(
     await report(6, STEP_LABELS[5])
     texts = [rc.content for rc in raw_chunks]
     try:
-        vectors = await embedder.embed(texts)
+        vectors = await asyncio.to_thread(embedder.embed, texts)
     except Exception as e:
         parse_notes = _append_parse_note(parse_notes, f"Embedding failed: {e}")
         # Strict mode: embedding failure means ingest failure.

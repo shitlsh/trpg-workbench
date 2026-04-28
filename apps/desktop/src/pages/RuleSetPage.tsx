@@ -862,7 +862,7 @@ function DocumentRow({
             }}
             onClick={(e) => {
               e.stopPropagation();
-              if (confirm(`重建文档「${doc.filename}」索引？\n将复用已解析 chunks，不会重新上传/重新分析目录。`)) onReindex();
+              onReindex();
             }}
             title="重建索引（不重新上传）"
           >
@@ -943,6 +943,9 @@ function LibraryDetailPanel({
   const [showSearchTest, setShowSearchTest] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(library.name);
+  const [reindexDialog, setReindexDialog] = useState<{ docId: string; filename: string } | null>(null);
+  const [reindexProfileId, setReindexProfileId] = useState<string>("");
+  const [reindexModelName, setReindexModelName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── TOC-driven ingest wizard state ────────────────────────────────────────
@@ -967,8 +970,6 @@ function LibraryDetailPanel({
     | { step: "ingesting" };
 
   const [wizard, setWizard] = useState<WizardState>({ step: "idle" });
-  const [chmLlm, setChmLlm] = useState({ profileId: "", model: "" });
-  const [chmClassifying, setChmClassifying] = useState(false);
 
   const { data: embeddingProfiles = [] } = useQuery({
     queryKey: ["embedding-profiles"],
@@ -983,7 +984,6 @@ function LibraryDetailPanel({
     queryFn: () => apiFetch<ModelCatalogEntry[]>("/settings/model-catalog"),
   });
   const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>("");
-  const [reindexModelName, setReindexModelName] = useState<string>("");
 
   useEffect(() => {
     if (selectedEmbeddingId) return;
@@ -1000,19 +1000,10 @@ function LibraryDetailPanel({
   const wizardLlmProfileId = wizard.step === "select_llm" ? wizard.llmProfileId : null;
   const { models: wizardProbedModels } = useModelList(wizardLlmProfileId);
   const wizardLlmProfile = llmProfilesForUpload.find((p) => p.id === wizardLlmProfileId);
-  const chmSectionLlmId = wizard.step === "section_confirm" && wizard.fileExt.toLowerCase().endsWith("chm")
-    ? chmLlm.profileId
-    : null;
-  const { models: chmProbedModels } = useModelList(chmSectionLlmId);
-  const chmSectionLlmProfile = llmProfilesForUpload.find((p) => p.id === chmLlm.profileId);
 
   const wizardCatalog = useMemo(
     () => fullLlmCatalog.filter((c) => c.provider_type === wizardLlmProfile?.provider_type),
     [fullLlmCatalog, wizardLlmProfile?.provider_type],
-  );
-  const chmModelCatalog = useMemo(
-    () => fullLlmCatalog.filter((c) => c.provider_type === chmSectionLlmProfile?.provider_type),
-    [fullLlmCatalog, chmSectionLlmProfile?.provider_type],
   );
 
   const { data: documents = [] } = useQuery({
@@ -1020,12 +1011,6 @@ function LibraryDetailPanel({
     queryFn: () => apiFetch<KnowledgeDocument[]>(`/knowledge/libraries/${library.id}/documents`),
     refetchInterval: uploadingTaskId ? 3000 : false,
   });
-
-  useEffect(() => {
-    if (wizard.step === "section_confirm" && wizard.fileExt.toLowerCase().endsWith("chm") && llmProfilesForUpload.length) {
-      setChmLlm((prev) => (prev.profileId ? prev : { profileId: llmProfilesForUpload[0]!.id, model: "" }));
-    }
-  }, [wizard, llmProfilesForUpload]);
 
   const activeTask = useTaskProgress(uploadingTaskId);
   if (activeTask?.status === "completed" || activeTask?.status === "failed") {
@@ -1057,21 +1042,21 @@ function LibraryDetailPanel({
     },
   });
   const reindexDocMutation = useMutation({
-    mutationFn: (docId: string) => {
-      const profileId = selectedEmbeddingId || library.embedding_profile_id || embeddingProfiles[0]?.id;
+    mutationFn: ({ docId, profileId, modelName }: { docId: string; profileId: string; modelName: string }) => {
       if (!profileId) throw new Error("请先配置 Embedding Profile");
       return (
       apiFetch<{ document_id: string; task_id: string }>(`/knowledge/documents/${docId}/reindex`, {
         method: "POST",
         body: JSON.stringify({
           embedding_profile_id: profileId,
-          embedding_model_name: reindexModelName.trim() || undefined,
+          embedding_model_name: modelName.trim() || undefined,
         }),
       })
       );
     },
     onSuccess: (res) => {
       setUploadingTaskId(res.task_id);
+      setReindexDialog(null);
       queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", library.id] });
     },
     onError: (e) => {
@@ -1083,8 +1068,6 @@ function LibraryDetailPanel({
 
   async function startWizard(file: File) {
     setUploadError(null);
-    setChmLlm({ profileId: "", model: "" });
-    setChmClassifying(false);
     setWizard({ step: "uploading" });
     try {
       // Step 1: upload to preview endpoint
@@ -1106,13 +1089,13 @@ function LibraryDetailPanel({
       );
 
       if (detectRes.is_structural && detectRes.sections) {
-        // CHM: skip toc_preview, go straight to section_confirm
+        // CHM: keep the same LLM selection step as PDF, then run CHM-specific classify API.
         setWizard({
-          step: "section_confirm",
+          step: "select_llm",
           fileId: file_id, filename, fileExt: file_ext,
-          sections: detectRes.sections.map((s) => ({ ...s, chunk_type: s.chunk_type ?? "" })),
-          pageOffset: 0,
-          analyzeError: "",
+          tocText: JSON.stringify(detectRes.sections ?? []),
+          llmProfileId: llmProfilesForUpload[0]?.id ?? "",
+          llmModelName: "",
         });
       } else {
         setWizard({
@@ -1187,32 +1170,25 @@ function LibraryDetailPanel({
     }
   }
 
-  async function classifyChmToc(fileId: string) {
-    if (wizard.step !== "section_confirm") return;
-    const w = wizard;
-    const profileId = chmLlm.profileId || llmProfilesForUpload[0]?.id;
-    if (!profileId) {
-      setUploadError("请先在模型配置中添加 LLM 模型");
-      return;
-    }
-    const modelName = chmLlm.model.trim();
-    if (!modelName) {
-      setUploadError("CHM 目录分类需要选择模型（必填）");
-      return;
-    }
-    setChmClassifying(true);
-    setUploadError(null);
+  async function analyzeChmSections(
+    fileId: string,
+    filename: string,
+    fileExt: string,
+    llmProfileId: string,
+    llmModelName: string,
+  ) {
+    setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText: "" });
     try {
       const res = await apiPostSSE<{ sections: TocSectionState[] }>(
         `/knowledge/documents/preview/${fileId}/classify-chm-sections`,
-        { llm_profile_id: profileId, llm_model_name: modelName },
+        { llm_profile_id: llmProfileId, llm_model_name: llmModelName.trim() },
       );
       const rows = (res as { sections?: unknown[] }).sections ?? [];
       setWizard({
         step: "section_confirm",
-        fileId: w.fileId,
-        filename: w.filename,
-        fileExt: w.fileExt,
+        fileId,
+        filename,
+        fileExt,
         sections: rows.map((s) => {
           const r = s as Record<string, unknown>;
           const rawCt = (r.suggested_chunk_type ?? r.chunk_type ?? "") as string;
@@ -1225,13 +1201,19 @@ function LibraryDetailPanel({
             chunk_type: ct,
           };
         }),
-        pageOffset: w.pageOffset,
+        pageOffset: 0,
         analyzeError: "",
       });
     } catch (e) {
-      setWizard({ ...w, analyzeError: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setChmClassifying(false);
+      setWizard({
+        step: "section_confirm",
+        fileId,
+        filename,
+        fileExt,
+        sections: [],
+        pageOffset: 0,
+        analyzeError: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
@@ -1337,33 +1319,6 @@ function LibraryDetailPanel({
         </div>
       </div>
 
-      {/* Embedding profile/model selector (explicit default + reindex override) */}
-      {embeddingProfiles.length > 0 && (
-        <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>Embedding Profile：</span>
-            <select
-              style={{ flex: 1, padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
-              value={selectedEmbeddingId || embeddingProfiles[0]?.id}
-              onChange={(e) => setSelectedEmbeddingId(e.target.value)}
-            >
-              {embeddingProfiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.model_name})
-                  {p.id === (library.embedding_profile_id || "") ? " · 当前库默认" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-          <input
-            style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}
-            placeholder="重建索引时模型名覆盖（可选，不填则使用 Profile 默认模型）"
-            value={reindexModelName}
-            onChange={(e) => setReindexModelName(e.target.value)}
-          />
-        </div>
-      )}
-
       {/* Upload area */}
       {(() => {
         const wizardActive = wizard.step !== "idle";
@@ -1418,14 +1373,13 @@ function LibraryDetailPanel({
               </div>
             )}
 
-            {/* uploading / detecting_toc / analyzing_toc / chm classifying: spinner */}
-            {(wizard.step === "uploading" || wizard.step === "detecting_toc" || wizard.step === "analyzing_toc" || (chmClassifying && wizard.step === "section_confirm")) && (
+            {/* uploading / detecting_toc / analyzing_toc: spinner */}
+            {(wizard.step === "uploading" || wizard.step === "detecting_toc" || wizard.step === "analyzing_toc") && (
               <div style={{ padding: "24px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
                 <div style={{ marginBottom: 10, fontSize: 20 }}>⏳</div>
                 {wizard.step === "uploading" && "正在上传文件..."}
                 {wizard.step === "detecting_toc" && "正在自动检测目录页..."}
                 {wizard.step === "analyzing_toc" && "AI 正在解析目录结构，请稍候..."}
-                {chmClassifying && wizard.step === "section_confirm" && "CHM：AI 正在为浅层目录建议内容类型，大文件可能需数分钟…"}
               </div>
             )}
 
@@ -1511,10 +1465,13 @@ function LibraryDetailPanel({
             {wizard.step === "select_llm" && (() => {
               const w = wizard;
               const modelOk = w.llmModelName.trim().length > 0;
+              const isChm = w.fileExt.toLowerCase().endsWith("chm");
               return (
                 <>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
-                    用 LLM 将目录解析为章节结构。
+                    {isChm
+                      ? "用 LLM 为 CHM 内嵌目录的章节建议内容类型（不改章节结构）。"
+                      : "用 LLM 将目录解析为章节结构。"}
                   </div>
                   <div style={{ marginBottom: 12 }}>
                     <label style={{ fontSize: 12, color: "var(--text)", display: "block", marginBottom: 4, fontWeight: 600 }}>LLM 供应商 *</label>
@@ -1557,19 +1514,31 @@ function LibraryDetailPanel({
                   </div>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                     <button className={styles.btnSecondary}
-                      onClick={() => setWizard({
-                        step: "toc_preview",
-                        fileId: w.fileId, filename: w.filename, fileExt: w.fileExt, tocText: w.tocText,
-                        pageStart: 1, pageEnd: 1, customStart: "1", customEnd: "1", redetecting: false, redetectError: "",
-                      })}>
+                      onClick={() => {
+                        if (isChm) {
+                          setWizard({ step: "idle" });
+                        } else {
+                          setWizard({
+                            step: "toc_preview",
+                            fileId: w.fileId, filename: w.filename, fileExt: w.fileExt, tocText: w.tocText,
+                            pageStart: 1, pageEnd: 1, customStart: "1", customEnd: "1", redetecting: false, redetectError: "",
+                          });
+                        }
+                      }}>
                       ← 返回
                     </button>
                     <button
                       className={styles.btnPrimary}
                       disabled={!w.llmProfileId || !modelOk}
-                      onClick={() => analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText, w.llmProfileId, w.llmModelName.trim())}
+                      onClick={() => {
+                        if (isChm) {
+                          analyzeChmSections(w.fileId, w.filename, w.fileExt, w.llmProfileId, w.llmModelName.trim());
+                        } else {
+                          analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText, w.llmProfileId, w.llmModelName.trim());
+                        }
+                      }}
                     >
-                      开始分析
+                      {isChm ? "开始类型建议" : "开始分析"}
                     </button>
                   </div>
                 </>
@@ -1577,54 +1546,14 @@ function LibraryDetailPanel({
             })()}
 
             {/* section_confirm */}
-            {wizard.step === "section_confirm" && !chmClassifying && (() => {
+            {wizard.step === "section_confirm" && (() => {
               const w = wizard;
               const isPdf = w.fileExt.toLowerCase() === "pdf";
-              const isChm = w.fileExt.toLowerCase().endsWith("chm");
               return (
                 <>
                   {w.analyzeError && (
                     <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 4, background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>
                       {w.analyzeError}
-                    </div>
-                  )}
-                  {isChm && (
-                    <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)" }}>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.65, marginBottom: 10 }}>
-                        CHM 已内嵌完整目录，因此不会走「抽目录页 → AI 重解析」流程。你仍可用下方让 AI
-                        为<strong>浅层</strong>目录项（默认 depth≤2，约一两百项）建议「内容类型」；更深层会按目录树
-                        继承。不会合并或删减章节，仅填写类型。
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                        <select
-                          value={chmLlm.profileId}
-                          onChange={(e) => setChmLlm({ ...chmLlm, profileId: e.target.value })}
-                          style={{ fontSize: 13, padding: "5px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", minWidth: 180 }}
-                        >
-                          {llmProfilesForUpload.map((p) => (
-                            <option key={p.id} value={p.id}>{p.name} ({p.provider_type})</option>
-                          ))}
-                        </select>
-                        <ModelNameInput
-                          catalog="llm"
-                          providerType={chmSectionLlmProfile?.provider_type ?? ""}
-                          value={chmLlm.model}
-                          onChange={(v) => setChmLlm({ ...chmLlm, model: v })}
-                          catalogEntries={chmModelCatalog}
-                          fetchedModels={chmProbedModels}
-                          requireJsonMode
-                          placeholder="模型（必填）"
-                        />
-                        <button
-                          type="button"
-                          className={styles.btnPrimary}
-                          disabled={!chmLlm.profileId || !chmLlm.model.trim()}
-                          onClick={() => classifyChmToc(w.fileId)}
-                          style={{ fontSize: 12, padding: "5px 12px" }}
-                        >
-                          AI 建议各节内容类型
-                        </button>
-                      </div>
                     </div>
                   )}
                   {w.sections.length === 0 && !w.analyzeError && (
@@ -1686,6 +1615,25 @@ function LibraryDetailPanel({
                       </span>
                     </div>
                   )}
+                  {embeddingProfiles.length > 0 && (
+                    <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)" }}>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+                        导入前请确认 Embedding Profile（用于建立索引）：
+                      </div>
+                      <select
+                        style={{ width: "100%", padding: "6px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
+                        value={selectedEmbeddingId || embeddingProfiles[0]?.id}
+                        onChange={(e) => setSelectedEmbeddingId(e.target.value)}
+                      >
+                        {embeddingProfiles.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.model_name})
+                            {p.id === (library.embedding_profile_id || "") ? " · 当前库默认" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                     <button className={styles.btnSecondary} onClick={() => setWizard({ step: "idle" })}>取消</button>
                     <button className={styles.btnPrimary}
@@ -1736,7 +1684,12 @@ function LibraryDetailPanel({
             onPreview={() => setPreviewDocId(previewDocId === doc.id ? null : doc.id)}
             isPreviewing={previewDocId === doc.id}
             onDelete={() => deleteDocMutation.mutate(doc.id)}
-            onReindex={() => reindexDocMutation.mutate(doc.id)}
+            onReindex={() => {
+              const defaultProfileId = selectedEmbeddingId || library.embedding_profile_id || embeddingProfiles[0]?.id || "";
+              setReindexProfileId(defaultProfileId);
+              setReindexModelName("");
+              setReindexDialog({ docId: doc.id, filename: doc.filename });
+            }}
           />
         ))}
       </div>
@@ -1754,6 +1707,51 @@ function LibraryDetailPanel({
       {/* Search Test Dialog */}
       {showSearchTest && (
         <SearchTestDialog libraryId={library.id} workspaceId={activeWorkspaceId} onClose={() => setShowSearchTest(false)} />
+      )}
+      {reindexDialog && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setReindexDialog(null)}
+        >
+          <div
+            style={{ width: 560, maxWidth: "95vw", borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: 18 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>重建索引确认</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 12 }}>
+              文档：{reindexDialog.filename}。将复用已解析 chunks，不会重新上传/重新分析目录。
+            </div>
+            <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Embedding Profile</label>
+            <select
+              style={{ width: "100%", padding: "6px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, marginBottom: 10 }}
+              value={reindexProfileId}
+              onChange={(e) => setReindexProfileId(e.target.value)}
+            >
+              {embeddingProfiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.model_name})
+                </option>
+              ))}
+            </select>
+            <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>模型名覆盖（可选）</label>
+            <input
+              style={{ width: "100%", padding: "6px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, marginBottom: 14 }}
+              value={reindexModelName}
+              onChange={(e) => setReindexModelName(e.target.value)}
+              placeholder="留空则使用 Profile 默认 model_name"
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className={styles.btnSecondary} onClick={() => setReindexDialog(null)}>取消</button>
+              <button
+                className={styles.btnPrimary}
+                disabled={!reindexProfileId || reindexDocMutation.isPending}
+                onClick={() => reindexDocMutation.mutate({ docId: reindexDialog.docId, profileId: reindexProfileId, modelName: reindexModelName })}
+              >
+                {reindexDocMutation.isPending ? "重建中..." : "确认重建"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
