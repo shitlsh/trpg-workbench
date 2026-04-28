@@ -193,6 +193,8 @@ function ThinkingBlock({
   const headerLabel = duration != null && !streaming
     ? `推理 ${duration}s`
     : "推理过程";
+  const firstLine = (content || "").split("\n").map((s) => s.trim()).find(Boolean) || "";
+  const summary = firstLine.length > 28 ? `${firstLine.slice(0, 28)}…` : firstLine;
 
   return (
     <div style={{ marginBottom: 6 }}>
@@ -207,6 +209,16 @@ function ThinkingBlock({
       >
         <Brain size={11} style={{ flexShrink: 0 }} />
         <span>{headerLabel}</span>
+        {!expanded && summary && (
+          <span style={{ color: "var(--text-subtle)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            · {summary}
+          </span>
+        )}
+        {!streaming && content && (
+          <span style={{ color: "var(--text-subtle)", fontSize: 10 }}>
+            · {content.length} 字
+          </span>
+        )}
         {streaming && (
           <span style={{
             display: "inline-block", width: 5, height: 5,
@@ -308,6 +320,23 @@ function StreamingBubble({
         )}
         {events.map((e, i) => {
           if (e.kind === "tool_call") {
+            if (e.toolCall.status === "running") {
+              return (
+                <div
+                  key={e.toolCall.id}
+                  style={{
+                    position: "sticky",
+                    bottom: 0,
+                    zIndex: 2,
+                    background: "color-mix(in srgb, var(--bg) 86%, transparent)",
+                    borderRadius: 4,
+                    backdropFilter: "blur(2px)",
+                  }}
+                >
+                  <ToolCallCard toolCall={e.toolCall} />
+                </div>
+              );
+            }
             return <ToolCallCard key={e.toolCall.id} toolCall={e.toolCall} />;
           }
           if (e.kind === "question_interrupt") {
@@ -633,16 +662,46 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
       let accEvents: StreamEvent[] = [];
       let accToolCallsById: Record<string, ToolCall> = {};
+      let traceStartAtById: Record<string, number> = {};
       let accThinking = "";
       let currentEvent = "";
       let streamDone = false;
       let lastUiFlush = 0;
+      let textCarry = "";
       const flushUi = (force = false) => {
         const now = Date.now();
         if (!force && now - lastUiFlush < 33) return;
         setStreamingEvents([...accEvents]);
         setStreamingThinking(accThinking);
         lastUiFlush = now;
+      };
+      const appendText = (part: string) => {
+        if (!part) return;
+        const last = accEvents[accEvents.length - 1];
+        if (last && last.kind === "text_chunk") {
+          accEvents = [
+            ...accEvents.slice(0, -1),
+            { kind: "text_chunk", text: last.text + part },
+          ];
+        } else {
+          accEvents = [...accEvents, { kind: "text_chunk", text: part }];
+        }
+      };
+      const flushTextChunk = (chunk: string, force = false) => {
+        if (chunk) textCarry += chunk;
+        const boundaries = ["。", "！", "？", "!", "?", "；", ";", "\n"];
+        let boundaryIdx = -1;
+        for (const ch of boundaries) {
+          boundaryIdx = Math.max(boundaryIdx, textCarry.lastIndexOf(ch));
+        }
+        if (boundaryIdx >= 0) {
+          appendText(textCarry.slice(0, boundaryIdx + 1));
+          textCarry = textCarry.slice(boundaryIdx + 1);
+        }
+        if (textCarry.length > 120 || force) {
+          appendText(textCarry);
+          textCarry = "";
+        }
       };
 
       while (true) {
@@ -667,16 +726,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
             if (currentEvent === "text_delta") {
               const chunk = (data.content as string) ?? "";
-              // Append to last text_chunk or push new one
-              const last = accEvents[accEvents.length - 1];
-              if (last && last.kind === "text_chunk") {
-                accEvents = [
-                  ...accEvents.slice(0, -1),
-                  { kind: "text_chunk", text: last.text + chunk },
-                ];
-              } else {
-                accEvents = [...accEvents, { kind: "text_chunk", text: chunk }];
-              }
+              flushTextChunk(chunk);
               flushUi();
 
             } else if (currentEvent === "thinking_delta") {
@@ -694,18 +744,24 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 trace_logs: [],
               };
               accToolCallsById[tc.id] = tc;
+              traceStartAtById[tc.id] = Date.now();
               accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
               flushUi();
 
             } else if (currentEvent === "tool_trace") {
               const tcId = (data.id as string) ?? "";
               const trace = Array.isArray(data.trace) ? data.trace.map((x) => String(x)) : null;
-              const delta = typeof data.delta === "string" ? data.delta : null;
+              const deltaRaw = typeof data.delta === "string" ? data.delta : null;
+              const delta = deltaRaw
+                ? `[+${Math.max(0, Date.now() - (traceStartAtById[tcId] || Date.now()))}ms] ${deltaRaw}`
+                : null;
               if (accToolCallsById[tcId]) {
                 const prevTrace = accToolCallsById[tcId].trace_logs ?? [];
+                const mergedTrace = trace ?? (delta ? [...prevTrace, delta] : prevTrace);
+                const deduped = mergedTrace.filter((line, idx) => idx === 0 || line !== mergedTrace[idx - 1]);
                 const updated: ToolCall = {
                   ...accToolCallsById[tcId],
-                  trace_logs: trace ?? (delta ? [...prevTrace, delta] : prevTrace),
+                  trace_logs: deduped,
                 };
                 accToolCallsById[tcId] = updated;
                 accEvents = accEvents.map((e) =>
@@ -762,6 +818,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               // Stream ends after this (backend emits done next); keep isStreaming=true until done
 
             } else if (currentEvent === "done") {
+              if (textCarry) {
+                flushTextChunk("", true);
+              }
               // Ensure asset tree is up-to-date after the turn (covers missed flags or only-read tools).
               qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
               // Build content with {{tool:id}} placeholders to preserve ordering.
@@ -776,7 +835,11 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 // question_interrupt: skip (user reply becomes a separate user message)
               }
               const accText = contentWithPlaceholders.trim();
-              const accToolCalls = Object.values(accToolCallsById);
+              const accToolCalls = Object.values(accToolCallsById).map((tc) =>
+                tc.status === "running"
+                  ? { ...tc, status: "done" as ToolCall["status"], result_summary: tc.result_summary ?? "已完成" }
+                  : tc
+              );
               // Finalize: add assistant message to store
               const assistantMsg: ChatMessage = {
                 id: `assistant_${Date.now()}`,
@@ -800,6 +863,15 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               flushQueue();
 
             } else if (currentEvent === "error") {
+              if (textCarry) {
+                flushTextChunk("", true);
+              }
+              accEvents = accEvents.map((e) =>
+                e.kind === "tool_call" && e.toolCall.status === "running"
+                  ? { kind: "tool_call", toolCall: { ...e.toolCall, status: "error", result_summary: e.toolCall.result_summary ?? "执行中断" } }
+                  : e
+              );
+              flushUi(true);
               const errMsg: ChatMessage = {
                 id: `error_${Date.now()}`,
                 session_id: session.id,
@@ -1104,6 +1176,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 执行（可写）
               </button>
             </div>
+            <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>
+              {turnScope === "explore" ? "当前仅讨论/检索，不会执行写入" : "当前允许执行修改类工具"}
+            </span>
           </div>
           <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
             Enter 发送 · Shift+Enter 换行 · @ 引用资产

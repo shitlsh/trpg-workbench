@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, AlertCircle, CheckCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, AlertCircle, CheckCircle, Copy, Search, Brain, Save, Info } from "lucide-react";
 import type { ToolCall, ConsistencyReport, ConsistencyIssue } from "@trpg-workbench/shared-schema";
 
 const TOOL_LABELS: Record<string, string> = {
@@ -274,9 +274,33 @@ function humanizeResultSummary(toolCall: ToolCall): string | null {
   return raw.length > 140 ? `${raw.slice(0, 140)}...` : raw;
 }
 
+function parseTimedTrace(line: string): { elapsedMs: number | null; text: string } {
+  const m = line.match(/^\[\+(\d+)ms\]\s*(.*)$/);
+  if (!m) return { elapsedMs: null, text: line };
+  return { elapsedMs: Number(m[1]), text: m[2] || "" };
+}
+
+function traceGroupName(line: string): string {
+  const t = line.toLowerCase();
+  if (t.includes("检索") || t.includes("rag") || t.includes("引用")) return "检索";
+  if (t.includes("推理") || t.includes("分析") || t.includes("生成")) return "推理";
+  if (t.includes("写入") || t.includes("保存") || t.includes("执行") || t.includes("完成")) return "执行";
+  return "其他";
+}
+
+function traceIcon(line: string) {
+  const t = line.toLowerCase();
+  if (t.includes("检索") || t.includes("rag") || t.includes("引用")) return <Search size={10} />;
+  if (t.includes("推理") || t.includes("分析") || t.includes("生成")) return <Brain size={10} />;
+  if (t.includes("写入") || t.includes("保存")) return <Save size={10} />;
+  if (t.includes("完成") || t.includes("成功")) return <CheckCircle2 size={10} />;
+  return <Info size={10} />;
+}
+
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [traceExpanded, setTraceExpanded] = useState(false);
+  const [groupExpanded, setGroupExpanded] = useState<Record<string, boolean>>({});
 
   let args: Record<string, unknown> = {};
   try {
@@ -300,6 +324,13 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const genericSummary = !consistencyReport && !knowledgeSummary
     ? humanizeResultSummary(toolCall)
     : null;
+  const traceLines = toolCall.trace_logs ?? [];
+  const traceGroups = traceLines.reduce((acc, line) => {
+    const key = traceGroupName(line);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(line);
+    return acc;
+  }, {} as Record<string, string[]>);
 
   useEffect(() => {
     if (toolCall.status === "running" && (toolCall.trace_logs?.length ?? 0) > 0) {
@@ -310,6 +341,13 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
       setTraceExpanded(false);
     }
   }, [toolCall.status, toolCall.trace_logs]);
+
+  useEffect(() => {
+    if (!traceExpanded) return;
+    const next: Record<string, boolean> = {};
+    Object.keys(traceGroups).forEach((k) => { next[k] = true; });
+    setGroupExpanded(next);
+  }, [traceExpanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusIcon = () => {
     switch (toolCall.status) {
@@ -332,10 +370,11 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   return (
     <div style={{
       margin: "4px 0",
-      border: `1px solid ${isAutoApplied ? "rgba(82,201,126,0.4)" : "var(--border)"}`,
+      border: `1px solid ${isAutoApplied ? "rgba(82,201,126,0.65)" : "var(--border)"}`,
       borderRadius: 4,
       overflow: "hidden",
       fontSize: 11,
+      boxShadow: isAutoApplied ? "0 0 0 1px rgba(82,201,126,0.2) inset" : "none",
     }}>
       <button
         onClick={() => setExpanded(!expanded)}
@@ -345,7 +384,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           display: "flex",
           alignItems: "center",
           gap: 6,
-          background: isAutoApplied ? "rgba(82,201,126,0.06)" : "var(--bg)",
+          background: isAutoApplied ? "rgba(82,201,126,0.12)" : "var(--bg)",
           border: "none",
           cursor: "pointer",
           color: "var(--text-muted)",
@@ -363,15 +402,15 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
         {isAutoApplied && (
           <span style={{
             fontSize: 9, padding: "1px 5px", borderRadius: 8, flexShrink: 0,
-            background: "rgba(82,201,126,0.15)", color: "#52c97e",
-            border: "1px solid rgba(82,201,126,0.3)",
+            background: "rgba(82,201,126,0.22)", color: "#52c97e",
+            border: "1px solid rgba(82,201,126,0.45)",
           }}>
-            已写入
+            已自动写入
           </span>
         )}
-        {toolCall.result_summary && !isAutoApplied && !consistencyReport && !knowledgeSummary && (
+        {genericSummary && !isAutoApplied && !consistencyReport && !knowledgeSummary && (
           <span style={{ color: "var(--text-subtle)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            — {toolCall.result_summary}
+            — {genericSummary}
           </span>
         )}
         {knowledgeSummary && (
@@ -422,6 +461,30 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
                   结果：{genericSummary}
                 </div>
               )}
+              {toolCall.status === "error" && toolCall.result_summary && (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try { await navigator.clipboard.writeText(toolCall.result_summary || ""); } catch {}
+                  }}
+                  style={{
+                    marginTop: 6,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 10,
+                    background: "none",
+                    border: "1px solid var(--border)",
+                    borderRadius: 4,
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    padding: "2px 6px",
+                  }}
+                >
+                  <Copy size={10} />
+                  复制错误详情
+                </button>
+              )}
               {toolCall.trace_logs && toolCall.trace_logs.length > 0 && (
                 <div style={{ marginTop: 6, borderTop: "1px solid var(--border)", paddingTop: 6 }}>
                   <button
@@ -436,10 +499,45 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
                     执行过程（{toolCall.trace_logs.length}）
                   </button>
                   {traceExpanded && (
-                    <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 4 }}>
-                      {toolCall.trace_logs.map((line, idx) => (
-                        <div key={idx} style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                          {idx + 1}. {line}
+                    <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {Object.entries(traceGroups).map(([group, lines]) => (
+                        <div key={group}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setGroupExpanded((prev) => ({ ...prev, [group]: !prev[group] }));
+                            }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              border: "none",
+                              background: "none",
+                              color: "var(--text-subtle)",
+                              cursor: "pointer",
+                              fontSize: 10,
+                              padding: 0,
+                            }}
+                          >
+                            {groupExpanded[group] ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                            <span>{group}（{lines.length}）</span>
+                          </button>
+                          {groupExpanded[group] && (
+                            <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+                              {lines.map((line, idx) => {
+                                const parsed = parseTimedTrace(line);
+                                return (
+                                  <div key={idx} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)" }}>
+                                    <span style={{ opacity: 0.9 }}>{traceIcon(parsed.text)}</span>
+                                    {parsed.elapsedMs != null && (
+                                      <span style={{ color: "var(--text-subtle)", minWidth: 56 }}>+{parsed.elapsedMs}ms</span>
+                                    )}
+                                    <span>{parsed.text}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
