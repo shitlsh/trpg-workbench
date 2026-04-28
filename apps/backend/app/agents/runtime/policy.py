@@ -31,7 +31,7 @@ def resolve_policy(profile, model_name: str) -> ProviderCapabilityPolicy:
 
     supports_tools = provider in {"openai", "openrouter", "openai_compatible", "anthropic", "google"}
     supports_reasoning = provider in {"openai", "openrouter", "openai_compatible"}
-    supports_stream = provider in {"openai", "openrouter", "openai_compatible", "anthropic"}
+    supports_stream = provider in {"openai", "openrouter", "openai_compatible", "anthropic", "google"}
     # Decoupled from strict role mapping:
     # strict_compatible only controls role aliases, not thinking mode.
     disable_thinking = False

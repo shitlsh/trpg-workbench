@@ -348,6 +348,13 @@ async def _chat_openai_like(
 
 
 def _to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
+    """Convert internal message list to Anthropic API format.
+
+    Anthropic requires strictly alternating user/assistant turns.  When a
+    single assistant turn emits multiple tool_use blocks, all their results
+    must be packed into **one** ``role: "user"`` message as a list of
+    ``tool_result`` blocks — consecutive separate user messages are rejected.
+    """
     system_parts: list[str] = []
     out: list[dict] = []
     for m in messages:
@@ -360,18 +367,17 @@ def _to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
         if role in ("user", "assistant"):
             out.append({"role": role, "content": content})
         elif role == "tool":
-            out.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": m.get("tool_call_id") or "",
-                            "content": content,
-                        }
-                    ],
-                }
-            )
+            tool_block: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": m.get("tool_call_id") or "",
+                "content": content,
+            }
+            # Merge into the preceding user message when it already holds
+            # tool_result blocks (parallel tools from the same assistant turn).
+            if out and out[-1]["role"] == "user" and isinstance(out[-1]["content"], list):
+                out[-1]["content"].append(tool_block)
+            else:
+                out.append({"role": "user", "content": [tool_block]})
     return ("\n\n".join(system_parts), out)
 
 
@@ -500,27 +506,204 @@ async def _chat_anthropic(req: RuntimeRequest):
             }
 
 
-async def _chat_google_fallback(req: RuntimeRequest):
-    # Minimal compatibility path: no native function-calling loop yet.
-    # Keeps provider usable for plain chat while avoiding framework dependency.
+def _to_gemini_contents(messages: list[dict]) -> list[Any]:
+    """Convert internal messages to google-genai ``Content`` objects.
+
+    Roles: ``user`` → ``"user"``, ``assistant`` / ``model`` → ``"model"``.
+    ``tool`` results are packed as ``FunctionResponse`` parts inside a user turn;
+    consecutive tool results for the same assistant turn are merged into one
+    Content so the history stays alternating.
+    """
+    from google.genai import types  # local import to keep the module optional
+
+    out: list[Any] = []
+    for m in messages:
+        role = m.get("role")
+        content = m.get("content", "")
+        if role == "system":
+            continue  # passed via GenerateContentConfig.system_instruction
+        if role in ("user",):
+            out.append(types.Content(role="user", parts=[types.Part(text=content or "")]))
+        elif role in ("assistant", "model"):
+            # assistant messages may carry tool_call blocks in list form (Anthropic
+            # style); for Gemini history we only need the text.
+            if isinstance(content, list):
+                text = " ".join(
+                    b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+                )
+            else:
+                text = content or ""
+            out.append(types.Content(role="model", parts=[types.Part(text=text)]))
+        elif role == "tool":
+            # Gemini expects function responses in a user Content.
+            # Merge consecutive tool results (parallel calls) into one Content.
+            name = m.get("name") or ""
+            raw = content
+            try:
+                resp_val: Any = json.loads(raw)
+            except Exception:
+                resp_val = {"result": raw}
+            fr_part = types.Part(
+                function_response=types.FunctionResponse(name=name, response=resp_val)
+            )
+            if out and getattr(out[-1], "role", None) == "user":
+                # Peek: if last Content is already a function-response user turn,
+                # append the part to it instead of creating a new Content.
+                last_parts = list(out[-1].parts or [])
+                if last_parts and getattr(last_parts[0], "function_response", None) is not None:
+                    out[-1] = types.Content(role="user", parts=last_parts + [fr_part])
+                    continue
+            out.append(types.Content(role="user", parts=[fr_part]))
+    return out
+
+
+async def _chat_google(req: RuntimeRequest):
+    """Gemini native SDK: streaming text + full tool-calling loop."""
     from google import genai
+    from google.genai import types
 
     profile = req.profile
     api_key = _decrypt_key(profile)
     if not api_key:
         raise RuntimeError("Google API key is required")
+
     client = genai.Client(api_key=api_key)
-    prompt_parts = [req.system_prompt]
-    for m in req.messages:
-        role = m.get("role")
-        if role in ("user", "assistant"):
-            prompt_parts.append(f"{role}: {m.get('content', '')}")
-    prompt = "\n\n".join(prompt_parts)
-    resp = await asyncio.to_thread(client.models.generate_content, model=req.model_name, contents=prompt)
-    text = getattr(resp, "text", "") or ""
-    if text:
-        for part in _iter_text_chunks(text):
-            yield {"event": "text_delta", "data": {"content": part}}
+    tool_map = {t.__name__: t for t in req.tools}
+
+    # Build Gemini FunctionDeclaration tool specs
+    gemini_tools: list[Any] = []
+    if req.tools:
+        decls = []
+        for spec in build_openai_tool_specs(req.tools):
+            fn = spec["function"]
+            decls.append(
+                types.FunctionDeclaration(
+                    name=fn["name"],
+                    description=fn["description"],
+                    parameters=fn["parameters"],
+                )
+            )
+        gemini_tools = [types.Tool(function_declarations=decls)]
+
+    all_messages = [{"role": "system", "content": req.system_prompt}] + req.messages
+    contents = _to_gemini_contents(all_messages)
+
+    for _ in range(req.max_tool_rounds):
+        config = types.GenerateContentConfig(
+            system_instruction=req.system_prompt,
+            temperature=req.temperature,
+            tools=gemini_tools if gemini_tools else None,
+        )
+
+        text_parts: list[str] = []
+        function_calls: list[Any] = []
+        last_response: Any = None
+
+        async for chunk in await client.aio.models.generate_content_stream(
+            model=req.model_name,
+            contents=contents,
+            config=config,
+        ):
+            last_response = chunk
+            # Stream text deltas
+            chunk_text = getattr(chunk, "text", None)
+            if chunk_text:
+                text_parts.append(chunk_text)
+                yield {"event": "text_delta", "data": {"content": chunk_text}}
+
+        # Extract function_call parts from the final response candidates
+        if last_response is not None:
+            candidates = getattr(last_response, "candidates", None) or []
+            for cand in candidates:
+                cand_content = getattr(cand, "content", None)
+                if cand_content is None:
+                    continue
+                for part in getattr(cand_content, "parts", None) or []:
+                    fc = getattr(part, "function_call", None)
+                    if fc is not None:
+                        function_calls.append(fc)
+
+        if not function_calls:
+            break
+
+        # Append model turn (text + function_calls) to contents
+        model_parts: list[Any] = []
+        joined_text = "".join(text_parts)
+        if joined_text:
+            model_parts.append(types.Part(text=joined_text))
+        for fc in function_calls:
+            model_parts.append(
+                types.Part(
+                    function_call=types.FunctionCall(
+                        name=getattr(fc, "name", "") or "",
+                        args=dict(getattr(fc, "args", {}) or {}),
+                    )
+                )
+            )
+        contents.append(types.Content(role="model", parts=model_parts))
+
+        # Execute tools and collect results into a single user Content
+        result_parts: list[Any] = []
+        for fc in function_calls:
+            name = getattr(fc, "name", "") or ""
+            args = dict(getattr(fc, "args", {}) or {})
+            yield {
+                "event": "tool_call_start",
+                "data": {
+                    "id": name,
+                    "name": name,
+                    "arguments": json.dumps(args, ensure_ascii=False),
+                },
+            }
+            fn = tool_map.get(name)
+            if fn is None:
+                resp_val: Any = {"success": False, "error": f"Unknown tool: {name}"}
+                success = False
+                result = json.dumps(resp_val, ensure_ascii=False)
+            else:
+                try:
+                    loop = asyncio.get_running_loop()
+                    tool_task, trace_q = _start_tool_call(fn, args, name, loop)
+                    while True:
+                        if tool_task.done():
+                            break
+                        try:
+                            line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
+                        except asyncio.TimeoutError:
+                            continue
+                        yield {"event": "tool_trace", "data": {"id": name, "delta": str(line)}}
+                    while True:
+                        try:
+                            line = trace_q.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                        yield {"event": "tool_trace", "data": {"id": name, "delta": str(line)}}
+                    raw = await tool_task
+                    result = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
+                    success = True
+                    try:
+                        resp_val = json.loads(result)
+                    except Exception:
+                        resp_val = {"result": result}
+                except Exception as exc:
+                    if exc.__class__.__name__ == "AgentQuestionInterrupt":
+                        raise
+                    result = f"Tool execution failed: {exc}"
+                    resp_val = {"error": result}
+                    success = False
+
+            result_parts.append(
+                types.Part(
+                    function_response=types.FunctionResponse(name=name, response=resp_val)
+                )
+            )
+            yield {
+                "event": "tool_call_result",
+                "data": {"id": name, "success": success, "summary": result[:500]},
+            }
+
+        # All tool results go into a single user Content (Gemini requirement)
+        contents.append(types.Content(role="user", parts=result_parts))
 
 
 async def run_provider_runtime(req: RuntimeRequest):
@@ -542,7 +725,7 @@ async def run_provider_runtime(req: RuntimeRequest):
         return
 
     if provider == "google":
-        async for evt in _chat_google_fallback(req):
+        async for evt in _chat_google(req):
             yield evt
         return
 

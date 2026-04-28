@@ -170,7 +170,14 @@ async def run_director_stream(
                 raw_content = str(data.get("summary", ""))
                 call_id = data.get("id", "")
                 name = call_name_by_id.get(call_id, "")
-                ws_mut = name in _WORKSPACE_MUTATING_TOOL_NAMES and bool(raw_content)
+                # Only trigger workspace refresh when the tool explicitly reports success.
+                ws_mut = False
+                if name in _WORKSPACE_MUTATING_TOOL_NAMES and bool(data.get("success")):
+                    try:
+                        payload = json.loads(raw_content)
+                        ws_mut = isinstance(payload, dict) and bool(payload.get("success"))
+                    except Exception:
+                        pass
                 evt["data"]["workspace_mutating"] = ws_mut
             yield evt
         if _think_buf:
