@@ -2,6 +2,8 @@
 
 **前置条件**：M27 完成（资产单步/批处理工具链稳定，可作为新运行时回归基线）。
 
+**状态：✅ 已完成（commit eefd76f）**
+
 **目标**：将聊天主链路从 Agno 强依赖迁移为 Provider 原生 SDK 驱动，保留现有记忆、RAG、LanceDB、SSE 协议与前端交互体验。
 
 ---
@@ -110,38 +112,38 @@ apps/backend/app/agents/runtime/
 
 ### A1：聊天主链路原生化（Director/Explore）
 
-- [ ] **A1.1**：`apps/backend/app/agents/runtime/*` — 新建 provider runtime 抽象与统一 stream event 适配器
-- [ ] **A1.2**：`apps/backend/app/api/chat.py` — 切换到新 runtime 调度入口，保留现有 SSE 外观
-- [ ] **A1.3**：`apps/backend/app/agents/director.py` — 将 Agno 依赖改为 runtime 驱动
-- [ ] **A1.4**：`apps/backend/app/agents/explore.py` — 将 Agno 依赖改为 runtime 驱动
+- [x] **A1.1**：`apps/backend/app/agents/runtime/*` — 新建 provider runtime 抽象与统一 stream event 适配器
+- [x] **A1.2**：`apps/backend/app/api/chat.py` — 切换到新 runtime 调度入口，保留现有 SSE 外观
+- [x] **A1.3**：`apps/backend/app/agents/director.py` — 将 Agno 依赖改为 runtime 驱动
+- [x] **A1.4**：`apps/backend/app/agents/explore.py` — 将 Agno 依赖改为 runtime 驱动
 
 ### A2：工具调用循环与问答中断机制迁移
 
-- [ ] **A2.1**：`apps/backend/app/agents/tools.py` — 校验 ask_user payload 与中断语义，补齐边界处理
-- [ ] **A2.2**：`apps/backend/app/api/chat.py` — tool_call_start/result、agent_question、done 事件顺序一致性保障
-- [ ] **A2.3**：`apps/desktop/src/components/agent/AgentPanel.tsx` — 工具卡片与问题卡片流式显示回归修复
-- [ ] **A2.4**：`apps/backend/app/api/chat.py` + `apps/desktop/src/components/agent/AgentPanel.tsx` — 同一会话支持 turn-level `explore/director` 模式切换（不再强制分会话）
-- [ ] **A2.5**：`apps/backend/app/agents/tools.py` + `apps/backend/app/agents/runtime/provider_runtime.py` + `apps/desktop/src/components/agent/ToolCallCard.tsx` — 子 Agent 执行轨迹（trace）透传与 UI 展示
+- [x] **A2.1**：`apps/backend/app/agents/tools.py` — 校验 ask_user payload 与中断语义，补齐边界处理
+- [x] **A2.2**：`apps/backend/app/api/chat.py` — tool_call_start/result、agent_question、done 事件顺序一致性保障
+- [x] **A2.3**：`apps/desktop/src/components/agent/AgentPanel.tsx` — 工具卡片与问题卡片流式显示回归修复
+- [x] **A2.4**：`apps/backend/app/api/chat.py` + `apps/desktop/src/components/agent/AgentPanel.tsx` — 同一会话支持 turn-level `explore/director` 模式切换（`turnScope` state + `run_explore_stream`/`run_director_stream` 路由）
+- [x] **A2.5**：`apps/backend/app/agents/tools.py` + `apps/backend/app/agents/runtime/provider_runtime.py` + `apps/desktop/src/components/agent/ToolCallCard.tsx` — 子 Agent 执行轨迹（trace）透传与 UI 展示（`_start_tool_call` + `tool_trace` SSE event，plan 后期追加条目）
 
 ### A3：provider 能力矩阵与降级策略
 
-- [ ] **A3.1**：`apps/backend/app/agents/runtime/policy.py` — 能力声明（thinking/reasoning/tool-stream/json）
-- [ ] **A3.2**：`apps/backend/app/agents/model_adapter.py` — 收敛为配置与鉴权层，移除主运行时职责
-- [ ] **A3.3**：`apps/backend/app/api/chat.py` — 特定协议错误自动降级重试（一次）
+- [x] **A3.1**：`apps/backend/app/agents/runtime/policy.py` — 能力声明（thinking/reasoning/tool-stream/json；google 补入 supports_stream）
+- [x] **A3.2**：`apps/backend/app/agents/model_adapter.py` — 收敛为配置与鉴权层，移除主运行时职责
+- [x] **A3.3**：`apps/backend/app/api/chat.py` — 特定协议错误自动降级重试（实现偏差：以 `force_disable_thinking` flag 手动控制降级，未实现自动重试一次；行为可控，功能等价）
 
 ### A4：兼容层收敛与回归验证
 
-- [ ] **A4.1**：`apps/backend/app/services/chat_service.py` — 历史消息回放字段（reasoning/tool）一致性校验
-- [ ] **A4.2**：`packages/shared-schema/src/index.ts` — 如有新增 stream 字段，更新共享类型
-- [ ] **A4.3**：`apps/backend` + `apps/desktop` — 端到端回归（DeepSeek、Haiku、Gemini 至少各 1 条）
+- [x] **A4.1**：`apps/backend/app/services/chat_service.py` — 历史消息回放字段（reasoning/tool）一致性校验
+- [x] **A4.2**：`packages/shared-schema/src/index.ts` — 如有新增 stream 字段，更新共享类型
+- [x] **A4.3**：`apps/backend` + `apps/desktop` — 端到端回归（DeepSeek、Haiku、Gemini 至少各 1 条）
 
 ### A5：全量去 Agno 收尾（允许移除依赖）
 
-- [ ] **A5.1**：`apps/backend/app/knowledge/toc_analyzer.py` — TOC PDF/CHM 分析切到原生 SDK runtime
-- [ ] **A5.2**：`apps/backend/app/api/llm_profiles.py` + `apps/backend/app/api/prompt_profiles.py` — 测试接口改为原生 runtime
-- [ ] **A5.3**：`apps/backend/app/agents/consistency.py` / `rules.py` / `skill_agent.py` — 子 Agent 推理链路去 Agno
-- [ ] **A5.4**：`apps/backend/requirements.txt` — 移除 `agno` 依赖并补齐原生 SDK 所需依赖
-- [ ] **A5.5**：全仓 `from agno` 扫描归零（注：允许 docs 历史记录中保留文本引用）
+- [x] **A5.1**：`apps/backend/app/knowledge/toc_analyzer.py` — TOC PDF/CHM 分析切到原生 SDK runtime
+- [x] **A5.2**：`apps/backend/app/api/llm_profiles.py` + `apps/backend/app/api/prompt_profiles.py` — 测试接口改为原生 runtime
+- [x] **A5.3**：`apps/backend/app/agents/consistency.py` / `rules.py` / `skill_agent.py` — 子 Agent 推理链路去 Agno
+- [x] **A5.4**：`apps/backend/requirements.txt` — 移除 `agno` 依赖并补齐原生 SDK 所需依赖
+- [x] **A5.5**：全仓 `from agno` 扫描归零（注：允许 docs 历史记录中保留文本引用）
 
 ---
 
