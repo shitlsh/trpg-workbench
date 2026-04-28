@@ -34,6 +34,27 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+/** Same as JSON GET, but also returns `X-Total-Count` when the backend sends it (e.g. chunk list). */
+export async function apiFetchWithTotalCount<T>(path: string): Promise<{ data: T; total: number | null }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? body.message ?? JSON.stringify(body);
+    } catch {
+      detail = (await res.text().catch(() => "")) || detail;
+    }
+    throw new Error(detail);
+  }
+  const raw = res.headers.get("X-Total-Count");
+  const total = raw != null && raw !== "" ? parseInt(raw, 10) : null;
+  const data = (await res.json()) as T;
+  return { data, total: Number.isFinite(total) ? total : null };
+}
+
 /**
  * POST to an SSE endpoint and return the first `event: result` payload.
  * Ignores `: keepalive` comments. Throws on `event: error`.

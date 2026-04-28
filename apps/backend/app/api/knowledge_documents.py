@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import tempfile
 import time
 import uuid
@@ -17,6 +18,7 @@ from app.models.schemas import KnowledgeDocumentSchema, IngestTaskSchema
 from app.models.orm import EmbeddingProfileORM as _EmbeddingProfileORM
 
 router = APIRouter(prefix="/knowledge/libraries", tags=["knowledge-documents"])
+_log = logging.getLogger(__name__)
 
 
 def _doc_sse(event: str, data: dict) -> str:
@@ -187,6 +189,15 @@ async def _run_ingest_background(
             page_offset=page_offset,
             toc_mapping=toc_mapping,
         )
+        _log.info(
+            "ingest finished document_id=%s library_id=%s parse_status=%s page_count=%s chunk_count=%s parse_notes=%s",
+            document_id,
+            library_id,
+            result.get("parse_status"),
+            result.get("page_count"),
+            result.get("chunk_count"),
+            result.get("parse_notes"),
+        )
         db = SessionLocal()
         try:
             doc = db.get(KnowledgeDocumentORM, document_id)
@@ -195,6 +206,18 @@ async def _run_ingest_background(
                 doc.page_count = result.get("page_count")
                 doc.chunk_count = result.get("chunk_count")
                 doc.original_path = result.get("manifest_path", "")
+                notes = result.get("parse_notes")
+                if notes:
+                    try:
+                        meta: dict
+                        if doc.metadata_json:
+                            meta = json.loads(doc.metadata_json)
+                        else:
+                            meta = {}
+                        meta["ingest_parse_notes"] = notes
+                        doc.metadata_json = json.dumps(meta, ensure_ascii=False)
+                    except Exception:
+                        pass
                 db.commit()
             # Update library embedding snapshot on successful ingest
             lib = db.get(KnowledgeLibraryORM, library_id)
@@ -211,6 +234,13 @@ async def _run_ingest_background(
         finally:
             db.close()
     except Exception as e:
+        _log.exception(
+            "ingest failed document_id=%s library_id=%s task_id=%s: %s",
+            document_id,
+            library_id,
+            task_id,
+            e,
+        )
         db = SessionLocal()
         try:
             task = db.get(IngestTaskORM, task_id)

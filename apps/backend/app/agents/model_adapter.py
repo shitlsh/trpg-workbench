@@ -73,6 +73,16 @@ def _decrypt_key(profile) -> str | None:
     return None
 
 
+def _normalize_openai_compatible_embedding_model(model_name: str) -> str:
+    """Normalize common provider-prefixed names for OpenAI-compatible embedding APIs."""
+    if not model_name:
+        return model_name
+    # Jina OpenAI-compatible endpoint expects "jina-embeddings-..." without "jina-ai/".
+    if model_name.startswith("jina-ai/"):
+        return model_name.split("/", 1)[1]
+    return model_name
+
+
 def model_from_profile(profile, model_name: str) -> Any:
     """
     Given a LLMProfileORM instance and an explicit model_name, return the Agno model object.
@@ -140,6 +150,8 @@ def embedding_from_profile(profile) -> Any:
     """
     provider = profile.provider_type
     model_name = profile.model_name
+    if provider == "openai_compatible":
+        model_name = _normalize_openai_compatible_embedding_model(model_name)
     base_url = profile.base_url or None
     api_key = _decrypt_key(profile)
 
@@ -161,7 +173,16 @@ def embedding_from_profile(profile) -> Any:
             self._model = model_name
 
         def embed(self, texts: list[str]) -> list[list[float]]:
-            response = self._client.embeddings.create(input=texts, model=self._model)
+            try:
+                response = self._client.embeddings.create(input=texts, model=self._model)
+            except Exception as exc:
+                msg = str(exc)
+                if "union_tag_invalid" in msg and "expected tags" in msg:
+                    raise ValueError(
+                        "Embedding 模型名无效。若使用 Jina 的 OpenAI 兼容端点，"
+                        "请使用例如 `jina-embeddings-v5-text-small`，不要使用 `jina-ai/...` 前缀。"
+                    ) from exc
+                raise
             return [item.embedding for item in response.data]
 
         def embed_one(self, text: str) -> list[float]:

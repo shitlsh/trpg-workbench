@@ -13,6 +13,7 @@ Steps:
 from __future__ import annotations
 import asyncio
 import json
+import logging
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import Any
 
 import pdfplumber
+
+_log = logging.getLogger(__name__)
 
 from app.knowledge.chunker import chunk_pages, RawChunk
 from app.knowledge.vector_index import upsert_chunks
@@ -110,6 +113,8 @@ async def run_ingest(
     if page_count > 0 and empty_pages / page_count > 0.8:
         parse_quality = "scanned_fallback"
         parse_notes = f"疑似扫描版 PDF，{empty_pages}/{page_count} 页无可提取文本"
+    elif empty_pages > 0:
+        parse_notes = f"{empty_pages}/{page_count} 页无可提取文本（可能为插图、留白或复杂版面）"
 
     # ── Step 3: Clean text ───────────────────────────────────────────────────
     await report(3, STEP_LABELS[2])
@@ -142,6 +147,13 @@ async def run_ingest(
         # Embedding failure: save chunks without vectors
         parse_quality = "partial" if parse_quality == "good" else parse_quality
         parse_notes += f" | Embedding failed: {e}"
+        _log.warning(
+            "PDF ingest embedding failed document_id=%s library_id=%s: %s",
+            document_id,
+            library_id,
+            e,
+            exc_info=True,
+        )
         dimensions = embedding_snapshot.get("dimensions") or 1536
         vectors = [[0.0] * dimensions for _ in raw_chunks]
 

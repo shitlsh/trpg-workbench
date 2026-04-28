@@ -531,6 +531,7 @@ class ChunkListItemSchema(BaseModel):
     parse_quality: str
     has_table: bool
     has_multi_column: bool
+    chunk_type: str | None = None
 
 
 class SearchTestRequest(BaseModel):

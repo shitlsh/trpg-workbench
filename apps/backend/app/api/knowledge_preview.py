@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.storage.database import get_db
@@ -43,15 +43,25 @@ def _load_chunks_jsonl(library_id: str) -> list[dict]:
     return chunks
 
 
-def _load_manifest(library_id: str) -> dict | None:
+def _load_manifest_for_document(library_id: str, document_id: str) -> dict | None:
+    """Return manifest entry for this document. Supports legacy single-object file or list (multi-doc)."""
     path = _parsed_dir(library_id) / "manifest.json"
     if not path.exists():
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else None
     except Exception:
         return None
+    if isinstance(data, dict):
+        mid = data.get("document_id")
+        if mid is None:
+            return data
+        return data if mid == document_id else None
+    if isinstance(data, list):
+        for entry in data:
+            if isinstance(entry, dict) and entry.get("document_id") == document_id:
+                return entry
+    return None
 
 
 def _build_quality_warnings(doc: KnowledgeDocumentORM, manifest: dict | None) -> list[QualityWarningSchema]:
@@ -64,9 +74,15 @@ def _build_quality_warnings(doc: KnowledgeDocumentORM, manifest: dict | None) ->
             detail="疑似扫描版 PDF，文本提取质量较低，引用精度不保证"
         ))
     elif doc.parse_status == "partial":
+        notes = (manifest.get("parse_quality_notes") if manifest else None) or ""
+        notes = notes.strip()
+        if notes:
+            detail = "部分成功；详请见下方「解析备注」"
+        else:
+            detail = "部分页面无文本、向量失败或其它原因；可展开查看「解析备注」或联系支持并附上后台日志。"
         warnings.append(QualityWarningSchema(
             type="partial",
-            detail="部分页面提取失败",
+            detail=detail,
         ))
 
     # Manifest-based warnings
@@ -103,6 +119,15 @@ def _doc_to_summary(doc: KnowledgeDocumentORM, manifest: dict | None) -> Knowled
         except Exception:
             pass
 
+    parse_quality_notes: str | None = manifest.get("parse_quality_notes") if manifest else None
+    if not parse_quality_notes and doc.metadata_json:
+        try:
+            meta = json.loads(doc.metadata_json)
+            if isinstance(meta, dict):
+                parse_quality_notes = meta.get("ingest_parse_notes") or parse_quality_notes
+        except Exception:
+            pass
+
     quality_warnings = _build_quality_warnings(doc, manifest)
 
     return KnowledgeDocumentSummarySchema(
@@ -112,7 +137,7 @@ def _doc_to_summary(doc: KnowledgeDocumentORM, manifest: dict | None) -> Knowled
         page_count=doc.page_count,
         chunk_count=doc.chunk_count,
         parse_status=doc.parse_status,
-        parse_quality_notes=manifest.get("parse_quality_notes") if manifest else None,
+        parse_quality_notes=parse_quality_notes,
         embedding_provider=embedding_provider,
         embedding_model=embedding_model,
         indexed_at=indexed_at,
@@ -142,8 +167,7 @@ def list_document_summaries(library_id: str, db: Session = Depends(get_db)):
 
     summaries = []
     for doc in docs:
-        manifest = _load_manifest(library_id)
-        # Try per-doc manifest (keyed by doc filename or use library manifest)
+        manifest = _load_manifest_for_document(library_id, doc.id)
         summaries.append(_doc_to_summary(doc, manifest))
     return summaries
 
@@ -156,7 +180,7 @@ def get_document_summary(document_id: str, db: Session = Depends(get_db)):
     doc = db.get(KnowledgeDocumentORM, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    manifest = _load_manifest(doc.library_id)
+    manifest = _load_manifest_for_document(doc.library_id, doc.id)
     return _doc_to_summary(doc, manifest)
 
 
@@ -168,8 +192,9 @@ def get_document_summary(document_id: str, db: Session = Depends(get_db)):
 )
 def list_chunks(
     document_id: str,
+    response: Response,
     offset: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(200, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
     doc = db.get(KnowledgeDocumentORM, document_id)
@@ -179,13 +204,18 @@ def list_chunks(
     all_chunks = _load_chunks_jsonl(doc.library_id)
     doc_chunks = [c for c in all_chunks if c.get("document_id") == document_id]
     doc_chunks.sort(key=lambda c: c.get("chunk_index", 0))
+    response.headers["X-Total-Count"] = str(len(doc_chunks))
     page = doc_chunks[offset: offset + limit]
 
     result = []
     for c in page:
         meta = c.get("metadata", {})
+        cid = c.get("id") or c.get("chunk_id", "")
+        ct = meta.get("chunk_type")
+        if ct is None and c.get("chunk_type") is not None:
+            ct = c.get("chunk_type")
         result.append(ChunkListItemSchema(
-            chunk_id=c.get("id", ""),
+            chunk_id=cid,
             chunk_index=c.get("chunk_index", 0),
             page_from=c.get("page_from", -1),
             page_to=c.get("page_to", -1),
@@ -194,6 +224,7 @@ def list_chunks(
             parse_quality=meta.get("parse_quality", "good"),
             has_table=bool(meta.get("has_table", False)),
             has_multi_column=bool(meta.get("has_multi_column", False)),
+            chunk_type=ct,
         ))
     return result
 
@@ -208,13 +239,20 @@ def get_chunk(document_id: str, chunk_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Document not found")
 
     all_chunks = _load_chunks_jsonl(doc.library_id)
-    chunk = next((c for c in all_chunks if c.get("id") == chunk_id), None)
+    chunk = next(
+        (c for c in all_chunks if c.get("id") == chunk_id or c.get("chunk_id") == chunk_id),
+        None,
+    )
     if not chunk:
         raise HTTPException(status_code=404, detail="Chunk not found")
 
     meta = chunk.get("metadata", {})
+    cid = chunk.get("id") or chunk.get("chunk_id", "")
+    ct = meta.get("chunk_type")
+    if ct is None and chunk.get("chunk_type") is not None:
+        ct = chunk.get("chunk_type")
     return ChunkListItemSchema(
-        chunk_id=chunk.get("id", ""),
+        chunk_id=cid,
         chunk_index=chunk.get("chunk_index", 0),
         page_from=chunk.get("page_from", -1),
         page_to=chunk.get("page_to", -1),
@@ -224,6 +262,7 @@ def get_chunk(document_id: str, chunk_id: str, db: Session = Depends(get_db)):
         parse_quality=meta.get("parse_quality", "good"),
         has_table=bool(meta.get("has_table", False)),
         has_multi_column=bool(meta.get("has_multi_column", False)),
+        chunk_type=ct,
     )
 
 
@@ -254,12 +293,29 @@ def get_page_text(document_id: str, page_number: int, db: Session = Depends(get_
 
     # Find chunk_ids for this page
     all_chunks = _load_chunks_jsonl(doc.library_id)
-    chunk_ids = [
-        c.get("id", "")
-        for c in all_chunks
-        if c.get("document_id") == document_id
-        and c.get("page_from", -1) <= page_number <= c.get("page_to", -1)
-    ]
+    doc_chunks = [c for c in all_chunks if c.get("document_id") == document_id]
+
+    def _cid(c: dict) -> str:
+        return c.get("id") or c.get("chunk_id", "")
+
+    def _overlaps(c: dict) -> bool:
+        pf, pt = c.get("page_from", -1), c.get("page_to", -1)
+        if pf < 0 or pt < 0:
+            return False
+        return pf <= page_number <= pt
+
+    chunk_ids = [_cid(c) for c in doc_chunks if _overlaps(c) and _cid(c)]
+
+    # PDF/CHM ingest does not always write pages/{n}.json — synthesize from chunks
+    if (not raw_text.strip()) and (cleaned_text is None or not str(cleaned_text).strip()):
+        overlap = [c for c in doc_chunks if _overlaps(c)]
+        overlap.sort(key=lambda c: c.get("chunk_index", 0))
+        synthesized = "\n\n".join(
+            (c.get("content") or "").strip() for c in overlap if (c.get("content") or "").strip()
+        )
+        if synthesized:
+            raw_text = synthesized
+            cleaned_text = None
 
     return PageTextPreviewSchema(
         page_number=page_number,

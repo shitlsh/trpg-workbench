@@ -6,7 +6,7 @@ import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
   Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check,
 } from "lucide-react";
-import { apiFetch, apiPostSSE, BACKEND_URL } from "../lib/api";
+import { apiFetch, apiPostSSE, apiFetchWithTotalCount, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useModelList } from "../hooks/useModelList";
 import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
@@ -483,10 +483,13 @@ function SetPromptModal({
 function DocumentPreviewPanel({
   docId,
   filename,
+  chunkCountHint,
   onClose,
 }: {
   docId: string;
   filename: string;
+  /** 来自文档记录的 chunk 总数；用于与单次拉取条数区分展示 */
+  chunkCountHint: number | null;
   onClose: () => void;
 }) {
   const [previewTab, setPreviewTab] = useState<"chunks" | "pages">("chunks");
@@ -494,10 +497,21 @@ function DocumentPreviewPanel({
   const [pageNumber, setPageNumber] = useState(1);
   const [filterChunkType, setFilterChunkType] = useState<ChunkType | "">("");
 
-  const { data: chunks = [] } = useQuery({
-    queryKey: ["knowledge", "doc", docId, "chunks"],
-    queryFn: () => apiFetch<ChunkListItem[]>(`/knowledge/documents/${docId}/chunks`),
+  const CHUNK_PAGE_LIMIT = 1000;
+  const { data: chunkListMeta } = useQuery({
+    queryKey: ["knowledge", "doc", docId, "chunks", CHUNK_PAGE_LIMIT],
+    queryFn: () =>
+      apiFetchWithTotalCount<ChunkListItem[]>(
+        `/knowledge/documents/${docId}/chunks?limit=${CHUNK_PAGE_LIMIT}`,
+      ),
   });
+  const chunks = chunkListMeta?.data ?? [];
+  const serverTotal = chunkListMeta?.total;
+  const totalChunks = serverTotal ?? chunkCountHint ?? chunks.length;
+  const chunksTruncated =
+    serverTotal != null
+      ? chunks.length < serverTotal
+      : (chunkCountHint ?? 0) > chunks.length;
 
   const { data: pagePreview } = useQuery({
     queryKey: ["knowledge", "doc", docId, "page", pageNumber],
@@ -535,7 +549,12 @@ function DocumentPreviewPanel({
       </div>
 
       <div style={{ borderBottom: "1px solid var(--border)", display: "flex", paddingLeft: 8 }}>
-        <button style={tabStyle(previewTab === "chunks")} onClick={() => setPreviewTab("chunks")}>Chunks ({chunks.length})</button>
+        <button style={tabStyle(previewTab === "chunks")} onClick={() => setPreviewTab("chunks")}>
+          Chunks
+          {chunksTruncated
+            ? `（已加载 ${chunks.length} / 共 ${totalChunks}）`
+            : `（${totalChunks}）`}
+        </button>
         <button style={tabStyle(previewTab === "pages")} onClick={() => setPreviewTab("pages")}>页面文本</button>
       </div>
 
@@ -548,7 +567,10 @@ function DocumentPreviewPanel({
               onChange={(e) => setFilterChunkType(e.target.value as ChunkType | "")}
               style={{ fontSize: 12, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", marginBottom: 4 }}
             >
-              <option value="">全部类型 ({chunks.length})</option>
+              <option value="">
+                全部类型
+                {chunksTruncated ? `（本页 ${chunks.length} / 共 ${totalChunks}）` : `（${totalChunks}）`}
+              </option>
               {CHUNK_TYPES.map((ct) => {
                 const count = chunks.filter((c) => c.chunk_type === ct.value).length;
                 return count > 0 ? <option key={ct.value} value={ct.value}>{ct.label} ({count})</option> : null;
@@ -1652,7 +1674,12 @@ function LibraryDetailPanel({
 
       {/* Document Preview Panel */}
       {previewDocId && previewDoc && (
-        <DocumentPreviewPanel docId={previewDocId} filename={previewDoc.filename} onClose={() => setPreviewDocId(null)} />
+        <DocumentPreviewPanel
+          docId={previewDocId}
+          filename={previewDoc.filename}
+          chunkCountHint={previewDoc.chunk_count ?? null}
+          onClose={() => setPreviewDocId(null)}
+        />
       )}
 
       {/* Search Test Dialog */}
