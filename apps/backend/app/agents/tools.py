@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from agno.tools import tool
+from app.agents.tooling import tool
 
 
 # ─── Context injection ────────────────────────────────────────────────────────

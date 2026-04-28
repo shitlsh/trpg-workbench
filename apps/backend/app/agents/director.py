@@ -1,48 +1,25 @@
-"""Director Agent – tool-calling autonomous agent.
-
-The Director is the single entry point for all user requests. It has access to
-a set of tools to read and write the workspace. Write tools write directly to
-disk and return results immediately — no user confirmation step.
-"""
+"""Director runtime (native SDK based)."""
 from __future__ import annotations
 import json
 import uuid
-from agno.agent import Agent
-from agno.models.message import Message
 from app.agents.chat_input_messages import build_chat_input_messages
-from app.agents.model_adapter import strip_code_fence
+from app.agents.runtime import RuntimeRequest, run_provider_runtime
 from app.agents.tools import (
-    ALL_TOOLS, configure as configure_tools, AgentQuestionInterrupt,
+    ALL_TOOLS,
+    configure as configure_tools,
+    AgentQuestionInterrupt,
 )
 from app.prompts import load_prompt
 
 
-def build_director(model, workspace_context: dict, db, temperature: float = 0.7) -> Agent:
-    """Build a Director Agent instance with tools configured for the given workspace."""
-    configure_tools(workspace_context, db, model=model)
-
+def build_director_prompt(workspace_context: dict) -> str:
     system_prompt = load_prompt("director", "system")
-
-    # Inject style_prompt if present (template in prompts/_shared/style_prefix.txt)
     style = workspace_context.get("style_prompt")
     if style:
         prefix = load_prompt("_shared", "style_prefix", style_prompt=style)
         system_prompt = f"{prefix}\n\n{system_prompt}"
-
-    # Inject workspace snapshot so model doesn't need to call read_config/list_assets
     snapshot = _build_workspace_snapshot(workspace_context)
-    system_prompt = f"{system_prompt}\n\n{snapshot}"
-
-    agent_kw = dict(
-        model=model,
-        tools=ALL_TOOLS,
-        instructions=[system_prompt],
-        markdown=False,
-    )
-    try:
-        return Agent(**agent_kw, temperature=temperature)
-    except TypeError:
-        return Agent(**agent_kw)
+    return f"{system_prompt}\n\n{snapshot}"
 
 
 def _build_workspace_snapshot(workspace_context: dict) -> str:
@@ -125,8 +102,10 @@ async def run_director_stream(
     if model is None:
         yield {"event": "error", "data": {"message": "未配置 LLM，请在工作区设置中配置 LLM Profile"}}
         return
-
-    agent = build_director(model, workspace_context, db, temperature=temperature)
+    if not isinstance(model, dict):
+        yield {"event": "error", "data": {"message": "LLM runtime config 无效"}}
+        return
+    configure_tools(workspace_context, db, model=model)
 
     # Build full prompt (inject referenced assets if any)
     prompt = user_message
@@ -136,117 +115,30 @@ async def run_director_stream(
         )
         prompt = f"{refs_block}\n\n---\n\n{user_message}"
 
-    # History may include leading role=system (compact summary); fold into first user turn
-    input_messages: list[Message] = build_chat_input_messages(history, prompt)
+    input_messages = build_chat_input_messages(history, prompt)
 
     try:
-        # State machine for parsing inline <think>...</think> blocks from models
-        # like Qwen3 that embed reasoning in the main content stream rather than
-        # emitting a dedicated ReasoningContentDelta event.
-        _in_think = False   # True while inside a <think> block
-        _think_buf = ""     # Accumulates partial tag chars across chunk boundaries
-
-        async for chunk in agent.arun(
-            input_messages,
-            stream=True,
-            stream_events=True,
-        ):
-            event_type = getattr(chunk, "event", None)
-
-            # Text delta — may contain inline <think>...</think> from Qwen3
-            if event_type == "RunContent":
-                # Gemini separates thinking into reasoning_content on the same RunContent event
-                gemini_thinking = getattr(chunk, "reasoning_content", None)
-                if gemini_thinking:
-                    yield {"event": "thinking_delta", "data": {"content": gemini_thinking}}
-
-                raw = _think_buf + (getattr(chunk, "content", None) or "")
-                _think_buf = ""
-
-                while raw:
-                    if _in_think:
-                        end = raw.find("</think>")
-                        if end == -1:
-                            # Check if a partial </think> tag is split at the boundary
-                            # Keep up to 8 chars at the end as a potential partial tag
-                            safe = max(0, len(raw) - 8)
-                            if safe > 0:
-                                yield {"event": "thinking_delta", "data": {"content": raw[:safe]}}
-                            _think_buf = raw[safe:]
-                            raw = ""
-                        else:
-                            if end > 0:
-                                yield {"event": "thinking_delta", "data": {"content": raw[:end]}}
-                            _in_think = False
-                            raw = raw[end + len("</think>"):]
-                    else:
-                        start = raw.find("<think>")
-                        if start == -1:
-                            # Check for a partial <think> tag at the end
-                            safe = max(0, len(raw) - 7)
-                            if safe > 0:
-                                yield {"event": "text_delta", "data": {"content": raw[:safe]}}
-                            _think_buf = raw[safe:]
-                            raw = ""
-                        else:
-                            if start > 0:
-                                yield {"event": "text_delta", "data": {"content": raw[:start]}}
-                            _in_think = True
-                            raw = raw[start + len("<think>"):]
-
-            # Reasoning/thinking delta (Claude extended thinking, etc.)
-            elif event_type == "ReasoningContentDelta" and getattr(chunk, "reasoning_content", None):
-                yield {"event": "thinking_delta", "data": {"content": chunk.reasoning_content}}
-
-            # Tool call started
-            elif event_type == "ToolCallStarted":
-                tool = getattr(chunk, "tool", None)
-                if tool:
-                    yield {
-                        "event": "tool_call_start",
-                        "data": {
-                            "id": tool.tool_call_id or "",
-                            "name": tool.tool_name or "",
-                            "arguments": json.dumps(tool.tool_args or {}, ensure_ascii=False),
-                        },
-                    }
-
-            # Tool call completed (result)
-            elif event_type == "ToolCallCompleted":
-                tool = getattr(chunk, "tool", None)
-                raw_content = str(
-                    (getattr(tool, "result", None) if tool is not None else None)
-                    or getattr(chunk, "content", None)
-                    or ""
-                )
-                if tool is not None:
-                    ws_mut = _workspace_mutating_result(tool, raw_content)
-                    yield {
-                        "event": "tool_call_result",
-                        "data": {
-                            "id": tool.tool_call_id or "",
-                            "success": not tool.tool_call_error,
-                            "summary": raw_content[:500],
-                            "workspace_mutating": ws_mut,
-                        },
-                    }
-                elif raw_content:
-                    yield {
-                        "event": "tool_call_result",
-                        "data": {
-                            "id": getattr(chunk, "tool_call_id", None) or "",
-                            "success": True,
-                            "summary": raw_content[:500],
-                            "workspace_mutating": False,
-                        },
-                    }
-
-        # Flush parser tail: if stream ended with partial tag window, emit it
-        # instead of silently dropping the last 7-8 chars.
-        if _think_buf:
-            evt = "thinking_delta" if _in_think else "text_delta"
-            yield {"event": evt, "data": {"content": _think_buf}}
-            _think_buf = ""
+        call_name_by_id: dict[str, str] = {}
+        req = RuntimeRequest(
+            profile=model["profile"],
+            model_name=model["model_name"],
+            system_prompt=build_director_prompt(workspace_context),
+            messages=input_messages,
+            tools=ALL_TOOLS,
+            temperature=temperature,
+        )
+        async for evt in run_provider_runtime(req):
+            if evt.get("event") == "tool_call_start":
+                data = evt.get("data", {})
+                call_name_by_id[data.get("id", "")] = data.get("name", "")
+            if evt.get("event") == "tool_call_result":
+                data = evt.get("data", {})
+                raw_content = str(data.get("summary", ""))
+                call_id = data.get("id", "")
+                name = call_name_by_id.get(call_id, "")
+                ws_mut = name in _WORKSPACE_MUTATING_TOOL_NAMES and bool(raw_content)
+                evt["data"]["workspace_mutating"] = ws_mut
+            yield evt
         yield {"event": "done", "data": {}}
 
     except AgentQuestionInterrupt as e:

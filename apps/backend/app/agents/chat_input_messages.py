@@ -1,4 +1,4 @@
-"""Map chat history dicts (file / API) to Agno Message list.
+"""Map chat history dicts to native runtime message list.
 
 Leading ``role: "system"`` messages (e.g. compaction summary from chat.py) are
 merged into the first user turn so the model actually sees them — Agno Agent
@@ -8,14 +8,11 @@ lines into the first *user* message, or insert a *user* line before a leading
 """
 from __future__ import annotations
 
-from agno.models.message import Message
-
-
 def build_chat_input_messages(
     history: list[dict] | None,
     final_user_content: str,
-) -> list[Message]:
-    """Build messages for ``agent.arun``: history (optional) + current user turn.
+) -> list[dict]:
+    """Build messages for provider runtimes: history + current user turn.
 
     * Only **leading** ``role == "system"`` entries (after optional leading empty
       rows) are treated as merged prefix text, matching
@@ -48,10 +45,10 @@ def build_chat_input_messages(
 
     if not rest:
         if prefix:
-            return [Message(role="user", content=f"{prefix}\n\n{final_user_content}")]
-        return [Message(role="user", content=final_user_content)]
+            return [{"role": "user", "content": f"{prefix}\n\n{final_user_content}"}]
+        return [{"role": "user", "content": final_user_content}]
 
-    out: list[Message] = []
+    out: list[dict] = []
     for idx, item in enumerate(rest):
         role = item["role"]
         content = item["content"]
@@ -60,11 +57,11 @@ def build_chat_input_messages(
             if role == "user":
                 content = f"{prefix}\n\n{content}"
             else:
-                out.append(Message(role="user", content=prefix))
+                out.append({"role": "user", "content": prefix})
         if role == "assistant" and isinstance(reasoning_content, str) and reasoning_content.strip():
-            out.append(Message(role=role, content=content, reasoning_content=reasoning_content))
+            out.append({"role": role, "content": content, "reasoning_content": reasoning_content})
         else:
-            out.append(Message(role=role, content=content))
+            out.append({"role": role, "content": content})
 
-    out.append(Message(role="user", content=final_user_content))
+    out.append({"role": "user", "content": final_user_content})
     return out

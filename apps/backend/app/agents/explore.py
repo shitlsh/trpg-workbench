@@ -1,11 +1,9 @@
 """Explore Agent – read-only tool-calling agent for workspace navigation."""
 from __future__ import annotations
 
-import json
-
-from agno.agent import Agent
 from app.agents.chat_input_messages import build_chat_input_messages
 from app.agents.director import _build_workspace_snapshot
+from app.agents.runtime import RuntimeRequest, run_provider_runtime
 from app.agents.tools import (
     EXPLORE_TOOLS,
     configure as configure_tools,
@@ -13,28 +11,13 @@ from app.agents.tools import (
 from app.prompts import load_prompt
 
 
-def build_explore(model, workspace_context: dict, db, temperature: float = 0.7) -> Agent:
-    """Explore: list/read/search only; no writes."""
-    configure_tools(workspace_context, db, model=model)
-
+def build_explore_prompt(workspace_context: dict) -> str:
     system_prompt = load_prompt("explore", "system")
     style = workspace_context.get("style_prompt")
     if style:
         prefix = load_prompt("_shared", "style_prefix", style_prompt=style)
         system_prompt = f"{prefix}\n\n{system_prompt}"
-
-    system_prompt = f"{system_prompt}\n\n{_build_workspace_snapshot(workspace_context)}"
-
-    agent_kw = dict(
-        model=model,
-        tools=EXPLORE_TOOLS,
-        instructions=[system_prompt],
-        markdown=False,
-    )
-    try:
-        return Agent(**agent_kw, temperature=temperature)
-    except TypeError:
-        return Agent(**agent_kw)
+    return f"{system_prompt}\n\n{_build_workspace_snapshot(workspace_context)}"
 
 
 async def run_explore_stream(
@@ -51,7 +34,10 @@ async def run_explore_stream(
         yield {"event": "error", "data": {"message": "未配置 LLM，请在工作区设置中配置 LLM Profile"}}
         return
 
-    agent = build_explore(model, workspace_context, db, temperature=temperature)
+    if not isinstance(model, dict):
+        yield {"event": "error", "data": {"message": "LLM runtime config 无效"}}
+        return
+    configure_tools(workspace_context, db, model=model)
 
     prompt = user_message
     if referenced_assets:
@@ -62,99 +48,17 @@ async def run_explore_stream(
 
     input_messages = build_chat_input_messages(history, prompt)
 
-    _in_think = False
-    _think_buf = ""
-
     try:
-        async for chunk in agent.arun(
-            input_messages,
-            stream=True,
-            stream_events=True,
-        ):
-            event_type = getattr(chunk, "event", None)
-
-            if event_type == "RunContent":
-                gemini_thinking = getattr(chunk, "reasoning_content", None)
-                if gemini_thinking:
-                    yield {"event": "thinking_delta", "data": {"content": gemini_thinking}}
-
-                raw = _think_buf + (getattr(chunk, "content", None) or "")
-                _think_buf = ""
-
-                while raw:
-                    if _in_think:
-                        end = raw.find("</think>")
-                        if end == -1:
-                            safe = max(0, len(raw) - 8)
-                            if safe > 0:
-                                yield {"event": "thinking_delta", "data": {"content": raw[:safe]}}
-                            _think_buf = raw[safe:]
-                            raw = ""
-                        else:
-                            if end > 0:
-                                yield {"event": "thinking_delta", "data": {"content": raw[:end]}}
-                            _in_think = False
-                            raw = raw[end + len("</think>"):]
-                    else:
-                        start = raw.find("<think>")
-                        if start == -1:
-                            safe = max(0, len(raw) - 7)
-                            if safe > 0:
-                                yield {"event": "text_delta", "data": {"content": raw[:safe]}}
-                            _think_buf = raw[safe:]
-                            raw = ""
-                        else:
-                            if start > 0:
-                                yield {"event": "text_delta", "data": {"content": raw[:start]}}
-                            _in_think = True
-                            raw = raw[start + len("<think>"):]
-
-            elif event_type == "ReasoningContentDelta" and getattr(chunk, "reasoning_content", None):
-                yield {"event": "thinking_delta", "data": {"content": chunk.reasoning_content}}
-
-            elif event_type == "ToolCallStarted":
-                tool = getattr(chunk, "tool", None)
-                if tool:
-                    yield {
-                        "event": "tool_call_start",
-                        "data": {
-                            "id": tool.tool_call_id or "",
-                            "name": tool.tool_name or "",
-                            "arguments": json.dumps(tool.tool_args or {}, ensure_ascii=False),
-                        },
-                    }
-
-            elif event_type == "ToolCallCompleted":
-                tool = getattr(chunk, "tool", None)
-                raw_content = str(
-                    (getattr(tool, "result", None) if tool is not None else None)
-                    or getattr(chunk, "content", None)
-                    or ""
-                )
-                if tool is not None:
-                    yield {
-                        "event": "tool_call_result",
-                        "data": {
-                            "id": tool.tool_call_id or "",
-                            "success": not tool.tool_call_error,
-                            "summary": raw_content[:500],
-                        },
-                    }
-                elif raw_content:
-                    yield {
-                        "event": "tool_call_result",
-                        "data": {
-                            "id": getattr(chunk, "tool_call_id", None) or "",
-                            "success": True,
-                            "summary": raw_content[:500],
-                        },
-                    }
-
-        # Flush parser tail to avoid truncating the final characters.
-        if _think_buf:
-            evt = "thinking_delta" if _in_think else "text_delta"
-            yield {"event": evt, "data": {"content": _think_buf}}
-            _think_buf = ""
+        req = RuntimeRequest(
+            profile=model["profile"],
+            model_name=model["model_name"],
+            system_prompt=build_explore_prompt(workspace_context),
+            messages=input_messages,
+            tools=EXPLORE_TOOLS,
+            temperature=temperature,
+        )
+        async for evt in run_provider_runtime(req):
+            yield evt
         yield {"event": "done", "data": {}}
 
     except Exception as e:

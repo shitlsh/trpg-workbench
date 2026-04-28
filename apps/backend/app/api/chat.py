@@ -291,17 +291,33 @@ async def send_message(
         queue: asyncio.Queue = asyncio.Queue()
 
         async def _produce():
+            retried_protocol = False
             try:
-                async for evt in run_stream(
-                    user_message=body.content,
-                    workspace_context=ws_ctx,
-                    model=model,
-                    history=history,
-                    referenced_assets=referenced_assets or None,
-                    db=db,
-                    temperature=temperature,
-                ):
-                    await queue.put(("evt", evt))
+                while True:
+                    saw_retry_error = False
+                    async for evt in run_stream(
+                        user_message=body.content,
+                        workspace_context=ws_ctx,
+                        model=model,
+                        history=history,
+                        referenced_assets=referenced_assets or None,
+                        db=db,
+                        temperature=temperature,
+                    ):
+                        if evt.get("event") == "error" and not retried_protocol:
+                            msg = str((evt.get("data") or {}).get("message", "")).lower()
+                            if "reasoning_content" in msg or "thinking mode" in msg:
+                                # one-shot fallback: force strict-compatible behavior
+                                prof = model.get("profile") if isinstance(model, dict) else None
+                                if prof is not None:
+                                    setattr(prof, "strict_compatible", True)
+                                retried_protocol = True
+                                saw_retry_error = True
+                                break
+                        await queue.put(("evt", evt))
+                    if saw_retry_error:
+                        continue
+                    break
             except Exception as exc:
                 await queue.put(("exc", exc))
             finally:

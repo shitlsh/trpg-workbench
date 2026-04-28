@@ -1,26 +1,9 @@
-"""Adapts LLMProfileORM / EmbeddingProfileORM records to Agno model/embedder objects."""
+"""Adapter utilities for profile auth/config + native SDK invocations."""
 import re
 from typing import Any
-from agno.models.openai import OpenAIChat
+from openai import AsyncOpenAI
 
 from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
-
-
-def _llm_timeout_kwargs() -> dict:
-    """Extra kwargs for Agno chat models (best-effort; ignored if unsupported)."""
-    t = LLM_REQUEST_TIMEOUT_SECONDS
-    if t is None:
-        return {}
-    return {"timeout": float(t)}
-
-
-def _instantiate_chat_model(factory, **kwargs):
-    """Construct an Agno model, dropping ``timeout`` if the class rejects it."""
-    try:
-        return factory(**kwargs)
-    except TypeError:
-        kwargs.pop("timeout", None)
-        return factory(**kwargs)
 
 
 def strip_code_fence(text: str) -> str:
@@ -83,100 +66,81 @@ def _normalize_openai_compatible_embedding_model(model_name: str) -> str:
     return model_name
 
 
-def _openai_compatible_role_map() -> dict[str, str]:
-    """Role map for strict OpenAI-compatible providers (e.g. DeepSeek).
-
-    Some providers reject `developer`; force all system-like messages to `system`.
-    """
-    return {
-        "system": "system",
-        "developer": "system",
-        "latest_reminder": "system",
-        "user": "user",
-        "assistant": "assistant",
-        "tool": "tool",
-        "model": "assistant",
-    }
-
-
-def _openai_compatible_extra_body(profile, base_url: str | None, model_name: str) -> dict[str, Any] | None:
-    """Optional request extras for strict OpenAI-compatible endpoints.
-
-    Some providers (notably DeepSeek thinking mode) require round-tripping
-    reasoning_content across internal tool-call turns. Agno's tool loop does not
-    reliably satisfy that requirement for all compatible endpoints, so we disable
-    provider-side thinking in strict mode to keep tool-calling stable.
-    """
-    strict = bool(getattr(profile, "strict_compatible", False))
-    base = (base_url or "").lower()
-    model = (model_name or "").lower()
-    looks_like_deepseek = ("deepseek" in base) or ("deepseek" in model) or model.startswith("ds-")
-    if strict or looks_like_deepseek:
-        return {"thinking": {"type": "disabled"}}
-    return None
-
-
 def model_from_profile(profile, model_name: str) -> Any:
-    """
-    Given a LLMProfileORM instance and an explicit model_name, return the Agno model object.
+    """Return a plain runtime config object for provider runtimes."""
+    return {"profile": profile, "model_name": model_name}
 
-    model_name must be provided explicitly — it is no longer stored on the profile.
-    Resolve order: SendMessageRequest.model → workspace.default_llm_model_name.
 
-    Supported provider_type values:
-      openai, anthropic, google, openrouter, openai_compatible
-    """
-    provider = profile.provider_type
+def _openai_client_kwargs(profile) -> dict[str, Any]:
+    provider = (profile.provider_type or "").strip().lower()
     base_url = profile.base_url or None
     api_key = _decrypt_key(profile)
+    kwargs: dict[str, Any] = {"api_key": api_key or "local"}
+    if provider == "openrouter" and not base_url:
+        base_url = "https://openrouter.ai/api/v1"
+    if base_url:
+        kwargs["base_url"] = base_url
+    if LLM_REQUEST_TIMEOUT_SECONDS is not None:
+        kwargs["timeout"] = float(LLM_REQUEST_TIMEOUT_SECONDS)
+    return kwargs
 
-    to = _llm_timeout_kwargs()
 
-    if provider == "openai":
-        kwargs: dict = {"id": model_name, **to}
-        if api_key:
-            kwargs["api_key"] = api_key
-        if base_url:
-            kwargs["base_url"] = base_url
-        return _instantiate_chat_model(OpenAIChat, **kwargs)
+async def complete_text_once(
+    *,
+    profile,
+    model_name: str,
+    system_prompt: str | None,
+    user_prompt: str,
+    temperature: float = 0.2,
+) -> str:
+    """Simple single-turn completion for utility endpoints (non tool-calling)."""
+    provider = (profile.provider_type or "").strip().lower()
+    if provider in {"openai", "openrouter", "openai_compatible"}:
+        client = AsyncOpenAI(**_openai_client_kwargs(profile))
+        msgs = []
+        if system_prompt:
+            msgs.append({"role": "system", "content": system_prompt})
+        msgs.append({"role": "user", "content": user_prompt})
+        resp = await client.chat.completions.create(
+            model=model_name,
+            messages=msgs,
+            temperature=temperature,
+        )
+        return resp.choices[0].message.content or ""
 
-    elif provider == "anthropic":
-        from agno.models.anthropic import Claude
-        kwargs = {"id": model_name, **to}
-        if api_key:
-            kwargs["api_key"] = api_key
-        return _instantiate_chat_model(Claude, **kwargs)
+    if provider == "anthropic":
+        from anthropic import AsyncAnthropic
 
-    elif provider == "google":
-        from agno.models.google import Gemini
-        kwargs = {"id": model_name, **to}
-        if api_key:
-            kwargs["api_key"] = api_key
-        return _instantiate_chat_model(Gemini, **kwargs)
+        key = _decrypt_key(profile)
+        if not key:
+            raise RuntimeError("Anthropic API key is required")
+        client_kw: dict[str, Any] = {"api_key": key}
+        if LLM_REQUEST_TIMEOUT_SECONDS is not None:
+            client_kw["timeout"] = float(LLM_REQUEST_TIMEOUT_SECONDS)
+        client = AsyncAnthropic(**client_kw)
+        resp = await client.messages.create(
+            model=model_name,
+            system=system_prompt or "",
+            messages=[{"role": "user", "content": user_prompt}],
+            max_tokens=2048,
+            temperature=temperature,
+        )
+        parts = [getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"]
+        return "".join(parts)
 
-    elif provider == "openrouter":
-        kwargs = {"id": model_name, **to}
-        if api_key:
-            kwargs["api_key"] = api_key
-        kwargs["base_url"] = base_url or "https://openrouter.ai/api/v1"
-        return _instantiate_chat_model(OpenAIChat, **kwargs)
+    if provider == "google":
+        from google import genai
+        import asyncio
 
-    elif provider == "openai_compatible":
-        kwargs = {"id": model_name, **to}
-        # Local/compatible endpoints don't require a real key, but the OpenAI client
-        # will raise if neither api_key kwarg nor OPENAI_API_KEY env var is present.
-        kwargs["api_key"] = api_key or "local"
-        if base_url:
-            kwargs["base_url"] = base_url
-        if bool(getattr(profile, "strict_compatible", False)):
-            kwargs["role_map"] = _openai_compatible_role_map()
-        extra_body = _openai_compatible_extra_body(profile, base_url, model_name)
-        if extra_body:
-            kwargs["extra_body"] = extra_body
-        return _instantiate_chat_model(OpenAIChat, **kwargs)
+        key = _decrypt_key(profile)
+        if not key:
+            raise RuntimeError("Google API key is required")
+        client = genai.Client(api_key=key)
+        prompt = (system_prompt or "") + "\n\n" + user_prompt
+        resp = await asyncio.to_thread(client.models.generate_content, model=model_name, contents=prompt)
+        return getattr(resp, "text", "") or ""
 
-    else:
-        raise ValueError(f"Unsupported provider_type: {provider}")
+    raise ValueError(f"Unsupported provider_type: {provider}")
 
 
 def embedding_from_profile(profile) -> Any:
