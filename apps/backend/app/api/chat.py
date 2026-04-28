@@ -374,11 +374,19 @@ async def send_message(
 
                 elif event_type == "tool_trace":
                     tc_id = data.get("id", "")
-                    trace = data.get("trace", [])
-                    if isinstance(trace, list):
-                        for tc in tool_calls_emitted:
-                            if tc["id"] == tc_id:
-                                tc["trace_logs"] = [str(x) for x in trace]
+                    trace = data.get("trace", None)
+                    delta = data.get("delta", None)
+                    for tc in tool_calls_emitted:
+                        if tc["id"] != tc_id:
+                            continue
+                        if isinstance(trace, list):
+                            tc["trace_logs"] = [str(x) for x in trace]
+                        elif isinstance(delta, str) and delta:
+                            prev = tc.get("trace_logs")
+                            if not isinstance(prev, list):
+                                prev = []
+                            prev.append(delta)
+                            tc["trace_logs"] = prev
                     yield _sse("tool_trace", data)
 
                 elif event_type == "done":

@@ -295,12 +295,12 @@ async def _chat_openai_like(
             raw_args = tc["function"]["arguments"] or "{}"
             args = _best_effort_json_args(raw_args)
             tc_id = tc["id"] or ""
+            emitted_trace_lines: list[str] = []
             fn = tool_map.get(name)
             if fn is None:
                 result = json.dumps({"success": False, "error": f"Unknown tool: {name}"}, ensure_ascii=False)
                 success = False
             else:
-                trace_lines: list[str] = []
                 loop = asyncio.get_running_loop()
                 tool_task, trace_q = _start_tool_call(fn, args, tc_id, loop)
                 while True:
@@ -310,20 +310,20 @@ async def _chat_openai_like(
                         line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
                     except asyncio.TimeoutError:
                         continue
-                    trace_lines.append(str(line))
+                    emitted_trace_lines.append(str(line))
                     yield {
                         "event": "tool_trace",
-                        "data": {"id": tc_id, "trace": trace_lines.copy()},
+                        "data": {"id": tc_id, "delta": str(line)},
                     }
                 while True:
                     try:
                         line = trace_q.get_nowait()
                     except asyncio.QueueEmpty:
                         break
-                    trace_lines.append(str(line))
+                    emitted_trace_lines.append(str(line))
                     yield {
                         "event": "tool_trace",
-                        "data": {"id": tc_id, "trace": trace_lines.copy()},
+                        "data": {"id": tc_id, "delta": str(line)},
                     }
                 try:
                     raw = await tool_task
@@ -336,8 +336,11 @@ async def _chat_openai_like(
                     success = False
             messages.append({"role": "tool", "tool_call_id": tc_id, "name": name, "content": result})
             trace_lines = _extract_trace_lines(result)
-            if trace_lines:
-                yield {"event": "tool_trace", "data": {"id": tc_id, "trace": trace_lines}}
+            if trace_lines and len(trace_lines) > len(emitted_trace_lines):
+                # Backward-compatible fallback for tools that only return final _trace.
+                # Emit missing tail as delta lines (incremental UI updates).
+                for line in trace_lines[len(emitted_trace_lines) :]:
+                    yield {"event": "tool_trace", "data": {"id": tc_id, "delta": line}}
             yield {
                 "event": "tool_call_result",
                 "data": {"id": tc_id, "success": success, "summary": result[:500]},
@@ -447,12 +450,12 @@ async def _chat_anthropic(req: RuntimeRequest):
                     "arguments": json.dumps(args, ensure_ascii=False),
                 },
             }
+            emitted_trace_lines: list[str] = []
             fn = tool_map.get(tu.name or "")
             if fn is None:
                 result = json.dumps({"success": False, "error": f"Unknown tool: {tu.name}"}, ensure_ascii=False)
                 success = False
             else:
-                trace_lines: list[str] = []
                 loop = asyncio.get_running_loop()
                 tool_task, trace_q = _start_tool_call(fn, args, tu.id or "", loop)
                 while True:
@@ -462,20 +465,20 @@ async def _chat_anthropic(req: RuntimeRequest):
                         line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
                     except asyncio.TimeoutError:
                         continue
-                    trace_lines.append(str(line))
+                    emitted_trace_lines.append(str(line))
                     yield {
                         "event": "tool_trace",
-                        "data": {"id": tu.id or "", "trace": trace_lines.copy()},
+                        "data": {"id": tu.id or "", "delta": str(line)},
                     }
                 while True:
                     try:
                         line = trace_q.get_nowait()
                     except asyncio.QueueEmpty:
                         break
-                    trace_lines.append(str(line))
+                    emitted_trace_lines.append(str(line))
                     yield {
                         "event": "tool_trace",
-                        "data": {"id": tu.id or "", "trace": trace_lines.copy()},
+                        "data": {"id": tu.id or "", "delta": str(line)},
                     }
                 try:
                     raw = await tool_task
@@ -488,8 +491,9 @@ async def _chat_anthropic(req: RuntimeRequest):
                     success = False
             messages.append({"role": "tool", "tool_call_id": tu.id, "name": tu.name, "content": result})
             trace_lines = _extract_trace_lines(result)
-            if trace_lines:
-                yield {"event": "tool_trace", "data": {"id": tu.id or "", "trace": trace_lines}}
+            if trace_lines and len(trace_lines) > len(emitted_trace_lines):
+                for line in trace_lines[len(emitted_trace_lines) :]:
+                    yield {"event": "tool_trace", "data": {"id": tu.id or "", "delta": line}}
             yield {
                 "event": "tool_call_result",
                 "data": {"id": tu.id or "", "success": success, "summary": result[:500]},

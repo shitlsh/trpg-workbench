@@ -552,7 +552,7 @@ export interface SSEToolCallResult {
 
 export interface SSEToolTrace {
   event: "tool_trace";
-  data: { id: string; trace: string[] };
+  data: { id: string; trace?: string[]; delta?: string };
 }
 
 export interface SSEDone {

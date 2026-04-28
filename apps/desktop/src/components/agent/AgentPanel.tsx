@@ -636,6 +636,14 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       let accThinking = "";
       let currentEvent = "";
       let streamDone = false;
+      let lastUiFlush = 0;
+      const flushUi = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastUiFlush < 33) return;
+        setStreamingEvents([...accEvents]);
+        setStreamingThinking(accThinking);
+        lastUiFlush = now;
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -669,12 +677,12 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               } else {
                 accEvents = [...accEvents, { kind: "text_chunk", text: chunk }];
               }
-              setStreamingEvents([...accEvents]);
+              flushUi();
 
             } else if (currentEvent === "thinking_delta") {
               const chunk = (data.content as string) ?? "";
               accThinking += chunk;
-              setStreamingThinking(accThinking);
+              flushUi();
 
             } else if (currentEvent === "tool_call_start") {
               const tc: ToolCall = {
@@ -687,15 +695,17 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               };
               accToolCallsById[tc.id] = tc;
               accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
-              setStreamingEvents([...accEvents]);
+              flushUi();
 
             } else if (currentEvent === "tool_trace") {
               const tcId = (data.id as string) ?? "";
-              const trace = Array.isArray(data.trace) ? data.trace.map((x) => String(x)) : [];
+              const trace = Array.isArray(data.trace) ? data.trace.map((x) => String(x)) : null;
+              const delta = typeof data.delta === "string" ? data.delta : null;
               if (accToolCallsById[tcId]) {
+                const prevTrace = accToolCallsById[tcId].trace_logs ?? [];
                 const updated: ToolCall = {
                   ...accToolCallsById[tcId],
-                  trace_logs: trace,
+                  trace_logs: trace ?? (delta ? [...prevTrace, delta] : prevTrace),
                 };
                 accToolCallsById[tcId] = updated;
                 accEvents = accEvents.map((e) =>
@@ -703,7 +713,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                     ? { kind: "tool_call", toolCall: updated }
                     : e
                 );
-                setStreamingEvents([...accEvents]);
+                flushUi();
               }
 
             } else if (currentEvent === "tool_call_result") {
@@ -742,13 +752,13 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 accToolCallsById[tc.id] = tc;
                 accEvents = [...accEvents, { kind: "tool_call", toolCall: tc }];
               }
-              setStreamingEvents([...accEvents]);
+              flushUi();
 
             } else if (currentEvent === "agent_question") {
               // Director wants to ask the user a question before continuing
               const q = data as unknown as AgentQuestion;
               accEvents = [...accEvents, { kind: "question_interrupt", question: q }];
-              setStreamingEvents([...accEvents]);
+              flushUi(true);
               // Stream ends after this (backend emits done next); keep isStreaming=true until done
 
             } else if (currentEvent === "done") {
