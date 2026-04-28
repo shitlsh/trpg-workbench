@@ -82,6 +82,40 @@ def _chm_text_encoding(chm_file: Any) -> str:
     return str(enc)
 
 
+def _decode_chm_html(raw: bytes, chm_suggested_codec: str) -> str:
+    """Best-effort decode for CHM HTML bytes.
+
+    Some Chinese CHM files report an encoding that does not match body pages.
+    Prefer decodes with fewer replacement chars and more readable CJK text.
+    """
+    candidates: list[str] = []
+    for c in (chm_suggested_codec, "gb18030", "gbk", "utf-8", "cp936", "big5", "latin-1"):
+        if c and c not in candidates:
+            candidates.append(c)
+
+    best_text: str | None = None
+    best_score: tuple[int, int, int] | None = None
+    for enc in candidates:
+        try:
+            s = raw.decode(enc, errors="replace")
+        except LookupError:
+            continue
+        bad = s.count("\ufffd")
+        cjk = sum(1 for ch in s if "\u4e00" <= ch <= "\u9fff")
+        controls = sum(1 for ch in s if ord(ch) < 32 and ch not in "\r\n\t")
+        score = (bad, controls, -cjk)
+        if best_score is None or score < best_score:
+            best_score = score
+            best_text = s
+        # For Chinese CHM, this is usually the desired decode.
+        if bad == 0 and cjk > 24 and enc in ("gb18030", "gbk", "cp936", "utf-8"):
+            return s
+
+    if best_text is not None:
+        return best_text
+    return raw.decode("utf-8", errors="replace")
+
+
 def _extract_chm_pages_sync(chm_path: Path) -> list[dict]:
     """Extract [{page: int, text: str}] from a CHM file using pychm.
 
@@ -116,10 +150,7 @@ def _extract_chm_pages_sync(chm_path: Path) -> list[dict]:
         if not size or not raw_bytes:
             return chm_c.CHM_ENUMERATOR_CONTINUE
 
-        try:
-            raw_html = raw_bytes.decode(encoding, errors="replace")
-        except Exception:
-            raw_html = raw_bytes.decode("utf-8", errors="replace")
+        raw_html = _decode_chm_html(raw_bytes, encoding)
 
         text = _strip_html(raw_html)
         if text and len(text) > 20:  # skip near-empty pages (nav frames, etc.)
