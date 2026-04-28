@@ -280,6 +280,7 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
 
 class ReindexDocumentRequest(BaseModel):
     embedding_profile_id: str | None = None
+    embedding_model_name: str | None = None
 
 
 @router2.post("/{document_id}/reindex", status_code=202)
@@ -311,11 +312,12 @@ async def reindex_document(
     profile = db.get(_EmbeddingProfileORM, profile_id)
     if not profile:
         raise HTTPException(status_code=422, detail=f"Embedding profile {profile_id} not found")
+    model_name = (body.embedding_model_name or "").strip() or profile.model_name
 
     embedding_snapshot = {
         "profile_id": profile.id,
         "provider_type": profile.provider_type,
-        "model_name": profile.model_name,
+        "model_name": model_name,
         "dimensions": profile.dimensions,
     }
 
@@ -336,6 +338,7 @@ async def reindex_document(
             library_id=doc.library_id,
             task_id=task.id,
             embedding_profile_id=profile.id,
+            embedding_model_name=model_name,
             embedding_snapshot=embedding_snapshot,
         )
     )
@@ -363,12 +366,14 @@ async def _run_reindex_background(
     library_id: str,
     task_id: str,
     embedding_profile_id: str,
+    embedding_model_name: str,
     embedding_snapshot: dict,
 ):
     from app.storage.database import get_session_factory
     from app.agents.model_adapter import embedding_from_profile
     from app.knowledge.vector_index import upsert_chunks
     from app.utils.paths import get_data_dir
+    from types import SimpleNamespace
 
     SessionLocal = get_session_factory()
 
@@ -393,7 +398,13 @@ async def _run_reindex_background(
         profile = db.get(_EmbeddingProfileORM, embedding_profile_id)
         if not profile:
             raise RuntimeError(f"Embedding profile {embedding_profile_id} not found")
-        embedder = embedding_from_profile(profile)
+        profile_for_reindex = SimpleNamespace(
+            provider_type=profile.provider_type,
+            model_name=embedding_model_name or profile.model_name,
+            base_url=profile.base_url,
+            api_key_encrypted=profile.api_key_encrypted,
+        )
+        embedder = embedding_from_profile(profile_for_reindex)
     finally:
         db.close()
 

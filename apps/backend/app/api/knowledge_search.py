@@ -95,22 +95,26 @@ async def search_knowledge(body: SearchRequest, db: Session = Depends(get_db)):
     )
     doc_map = {d.id: {"filename": d.filename} for d in docs}
 
-    # Resolve embedder from the first library's snapshot profile
-    try:
-        embedding_profile = get_embedding_for_query(body.library_ids[0], db)
-    except (LibraryNotIndexedError, ModelNotConfiguredError) as exc:
-        raise HTTPException(status_code=422, detail={"error": exc.message})
-
+    # Resolve embedder per library snapshot
     from app.agents.model_adapter import embedding_from_profile
-    embedder = embedding_from_profile(embedding_profile)
+    embedders_by_library: dict[str, object] = {}
+    for lib_id in body.library_ids:
+        try:
+            embedding_profile = get_embedding_for_query(lib_id, db)
+            embedders_by_library[lib_id] = embedding_from_profile(embedding_profile)
+        except (LibraryNotIndexedError, ModelNotConfiguredError):
+            # already validated above; keep defensive
+            continue
+    if not embedders_by_library:
+        raise HTTPException(status_code=422, detail={"error": "No usable embedding profile for requested libraries"})
 
     from app.knowledge.retriever import retrieve
     try:
         citations = await retrieve(
             query=body.query,
-            library_ids=body.library_ids,
+            library_ids=[x for x in body.library_ids if x in embedders_by_library],
             top_k=body.top_k,
-            embedder=embedder,
+            embedder_by_library=embedders_by_library,
             document_map=doc_map,
         )
         return SearchResponse(results=[c.to_dict() for c in citations])

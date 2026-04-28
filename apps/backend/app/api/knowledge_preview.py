@@ -364,15 +364,25 @@ async def search_test(
     docs = db.query(DocORM).filter(DocORM.library_id.in_(valid_library_ids)).all()
     doc_map = {d.id: {"filename": d.filename} for d in docs}
 
-    # Resolve embedder from first library snapshot
+    # Resolve embedder per library snapshot
     from app.services.model_routing import get_embedding_for_query, LibraryNotIndexedError, ModelNotConfiguredError
-    try:
-        embedding_profile = get_embedding_for_query(valid_library_ids[0], db)
-    except (LibraryNotIndexedError, ModelNotConfiguredError) as exc:
-        raise HTTPException(status_code=422, detail={"error": exc.message})
-
     from app.agents.model_adapter import embedding_from_profile
-    embedder = embedding_from_profile(embedding_profile)
+    embedders_by_library: dict[str, object] = {}
+    skipped_embedder: list[str] = []
+    try:
+        for lid in valid_library_ids:
+            try:
+                embedding_profile = get_embedding_for_query(lid, db)
+                embedders_by_library[lid] = embedding_from_profile(embedding_profile)
+            except (LibraryNotIndexedError, ModelNotConfiguredError) as exc:
+                skipped_embedder.append(f"{lid}: {exc.message}")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)})
+    if not embedders_by_library:
+        detail = skipped_embedder[0] if skipped_embedder else "No usable embedding profile found"
+        raise HTTPException(status_code=422, detail={"error": detail})
+    for w in skipped_embedder:
+        warnings.append(f"Library skipped due to embedding profile issue: {w}")
 
     # Determine effective top_n (for rerank) and top_k
     effective_top_k = body.top_k
@@ -385,9 +395,9 @@ async def search_test(
     try:
         citations = await retrieve(
             query=body.query,
-            library_ids=valid_library_ids,
+            library_ids=[lid for lid in valid_library_ids if lid in embedders_by_library],
             top_k=effective_top_n,
-            embedder=embedder,
+            embedder_by_library=embedders_by_library,
             document_map=doc_map,
             chunk_type_filter=cf if cf else None,
         )

@@ -983,6 +983,18 @@ function LibraryDetailPanel({
     queryFn: () => apiFetch<ModelCatalogEntry[]>("/settings/model-catalog"),
   });
   const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>("");
+  const [reindexModelName, setReindexModelName] = useState<string>("");
+
+  useEffect(() => {
+    if (selectedEmbeddingId) return;
+    if (library.embedding_profile_id && embeddingProfiles.some((p) => p.id === library.embedding_profile_id)) {
+      setSelectedEmbeddingId(library.embedding_profile_id);
+      return;
+    }
+    if (embeddingProfiles[0]?.id) {
+      setSelectedEmbeddingId(embeddingProfiles[0].id);
+    }
+  }, [selectedEmbeddingId, library.embedding_profile_id, embeddingProfiles]);
 
   // Probe models for whichever LLM profile is selected in the wizard's select_llm step
   const wizardLlmProfileId = wizard.step === "select_llm" ? wizard.llmProfileId : null;
@@ -1045,11 +1057,19 @@ function LibraryDetailPanel({
     },
   });
   const reindexDocMutation = useMutation({
-    mutationFn: (docId: string) =>
+    mutationFn: (docId: string) => {
+      const profileId = selectedEmbeddingId || library.embedding_profile_id || embeddingProfiles[0]?.id;
+      if (!profileId) throw new Error("请先配置 Embedding Profile");
+      return (
       apiFetch<{ document_id: string; task_id: string }>(`/knowledge/documents/${docId}/reindex`, {
         method: "POST",
-        body: JSON.stringify({}),
-      }),
+        body: JSON.stringify({
+          embedding_profile_id: profileId,
+          embedding_model_name: reindexModelName.trim() || undefined,
+        }),
+      })
+      );
+    },
     onSuccess: (res) => {
       setUploadingTaskId(res.task_id);
       queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", library.id] });
@@ -1317,19 +1337,30 @@ function LibraryDetailPanel({
         </div>
       </div>
 
-      {/* Embedding profile selector (show only if multiple profiles) */}
-      {embeddingProfiles.length > 1 && (
-        <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-          <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>Embedding 模型：</span>
-          <select
-            style={{ flex: 1, padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
-            value={selectedEmbeddingId || embeddingProfiles[0]?.id}
-            onChange={(e) => setSelectedEmbeddingId(e.target.value)}
-          >
-            {embeddingProfiles.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>
-            ))}
-          </select>
+      {/* Embedding profile/model selector (explicit default + reindex override) */}
+      {embeddingProfiles.length > 0 && (
+        <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>Embedding Profile：</span>
+            <select
+              style={{ flex: 1, padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
+              value={selectedEmbeddingId || embeddingProfiles[0]?.id}
+              onChange={(e) => setSelectedEmbeddingId(e.target.value)}
+            >
+              {embeddingProfiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.model_name})
+                  {p.id === (library.embedding_profile_id || "") ? " · 当前库默认" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <input
+            style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}
+            placeholder="重建索引时模型名覆盖（可选，不填则使用 Profile 默认模型）"
+            value={reindexModelName}
+            onChange={(e) => setReindexModelName(e.target.value)}
+          />
         </div>
       )}
 

@@ -41,17 +41,14 @@ def retrieve_knowledge(
     except ImportError:
         return []
 
-    try:
-        embedding_profile = get_embedding_for_query(library_ids[0], db)
-        embedder = embedding_from_profile(embedding_profile)
-    except Exception as e:
-        logger.warning("retrieve_knowledge: failed to get embedder: %s", e)
-        return []
-
-    try:
-        query_vector = embedder.embed_one(query)
-    except Exception as e:
-        logger.warning("retrieve_knowledge: failed to embed query %r: %s", query, e)
+    embedders_by_library: dict[str, Any] = {}
+    for lib_id in library_ids:
+        try:
+            embedding_profile = get_embedding_for_query(lib_id, db)
+            embedders_by_library[lib_id] = embedding_from_profile(embedding_profile)
+        except Exception as e:
+            logger.warning("retrieve_knowledge: failed to get embedder for library %s: %s", lib_id, e)
+    if not embedders_by_library:
         return []
 
     doc_map: dict[str, dict] = {}
@@ -72,6 +69,14 @@ def retrieve_knowledge(
     seen_chunk_ids: set[str] = set()
     all_results: list[dict] = []
     for lib_id in library_ids:
+        embedder = embedders_by_library.get(lib_id)
+        if embedder is None:
+            continue
+        try:
+            query_vector = embedder.embed_one(query)
+        except Exception as e:
+            logger.warning("retrieve_knowledge: failed to embed query for library %s: %s", lib_id, e)
+            continue
         idx_dir = _index_dir(lib_id)
         hits = search_library(idx_dir, query_vector, top_k=effective_fetch_k)
         for hit in hits:
@@ -198,6 +203,7 @@ async def retrieve(
     library_ids: list[str],
     top_k: int = 5,
     embedder: Any = None,  # object with .embed_one(text) -> list[float]
+    embedder_by_library: dict[str, Any] | None = None,  # library_id -> embedder
     document_map: dict[str, dict] | None = None,  # document_id -> {filename, ...}
     chunk_type_filter: list[str] | None = None,
 ) -> list[Citation]:
@@ -205,16 +211,15 @@ async def retrieve(
     Embed the query and search across the given libraries in order.
     Returns up to top_k deduplicated Citations, sorted by relevance.
 
-    embedder must be provided; raises ValueError if None.
+    Provide either `embedder` (single model for all libraries) or
+    `embedder_by_library` (per-library query embedding, preferred for mixed-index setups).
     """
     if not library_ids:
         return []
 
-    if embedder is None:
-        raise ValueError("embedder must be provided for retrieval")
-
     import asyncio
-    query_vector = await asyncio.to_thread(embedder.embed_one, query)
+    if embedder_by_library is None and embedder is None:
+        raise ValueError("embedder or embedder_by_library must be provided for retrieval")
 
     seen_chunk_ids: set[str] = set()
     all_results: list[dict] = []
@@ -222,6 +227,10 @@ async def retrieve(
     fetch_k = min(200, top_k * 30) if chunk_type_filter else top_k
 
     for lib_id in library_ids:
+        lib_embedder = (embedder_by_library or {}).get(lib_id) if embedder_by_library else embedder
+        if lib_embedder is None:
+            continue
+        query_vector = await asyncio.to_thread(lib_embedder.embed_one, query)
         idx_dir = _index_dir(lib_id)
         hits = search_library(idx_dir, query_vector, top_k=fetch_k)
         for hit in hits:
