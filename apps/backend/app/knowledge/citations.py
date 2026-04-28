@@ -12,6 +12,7 @@ class Citation:
     page_to: int
     section_title: str | None
     relevance_score: float
+    chunk_type: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -23,4 +24,5 @@ class Citation:
             "page_to": self.page_to,
             "section_title": self.section_title,
             "relevance_score": round(self.relevance_score, 4),
+            "chunk_type": self.chunk_type,
         }

@@ -199,6 +199,7 @@ async def retrieve(
     top_k: int = 5,
     embedder: Any = None,  # object with .embed_one(text) -> list[float]
     document_map: dict[str, dict] | None = None,  # document_id -> {filename, ...}
+    chunk_type_filter: list[str] | None = None,
 ) -> list[Citation]:
     """
     Embed the query and search across the given libraries in order.
@@ -217,10 +218,12 @@ async def retrieve(
 
     seen_chunk_ids: set[str] = set()
     all_results: list[dict] = []
+    # 按类型筛选时需多取候选，避免过滤后条数不足（空类型仍保留，与 retrieve_knowledge 一致）
+    fetch_k = min(200, top_k * 30) if chunk_type_filter else top_k
 
     for lib_id in library_ids:
         idx_dir = _index_dir(lib_id)
-        hits = search_library(idx_dir, query_vector, top_k=top_k)
+        hits = search_library(idx_dir, query_vector, top_k=fetch_k)
         for hit in hits:
             cid = hit.get("chunk_id", "")
             if cid not in seen_chunk_ids:
@@ -230,7 +233,19 @@ async def retrieve(
 
     # Sort by distance (lower = more relevant); lancedb returns "_distance"
     all_results.sort(key=lambda x: x.get("_distance", 999))
-    all_results = all_results[:top_k]
+
+    if chunk_type_filter:
+        filtered: list[dict] = []
+        for hit in all_results:
+            ct = (hit.get("chunk_type") or "").strip()
+            if ct and ct not in chunk_type_filter:
+                continue
+            filtered.append(hit)
+            if len(filtered) >= top_k:
+                break
+        all_results = filtered[:top_k]
+    else:
+        all_results = all_results[:top_k]
 
     citations: list[Citation] = []
     for hit in all_results:
@@ -239,6 +254,7 @@ async def retrieve(
         distance = hit.get("_distance", 1.0)
         # Convert distance to a [0,1] relevance score (cosine: score = 1 - distance/2)
         relevance = max(0.0, min(1.0, 1.0 - distance / 2.0))
+        ct_raw = (hit.get("chunk_type") or "").strip()
         citations.append(Citation(
             chunk_id=hit.get("chunk_id", ""),
             content=hit.get("content", ""),
@@ -248,5 +264,6 @@ async def retrieve(
             page_to=int(hit.get("page_to", -1)),
             section_title=hit.get("section_title") or None,
             relevance_score=relevance,
+            chunk_type=ct_raw or None,
         ))
     return citations

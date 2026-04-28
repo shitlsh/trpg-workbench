@@ -644,9 +644,15 @@ function SearchTestDialog({
   const [query, setQuery] = useState("");
   const [topK, setTopK] = useState(5);
   const [useRerank, setUseRerank] = useState(false);
+  /** 空 = 不按类型过滤 */
+  const [chunkTypeFilter, setChunkTypeFilter] = useState<ChunkType[]>([]);
   const [result, setResult] = useState<SearchTestResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function toggleChunkType(ct: ChunkType) {
+    setChunkTypeFilter((prev) => (prev.includes(ct) ? prev.filter((x) => x !== ct) : [...prev, ct]));
+  }
 
   async function handleSearch() {
     if (!query.trim()) return;
@@ -655,6 +661,7 @@ function SearchTestDialog({
       const body: SearchTestRequest = {
         query: query.trim(), library_ids: [libraryId], top_k: topK,
         use_rerank: useRerank, workspace_id: workspaceId ?? undefined,
+        chunk_type_filter: chunkTypeFilter.length > 0 ? chunkTypeFilter : undefined,
       };
       const res = await apiFetch<SearchTestResponse>(
         `/knowledge/libraries/${libraryId}/search/test`,
@@ -717,6 +724,25 @@ function SearchTestDialog({
           使用 Rerank（需 Workspace 已配置 Rerank Profile 且已启用）
         </label>
 
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+          按内容类型筛选（可选，不选则不过滤）：
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {CHUNK_TYPES.map((ct) => (
+            <label
+              key={ct.value}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" }}
+            >
+              <input
+                type="checkbox"
+                checked={chunkTypeFilter.includes(ct.value)}
+                onChange={() => toggleChunkType(ct.value)}
+              />
+              {ct.label}
+            </label>
+          ))}
+        </div>
+
         {error && <p style={{ color: "var(--danger, #e05252)", fontSize: 13 }}>{error}</p>}
 
         {result && (
@@ -735,6 +761,11 @@ function SearchTestDialog({
                     <span style={{ color: "var(--text-muted)" }}>p{r.page_from}–{r.page_to}</span>
                     <span style={{ color: "var(--text-muted)" }}>vec: {r.vector_score.toFixed(3)}</span>
                     {r.rerank_score != null && <span style={{ color: "var(--accent)" }}>rerank: {r.rerank_score.toFixed(3)}</span>}
+                    {r.chunk_type ? (
+                      <span style={{ color: "var(--text-muted)" }} title={CHUNK_TYPES.find((c) => c.value === r.chunk_type)?.description}>
+                        类型: {CHUNK_TYPES.find((c) => c.value === r.chunk_type)?.label ?? r.chunk_type}
+                      </span>
+                    ) : null}
                   </div>
                   {r.section_title && <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>{r.section_title}</div>}
                   <div style={{ lineHeight: 1.5, color: "var(--text)", whiteSpace: "pre-wrap" }}>
@@ -758,10 +789,15 @@ function DocumentRow({
   doc: KnowledgeDocument; expanded: boolean; onToggle: () => void;
   onPreview: () => void; isPreviewing: boolean; onDelete: () => void;
 }) {
+  const summaryEnabled =
+    expanded && doc.parse_status !== "pending" && doc.parse_status !== "running";
+  const canPreview =
+    ["success", "partial", "scanned_fallback"].includes(doc.parse_status) && (doc.chunk_count ?? 0) > 0;
+
   const { data: summary } = useQuery({
     queryKey: ["knowledge", "doc", doc.id, "summary"],
     queryFn: () => apiFetch<KnowledgeDocumentSummary>(`/knowledge/documents/${doc.id}/summary`),
-    enabled: expanded && doc.parse_status === "success",
+    enabled: summaryEnabled,
   });
 
   return (
@@ -782,7 +818,7 @@ function DocumentRow({
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {new Date(doc.created_at).toLocaleDateString("zh-CN")}
         </span>
-        {doc.parse_status === "success" && (
+        {canPreview && (
           <button
             style={{
               fontSize: 11, padding: "2px 8px", borderRadius: 4,
@@ -833,10 +869,15 @@ function DocumentRow({
                 </div>
               )}
             </>
-          ) : doc.parse_status === "success" ? (
+          ) : summaryEnabled ? (
             <span style={{ color: "var(--text-muted)" }}>加载摘要中...</span>
           ) : (
             <span style={{ color: "var(--text-muted)" }}>文档尚未完成解析</span>
+          )}
+          {summary && doc.parse_status === "partial" && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              仍可点「预览」查看已成功解析的分块；未命中页可能为扫描页或版面复杂导致。
+            </div>
           )}
         </div>
       )}
@@ -1383,7 +1424,7 @@ function LibraryDetailPanel({
               return (
                 <>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
-                    目录结构需由 LLM 解析为 JSON。请选择已配置且可用的 LLM 与具体模型 id（与「模型配置」中测试用模型一致）。需能稳定输出 JSON（如多数现代 Sonnet / GPT-4o 等）。
+                    用 LLM 将目录解析为章节结构。
                   </div>
                   <div style={{ marginBottom: 12 }}>
                     <label style={{ fontSize: 12, color: "var(--text)", display: "block", marginBottom: 4, fontWeight: 600 }}>LLM 供应商 *</label>
@@ -1407,10 +1448,10 @@ function LibraryDetailPanel({
                     }}
                   >
                     <label style={{ fontSize: 12, color: "var(--text)", display: "block", marginBottom: 6, fontWeight: 600 }}>
-                      分析用模型名称 <span style={{ color: "var(--error, #e05252)" }}>*</span>
+                      分析用模型 <span style={{ color: "var(--error, #e05252)" }}>*</span>
                     </label>
                     <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 8px", lineHeight: 1.5 }}>
-                      必填。请从下拉选择或手输与供应商一致的模型 id；无「留空用默认」——各供应商需显式指定。
+                      必填，请从下拉选择或输入模型。
                     </p>
                     <ModelNameInput
                       className={styles.input}

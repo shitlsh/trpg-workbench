@@ -540,6 +540,7 @@ class SearchTestRequest(BaseModel):
     top_n: int = 20
     use_rerank: bool = False
     workspace_id: str | None = None  # to resolve rerank profile
+    chunk_type_filter: list[str] = []  # 按 chunk 类型子集筛选；空列表 = 不过滤
 
 
 class SearchTestResultSchema(BaseModel):
@@ -552,12 +553,14 @@ class SearchTestResultSchema(BaseModel):
     vector_score: float
     rerank_score: float | None
     reranked: bool
+    chunk_type: str | None = None
 
 
 class SearchTestResponse(BaseModel):
     results: list[SearchTestResultSchema]
     reranked: bool
     warnings: list[str] = []
+    error: str | None = None
 
 
 # ─── M16: Custom Asset Type Configs ──────────────────────────────────────────

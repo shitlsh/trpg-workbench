@@ -324,6 +324,8 @@ async def search_test(
 
     # Vector search
     from app.knowledge.retriever import retrieve
+    cf = [x.strip() for x in (body.chunk_type_filter or []) if x and str(x).strip()]
+
     try:
         citations = await retrieve(
             query=body.query,
@@ -331,6 +333,7 @@ async def search_test(
             top_k=effective_top_n,
             embedder=embedder,
             document_map=doc_map,
+            chunk_type_filter=cf if cf else None,
         )
     except Exception as exc:
         return SearchTestResponse(results=[], reranked=False, warnings=warnings, error=str(exc))
@@ -347,6 +350,7 @@ async def search_test(
             vector_score=c.relevance_score,
             rerank_score=None,
             reranked=False,
+            chunk_type=c.chunk_type,
         )
         for c in citations
     ]
@@ -389,6 +393,7 @@ async def search_test(
                         vector_score=orig.vector_score,
                         rerank_score=rr.score,
                         reranked=True,
+                        chunk_type=orig.chunk_type,
                     ))
                 results = reranked_results
                 did_rerank = True
@@ -401,4 +406,4 @@ async def search_test(
     else:
         results = results[:effective_top_k]
 
-    return SearchTestResponse(results=results, reranked=did_rerank, warnings=warnings)
+    return SearchTestResponse(results=results, reranked=did_rerank, warnings=warnings, error=None)

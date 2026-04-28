@@ -812,6 +812,8 @@ export interface SearchTestResult {
   vector_score: number;
   rerank_score: number | null;
   reranked: boolean;
+  /** 与索引中 chunk 的 chunk_type 一致；未标注时为空 */
+  chunk_type?: string | null;
 }
 
 export interface SearchTestRequest {
@@ -821,6 +823,8 @@ export interface SearchTestRequest {
   top_n?: number;
   use_rerank?: boolean;
   workspace_id?: string;
+  /** 仅检索这些类型的 chunk；空数组 = 不过滤 */
+  chunk_type_filter?: string[];
 }
 
 export interface SearchTestResponse {
