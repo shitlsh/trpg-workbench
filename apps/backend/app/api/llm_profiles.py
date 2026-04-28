@@ -11,6 +11,12 @@ from app.utils.secrets import encrypt_secret, decrypt_secret as decrypt
 router = APIRouter(prefix="/settings/llm-profiles", tags=["llm-profiles"])
 
 
+def _normalize_strict_compatible(provider_type: str, strict_compatible: bool | None) -> bool:
+    if provider_type != "openai_compatible":
+        return False
+    return bool(strict_compatible)
+
+
 def _to_schema(profile: LLMProfileORM) -> LLMProfileSchema:
     schema = LLMProfileSchema.model_validate(profile)
     schema.has_api_key = bool(profile.api_key_encrypted)
@@ -26,6 +32,10 @@ def list_llm_profiles(db: Session = Depends(get_db)):
 @router.post("", response_model=LLMProfileSchema, status_code=201)
 def create_llm_profile(body: LLMProfileCreate, db: Session = Depends(get_db)):
     data = body.model_dump()
+    data["strict_compatible"] = _normalize_strict_compatible(
+        data.get("provider_type", ""),
+        data.get("strict_compatible"),
+    )
     api_key = data.pop("api_key", None)
     if api_key is not None and api_key == "":
         raise HTTPException(status_code=400, detail="api_key cannot be empty string; omit the field to leave unset")
@@ -54,6 +64,10 @@ def update_llm_profile(profile_id: str, body: LLMProfileUpdate, db: Session = De
         raise HTTPException(status_code=404, detail="LLMProfile not found")
 
     data = body.model_dump(exclude_unset=True)
+    if "provider_type" in data or "strict_compatible" in data:
+        provider_type = data.get("provider_type", profile.provider_type)
+        strict_compatible = data.get("strict_compatible", profile.strict_compatible)
+        data["strict_compatible"] = _normalize_strict_compatible(provider_type, strict_compatible)
     api_key = data.pop("api_key", None)
     clear_api_key = data.pop("clear_api_key", False)
 

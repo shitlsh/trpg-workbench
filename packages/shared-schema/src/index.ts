@@ -103,6 +103,7 @@ export interface LLMProfile {
   name: string;
   provider_type: LLMProviderType;
   base_url: string | null;
+  strict_compatible: boolean;
   has_api_key: boolean;
   created_at: string;
   updated_at: string;
@@ -113,6 +114,7 @@ export interface CreateLLMProfileRequest {
   provider_type: LLMProviderType;
   base_url?: string;
   api_key?: string;
+  strict_compatible?: boolean;
 }
 
 export interface UpdateLLMProfileRequest {
@@ -120,6 +122,7 @@ export interface UpdateLLMProfileRequest {
   provider_type?: LLMProviderType;
   base_url?: string;
   api_key?: string;
+  strict_compatible?: boolean;
   clear_api_key?: boolean;
 }
 

@@ -60,6 +60,7 @@ class LLMProfileSchema(BaseModel):
     name: str
     provider_type: str
     base_url: str | None
+    strict_compatible: bool = False
     has_api_key: bool = False
     created_at: datetime
     updated_at: datetime
@@ -70,6 +71,7 @@ class LLMProfileCreate(BaseModel):
     provider_type: str
     base_url: str | None = None
     api_key: str | None = None
+    strict_compatible: bool = False
 
 
 class LLMProfileUpdate(BaseModel):
@@ -77,6 +79,7 @@ class LLMProfileUpdate(BaseModel):
     provider_type: str | None = None
     base_url: str | None = None
     api_key: str | None = None
+    strict_compatible: bool | None = None
     clear_api_key: bool = False
 
 

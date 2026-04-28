@@ -60,6 +60,7 @@ class LLMProfileORM(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False)  # openai/anthropic/google/openrouter/openai_compatible
     base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strict_compatible: Mapped[bool] = mapped_column(Boolean, default=False)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

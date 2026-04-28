@@ -13,7 +13,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 const EMPTY_FORM: CreateLLMProfileRequest = {
   name: "Gemini 2.0 Flash", provider_type: "google",
-  base_url: "", api_key: "",
+  base_url: "", api_key: "", strict_compatible: false,
 };
 
 interface Props {
@@ -46,7 +46,11 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   });
 
   function handleProviderChange(prov: LLMProviderType) {
-    setForm((f) => ({ ...f, provider_type: prov }));
+    setForm((f) => ({
+      ...f,
+      provider_type: prov,
+      strict_compatible: prov === "openai_compatible" ? (f.strict_compatible ?? false) : false,
+    }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -90,6 +94,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
             provider_type: "openai_compatible",
             base_url: "http://localhost:1234/v1",
             api_key: "lm-studio",
+            strict_compatible: false,
             name: f.provider_type === "openai_compatible" ? f.name : "LM Studio",
           }))}
         >
@@ -116,6 +121,22 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
           <label style={labelStyle}>
             Base URL {isLocalProvider && <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: "normal" }}>（LM Studio: localhost:1234/v1 · Ollama: localhost:11434/v1）</span>}
             <input style={inputStyle} value={form.base_url ?? ""} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder={isLocalProvider ? "http://localhost:1234/v1" : "https://..."} />
+          </label>
+        )}
+        {isLocalProvider && (
+          <label style={labelStyle}>
+            角色兼容模式
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 400 }}>
+              <input
+                type="checkbox"
+                checked={!!form.strict_compatible}
+                onChange={(e) => setForm((f) => ({ ...f, strict_compatible: e.target.checked }))}
+              />
+              strict_compatible（将 `developer` / `latest_reminder` 映射为 `system`）
+            </label>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              默认关闭（native_roles）。遇到 DeepSeek 等端点报 role 不支持时再开启。
+            </span>
           </label>
         )}
         <label style={labelStyle}>

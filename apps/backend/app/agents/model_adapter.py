@@ -83,6 +83,22 @@ def _normalize_openai_compatible_embedding_model(model_name: str) -> str:
     return model_name
 
 
+def _openai_compatible_role_map() -> dict[str, str]:
+    """Role map for strict OpenAI-compatible providers (e.g. DeepSeek).
+
+    Some providers reject `developer`; force all system-like messages to `system`.
+    """
+    return {
+        "system": "system",
+        "developer": "system",
+        "latest_reminder": "system",
+        "user": "user",
+        "assistant": "assistant",
+        "tool": "tool",
+        "model": "assistant",
+    }
+
+
 def model_from_profile(profile, model_name: str) -> Any:
     """
     Given a LLMProfileORM instance and an explicit model_name, return the Agno model object.
@@ -135,6 +151,8 @@ def model_from_profile(profile, model_name: str) -> Any:
         kwargs["api_key"] = api_key or "local"
         if base_url:
             kwargs["base_url"] = base_url
+        if bool(getattr(profile, "strict_compatible", False)):
+            kwargs["role_map"] = _openai_compatible_role_map()
         return _instantiate_chat_model(OpenAIChat, **kwargs)
 
     else:

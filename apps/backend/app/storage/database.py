@@ -50,6 +50,7 @@ def _run_migrations(engine) -> None:
     """Lightweight column-add migrations for SQLite (no Alembic)."""
     migrations = [
         "ALTER TABLE rule_sets ADD COLUMN default_prompt_profile_id TEXT",
+        "ALTER TABLE llm_profiles ADD COLUMN strict_compatible BOOLEAN DEFAULT 0",
     ]
     with engine.connect() as conn:
         for sql in migrations:

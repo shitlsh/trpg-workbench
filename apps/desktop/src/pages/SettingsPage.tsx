@@ -35,7 +35,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 const EMPTY_LLM: CreateLLMProfileRequest = {
   name: "", provider_type: "openai",
-  base_url: "", api_key: "",
+  base_url: "", api_key: "", strict_compatible: false,
 };
 
 const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
@@ -124,7 +124,7 @@ function LLMSection() {
     setEditTarget(p);
     setForm({
       name: p.name, provider_type: p.provider_type as LLMProviderType,
-      base_url: p.base_url ?? "", api_key: "",
+      base_url: p.base_url ?? "", api_key: "", strict_compatible: p.strict_compatible ?? false,
     });
     setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setFormError(null); setShowForm(true);
   }
@@ -132,7 +132,7 @@ function LLMSection() {
     setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null); setFetchedModels([]); setFetchModelsError(null); setTestModelName(""); setFormError(null);
   }
   function handleProviderChange(prov: LLMProviderType) {
-    setForm((f) => ({ ...f, provider_type: prov }));
+    setForm((f) => ({ ...f, provider_type: prov, strict_compatible: prov === "openai_compatible" ? (f.strict_compatible ?? false) : false }));
     setFetchedModels([]); setFetchModelsError(null);
   }
 
@@ -291,6 +291,22 @@ function LLMSection() {
                   </div>
                   {fetchModelsError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>{fetchModelsError}</span>}
                   {fetchedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 获取到 {fetchedModels.length} 个模型</span>}
+                </label>
+              )}
+              {form.provider_type === "openai_compatible" && (
+                <label className={styles.label} style={{ gap: 8 }}>
+                  角色兼容模式
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!form.strict_compatible}
+                      onChange={(e) => setForm((f) => ({ ...f, strict_compatible: e.target.checked }))}
+                    />
+                    strict_compatible（将 `developer` / `latest_reminder` 映射为 `system`）
+                  </label>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    默认关闭（native_roles）。仅当供应商不接受 `developer` 角色（如部分 DeepSeek/OpenAI-Compatible 网关）时再开启。
+                  </span>
                 </label>
               )}
               <label className={styles.label}>
