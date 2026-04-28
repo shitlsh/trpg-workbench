@@ -17,7 +17,7 @@ description: 约束 trpg-workbench 项目的整体架构决策、技术选型和
 |------|------|-----------|
 | 桌面壳 | Tauri | Electron、NW.js |
 | 前端框架 | React + Vite + TypeScript | Next.js、Nuxt、SvelteKit |
-| AI 编排 | Python + Agno | LangChain、LlamaIndex、纯 OpenAI SDK |
+| AI 编排 | Python + Provider 原生 SDK（OpenAI / Anthropic / Google / OpenAI-compatible） | 强依赖单一 Agent 框架（如 LangChain、LlamaIndex） |
 | 数据库 | SQLite（第一版）| MySQL、MongoDB（第一版禁用） |
 | 向量索引 | 本地轻量方案（如 lancedb、hnswlib）| 第一版禁止依赖外部向量服务 |
 | 资产格式 | 单文件 Markdown（YAML frontmatter + body） | 纯富文本、纯 HTML |
@@ -45,10 +45,11 @@ C. 应用服务层   Python 本地 HTTP 服务
    - 工作空间管理、文件导入、PDF 解析、资产读写
    - patch 应用、任务调度、图像生成调用、配置与日志
 
-D. AI 编排层    Python + Agno
+D. AI 编排层    Python + Provider 原生 SDK
    - Director（创作，tool-calling 读写）与 Explore（**只读**浏览，M26+，同聊天入口、按 `ChatSessionORM.agent_scope` 分流）
    - Rules / Consistency / Skill 子 Agent 由 Director 工具委托
    - Knowledge 检索、会话与记忆
+   - 可保留第三方 Agent 框架作为**可选适配层**，但不得成为核心运行时单点依赖
 
 E. 数据层       文件系统（真相源） + SQLite（可重建缓存索引） + 本地向量索引
     - 文件系统: 资产 .md 文件（frontmatter + body）、config.yaml、JSONL 对话、revision 快照
@@ -325,7 +326,7 @@ trpg-workbench/
       app/
         api/                     # HTTP 路由层
         services/                # 业务服务层
-        agents/                  # Agno Agent 定义（director.py + tools.py）
+        agents/                  # Agent 运行时（director.py + tools.py + provider adapter）
         knowledge/               # PDF 处理与检索
         storage/                 # SQLite + 文件操作
         models/                  # 数据模型定义（Pydantic）

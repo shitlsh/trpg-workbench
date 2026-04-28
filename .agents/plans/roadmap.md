@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路 **M1–M27 已完成**（见下表）。
+核心功能链路 **M1–M27 已完成**，M28 进入规划与实现阶段（见下表）。
 
 ```
 ✅ M1 基础骨架
@@ -33,6 +33,7 @@
                                                                                                                                                                                    ├── ✅ M25 LLM Profile 字段瘦身
                                                                                                                                                                                    ├── ✅ M26 探索子 Agent 与 Prompt 体系统一
                                                                                                                                                                                    └── ✅ M27 资产单步操作与批处理
+                                                                                                                                                                                         └── M28 原生 SDK Agent 运行时替换
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -80,7 +81,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| — | — | — | *（无）* |
+| M28 | 原生 SDK Agent 运行时替换 | 将聊天与工具编排从 Agno 迁移到 Provider 原生 SDK，保留现有记忆/RAG/LanceDB 能力与 SSE 协议 | [m28-native-sdk-agent-runtime.md](m28-native-sdk-agent-runtime.md) |
 
 ---
 
@@ -90,7 +91,7 @@
 
 - **桌面壳**：Tauri，禁止 Electron
 - **前端**：React + Vite + TypeScript，禁止 Next.js
-- **后端**：Python + FastAPI + Agno，禁止 LangChain
+- **后端**：Python + FastAPI + Provider 原生 SDK 运行时（可选框架适配层），禁止将单一 Agent 框架作为核心单点
 - **数据库**：SQLite（本地），禁止 PostgreSQL（第一版）
 - **向量库**：lancedb 或 hnswlib（本地文件型），禁止外部向量服务
 - **资产格式**：Frontmatter Markdown 为真相源（M18 起），`.trpg/cache.db` 为可重建索引

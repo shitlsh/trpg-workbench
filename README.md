@@ -2,7 +2,7 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M1–M27 已完成**（资产单步/批处理、跨资产 preview→apply 等已落地；计划见 [`.agents/plans/archive/m27-asset-ops-and-batch.md`](.agents/plans/archive/m27-asset-ops-and-batch.md)）
+> **当前状态：M1–M27 已完成，M28 进行中**（进入 Agent 运行时去框架化阶段：从 Agno 强依赖迁移为 Provider 原生 SDK 主链路；计划见 [`.agents/plans/m28-native-sdk-agent-runtime.md`](.agents/plans/m28-native-sdk-agent-runtime.md)）
 
 ---
 
@@ -12,7 +12,7 @@
 |------|------|
 | 桌面壳 | [Tauri 2](https://tauri.app) |
 | 前端 | React 18 + Vite + TypeScript |
-| AI 编排 | Python + [Agno](https://github.com/agno-agi/agno) |
+| AI 编排 | Python + Provider 原生 SDK（OpenAI / Anthropic / Google / OpenAI-compatible），可选适配框架 |
 | 数据库 | SQLite（via SQLAlchemy） |
 | 向量索引 | lancedb |
 
@@ -33,7 +33,7 @@ trpg-workbench/
     backend/                # Python FastAPI 后端
       app/
         api/                # HTTP 路由（workspaces、assets、chat、llm_profiles 等）
-        agents/             # Agno Agent 定义（director、plot、npc 等）
+        agents/             # Agent 运行时（director/explore、tools、provider adapter）
         data/               # 静态数据（model catalog JSON）
         models/             # ORM（SQLAlchemy）+ Pydantic Schema
         services/           # 业务逻辑（model_routing、catalog_service 等）
@@ -111,7 +111,7 @@ cargo tauri dev
 
 运行时数据默认存储在 `~/trpg-workbench-data/`，可通过环境变量 `TRPG_DATA_DIR` 覆盖。
 
-后端（FastAPI）可选环境变量 `LLM_REQUEST_TIMEOUT_SECONDS`：设为正整数秒时，会对 OpenAI/Agno 的 LLM 与 Embedding 请求注入对应 HTTP 超时；**不设置**则不传 `timeout`，由 SDK 默认行为决定（与未接入该参数前一致）。**无应用内 UI**，需在启动进程前设置环境变量。
+后端（FastAPI）可选环境变量 `LLM_REQUEST_TIMEOUT_SECONDS`：设为正整数秒时，会对 Provider SDK 的 LLM 与 Embedding 请求注入对应 HTTP 超时；**不设置**则不传 `timeout`，由 SDK 默认行为决定（与未接入该参数前一致）。**无应用内 UI**，需在启动进程前设置环境变量。
 
 ```
 ~/trpg-workbench-data/
