@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, AlertCircle, CheckCircle } from "lucide-react";
 import type { ToolCall, ConsistencyReport, ConsistencyIssue } from "@trpg-workbench/shared-schema";
 
@@ -250,9 +250,32 @@ function knowledgeResultSummary(raw: string): string | null {
   }
 }
 
+function humanizeResultSummary(toolCall: ToolCall): string | null {
+  const raw = toolCall.result_summary;
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof data.error === "string" && data.error) return `失败：${data.error}`;
+    if (typeof data.message === "string" && data.message) return data.message;
+
+    const success = data.success;
+    if (success === true) {
+      if (typeof data.change_summary === "string" && data.change_summary) return data.change_summary;
+      if (typeof data.asset_name === "string" && data.asset_name) return `已处理：${data.asset_name}`;
+      if (typeof data.slug === "string" && data.slug) return `已完成（${data.slug}）`;
+      return "执行成功";
+    }
+    if (success === false) {
+      return "执行失败";
+    }
+  } catch {
+    // non-JSON summary, keep concise raw preview below
+  }
+  return raw.length > 140 ? `${raw.slice(0, 140)}...` : raw;
+}
+
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [resultExpanded, setResultExpanded] = useState(false);
   const [traceExpanded, setTraceExpanded] = useState(false);
 
   let args: Record<string, unknown> = {};
@@ -274,6 +297,19 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const knowledgeSummary = (toolCall.name === "search_knowledge" || toolCall.name === "consult_rules") && toolCall.result_summary
     ? knowledgeResultSummary(toolCall.result_summary)
     : null;
+  const genericSummary = !consistencyReport && !knowledgeSummary
+    ? humanizeResultSummary(toolCall)
+    : null;
+
+  useEffect(() => {
+    if (toolCall.status === "running" && (toolCall.trace_logs?.length ?? 0) > 0) {
+      setTraceExpanded(true);
+      return;
+    }
+    if (toolCall.status !== "running") {
+      setTraceExpanded(false);
+    }
+  }, [toolCall.status, toolCall.trace_logs]);
 
   const statusIcon = () => {
     switch (toolCall.status) {
@@ -376,39 +412,14 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
             <KnowledgeResultView raw={toolCall.result_summary} args={args} />
           ) : (
             <>
-              <pre style={{
-                fontSize: 10, margin: 0,
-                color: "var(--text-muted)",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}>
-                {JSON.stringify(args, null, 2)}
-              </pre>
-              {toolCall.result_summary && (
-                <div style={{ marginTop: 6, borderTop: "1px solid var(--border)", paddingTop: 6 }}>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3, fontWeight: 600 }}>结果</div>
-                  <pre style={{
-                    fontSize: 10, margin: 0,
-                    color: "var(--text)",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}>
-                    {resultExpanded || toolCall.result_summary.length <= 500
-                      ? toolCall.result_summary
-                      : toolCall.result_summary.slice(0, 500) + "…"}
-                  </pre>
-                  {toolCall.result_summary.length > 500 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setResultExpanded(!resultExpanded); }}
-                      style={{
-                        marginTop: 4, fontSize: 10,
-                        background: "none", border: "none", cursor: "pointer",
-                        color: "var(--accent)", padding: 0,
-                      }}
-                    >
-                      {resultExpanded ? "收起" : "展开全部"}
-                    </button>
-                  )}
+              {inlineArgsSummary && (
+                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                  目标：{inlineArgsSummary}
+                </div>
+              )}
+              {genericSummary && (
+                <div style={{ marginTop: 4, fontSize: 10, color: "var(--text)" }}>
+                  结果：{genericSummary}
                 </div>
               )}
               {toolCall.trace_logs && toolCall.trace_logs.length > 0 && (
