@@ -360,17 +360,16 @@ export type SearchResult = Citation;
 // Use BuiltinAssetType / isBuiltinAssetType() when you need to distinguish built-ins.
 export type AssetType = string;
 
+// M30: Reduced from 10 to 6 types. Merged: lore_note+branch→outline, timeline→stage,
+// location+map_brief→map. Deprecated types (lore_note, branch, timeline, map_brief, location)
+// are no longer created by AI but existing assets of those types continue to render.
 export const BUILTIN_ASSET_TYPES = [
-  "outline",
-  "stage",
-  "npc",
-  "monster",
-  "location",
-  "clue",
-  "branch",
-  "timeline",
-  "map_brief",
-  "lore_note",
+  "outline",   // 大纲：故事概述、世界背景、分支结局
+  "stage",     // 场景：故事单元（幕），事件序列、NPC出场
+  "npc",       // NPC：玩家会交互的人物
+  "monster",   // 敌人：玩家的威胁
+  "map",       // 地图：地点网络、连接方式、移动路径
+  "clue",      // 线索：关键物品或事件，与特定场景相关
 ] as const;
 
 export type BuiltinAssetType = (typeof BUILTIN_ASSET_TYPES)[number];

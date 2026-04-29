@@ -16,9 +16,10 @@ router = APIRouter(
     tags=["custom-asset-type-configs"],
 )
 
+# M30: Reduced to 6 canonical built-in types.
+# Deprecated: location, branch, timeline, map_brief, lore_note
 _BUILTIN_TYPES = {
-    "outline", "stage", "npc", "monster", "location",
-    "clue", "branch", "timeline", "map_brief", "lore_note",
+    "outline", "stage", "npc", "monster", "map", "clue",
 }
 
 

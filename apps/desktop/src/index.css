@@ -34,17 +34,13 @@
   --radius:       6px;
   --font:         var(--font-ui);
 
-  /* ── Asset type colors ───────────────────────────────────────────────────── */
-  --color-type-outline:   #7c6af7;
-  --color-type-stage:     #e05252;
-  --color-type-npc:       #52b4c9;
-  --color-type-monster:   #f07030;
-  --color-type-location:  #52c97e;
-  --color-type-clue:      #f0c050;
-  --color-type-branch:    #c97052;
-  --color-type-timeline:  #a07af0;
-  --color-type-map-brief: #52c9a8;
-  --color-type-lore-note: #9090b0;
+  /* ── Asset type colors (M30: 6 canonical types) ─────────────────────────── */
+  --color-type-outline: #7c6af7;
+  --color-type-stage:   #e05252;
+  --color-type-npc:     #52b4c9;
+  --color-type-monster: #f07030;
+  --color-type-map:     #52c97e;
+  --color-type-clue:    #f0c050;
 
   /* ── Text color hierarchy (3 tiers) ──────────────────────────────────────── */
   --text-subtle:  #666;
@@ -86,17 +82,13 @@
   --radius:       6px;
   --font:         var(--font-ui);
 
-  /* ── Asset type colors (light — slightly deeper for contrast) ─────────────── */
-  --color-type-outline:   #5a48e8;
-  --color-type-stage:     #c43030;
-  --color-type-npc:       #2a8faa;
-  --color-type-monster:   #c05010;
-  --color-type-location:  #2a8a4a;
-  --color-type-clue:      #b08000;
-  --color-type-branch:    #a05030;
-  --color-type-timeline:  #7050d0;
-  --color-type-map-brief: #208070;
-  --color-type-lore-note: #606080;
+  /* ── Asset type colors (light — slightly deeper for contrast, M30: 6 types) ── */
+  --color-type-outline: #5a48e8;
+  --color-type-stage:   #c43030;
+  --color-type-npc:     #2a8faa;
+  --color-type-monster: #c05010;
+  --color-type-map:     #2a8a4a;
+  --color-type-clue:    #b08000;
 
   /* ── Text color hierarchy (3 tiers) ──────────────────────────────────────── */
   --text-subtle:  #a0998f;

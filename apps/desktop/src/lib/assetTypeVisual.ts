@@ -3,12 +3,8 @@ import {
   Theater,
   Users,
   Skull,
-  MapPin,
-  Search,
-  GitBranch,
-  Clock,
   Map,
-  Scroll,
+  Search,
   Folder,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -16,48 +12,58 @@ import type { CustomAssetTypeConfig } from "@trpg-workbench/shared-schema";
 import { BUILTIN_ASSET_TYPES } from "@trpg-workbench/shared-schema";
 
 // ─── Per-type icon mapping ────────────────────────────────────────────────────
+// M30: 6 canonical built-in types. Legacy types (lore_note, branch, timeline,
+// map_brief, location) still have fallback entries so existing assets continue
+// to render with sensible icons rather than the generic Folder.
 
 const ASSET_TYPE_ICONS: Partial<Record<string, LucideIcon>> = {
-  outline:   BookOpen,
-  stage:     Theater,
-  npc:       Users,
-  monster:   Skull,
-  location:  MapPin,
-  clue:      Search,
-  branch:    GitBranch,
-  timeline:  Clock,
+  // Current built-ins
+  outline: BookOpen,
+  stage:   Theater,
+  npc:     Users,
+  monster: Skull,
+  map:     Map,
+  clue:    Search,
+  // Legacy fallbacks (deprecated in M30, kept for backward rendering only)
+  location:  Map,
   map_brief: Map,
-  lore_note: Scroll,
+  lore_note: BookOpen,
+  branch:    BookOpen,
+  timeline:  Theater,
 };
 
 // ─── Per-type CSS variable mapping ───────────────────────────────────────────
 
 const ASSET_TYPE_COLOR_VARS: Partial<Record<string, string>> = {
-  outline:   "var(--color-type-outline)",
-  stage:     "var(--color-type-stage)",
-  npc:       "var(--color-type-npc)",
-  monster:   "var(--color-type-monster)",
-  location:  "var(--color-type-location)",
-  clue:      "var(--color-type-clue)",
-  branch:    "var(--color-type-branch)",
-  timeline:  "var(--color-type-timeline)",
-  map_brief: "var(--color-type-map-brief)",
-  lore_note: "var(--color-type-lore-note)",
+  outline: "var(--color-type-outline)",
+  stage:   "var(--color-type-stage)",
+  npc:     "var(--color-type-npc)",
+  monster: "var(--color-type-monster)",
+  map:     "var(--color-type-map)",
+  clue:    "var(--color-type-clue)",
+  // Legacy fallbacks
+  location:  "var(--color-type-map)",
+  map_brief: "var(--color-type-map)",
+  lore_note: "var(--color-type-outline)",
+  branch:    "var(--color-type-outline)",
+  timeline:  "var(--color-type-stage)",
 };
 
 // ─── Per-type Chinese labels ──────────────────────────────────────────────────
 
 const ASSET_TYPE_LABELS: Partial<Record<string, string>> = {
-  outline:   "大纲",
-  stage:     "场景",
-  npc:       "NPC",
-  monster:   "怪物",
-  location:  "地点",
-  clue:      "线索",
-  branch:    "分支",
-  timeline:  "时间线",
-  map_brief: "地图简报",
-  lore_note: "世界设定",
+  outline: "大纲",
+  stage:   "场景",
+  npc:     "NPC",
+  monster: "敌人",
+  map:     "地图",
+  clue:    "线索",
+  // Legacy fallbacks
+  location:  "地点（旧）",
+  map_brief: "地图简报（旧）",
+  lore_note: "世界设定（旧）",
+  branch:    "分支（旧）",
+  timeline:  "时间线（旧）",
 };
 
 // ─── Public helpers ───────────────────────────────────────────────────────────
