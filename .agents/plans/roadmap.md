@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路 **M1–M29 已完成**，**M30 资产类型系统重构** 进行中。
+核心功能链路 **M1–M30 已完成**，下一个 milestone 待规划。
 
 ```
 ✅ M1 基础骨架
@@ -35,7 +35,7 @@
                                                                                                                                                                                    └── ✅ M27 资产单步操作与批处理
                                                                                                                                                                                            └── ✅ M28 原生 SDK Agent 运行时替换
                                                                                                                                                                                                   └── ✅ M29 Agent 交互质量提升
-                                                                                                                                                                                                         └── 🔄 M30 资产类型系统重构
+                                                                                                                                                                                                         └── ✅ M30 资产类型系统重构
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -85,7 +85,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M30 🔄 | 资产类型系统重构 | 内置类型精简为 6 种，引入 description+template_md，AI 辅助创建自定义类型，类型校验 | [m30-asset-type-system.md](m30-asset-type-system.md) |
+| M30 ✅ | 资产类型系统重构 | 内置类型精简为 6 种，引入 description+template_md，AI 辅助创建自定义类型，类型校验 | [archive/m30-asset-type-system.md](archive/m30-asset-type-system.md) |
 
 ---
 
