@@ -121,6 +121,15 @@ async def run_director_stream(
         call_name_by_id: dict[str, str] = {}
         _in_think = False
         _think_buf = ""
+
+        # <plan> tag parsing state
+        _in_plan = False
+        _plan_buf = ""
+        _plan_emitted = False
+        _plan_id: str = ""
+        _plan_steps: list[dict] = []
+        _plan_step_cursor = 0
+
         req = RuntimeRequest(
             profile=model["profile"],
             model_name=model["model_name"],
@@ -147,24 +156,90 @@ async def run_director_stream(
                             if end > 0:
                                 yield {"event": "thinking_delta", "data": {"content": raw[:end]}}
                             _in_think = False
-                            raw = raw[end + len("</think>") :]
+                            raw = raw[end + len("</think>"):]
+                    elif _in_plan:
+                        end = raw.find("</plan>")
+                        if end == -1:
+                            _plan_buf += raw
+                            raw = ""
+                        else:
+                            _plan_buf += raw[:end]
+                            _in_plan = False
+                            raw = raw[end + len("</plan>"):]
+                            # Parse and emit agent_plan
+                            try:
+                                steps_raw = json.loads(_plan_buf.strip())
+                                if isinstance(steps_raw, list) and steps_raw:
+                                    _plan_id = f"plan_{uuid.uuid4().hex[:12]}"
+                                    _plan_steps = [
+                                        {
+                                            "id": s.get("id", f"s{i+1}"),
+                                            "index": i,
+                                            "label": s.get("label", ""),
+                                            "status": "pending",
+                                        }
+                                        for i, s in enumerate(steps_raw)
+                                        if isinstance(s, dict)
+                                    ]
+                                    if _plan_steps:
+                                        _plan_emitted = True
+                                        yield {
+                                            "event": "agent_plan",
+                                            "data": {
+                                                "plan_id": _plan_id,
+                                                "steps": _plan_steps,
+                                            },
+                                        }
+                            except Exception:
+                                # Malformed JSON — silently ignore, degrade gracefully
+                                pass
                     else:
-                        start = raw.find("<think>")
-                        if start == -1:
+                        # Check for <think> first, then <plan>
+                        think_start = raw.find("<think>")
+                        plan_start = raw.find("<plan>")
+
+                        next_tag_start = -1
+                        next_tag = None
+                        if think_start != -1 and (plan_start == -1 or think_start <= plan_start):
+                            next_tag_start = think_start
+                            next_tag = "think"
+                        elif plan_start != -1:
+                            next_tag_start = plan_start
+                            next_tag = "plan"
+
+                        if next_tag_start == -1:
+                            # No special tags — guard against partial tag at end
                             safe = max(0, len(raw) - 7)
                             if safe > 0:
                                 yield {"event": "text_delta", "data": {"content": raw[:safe]}}
                             _think_buf = raw[safe:]
                             raw = ""
                         else:
-                            if start > 0:
-                                yield {"event": "text_delta", "data": {"content": raw[:start]}}
-                            _in_think = True
-                            raw = raw[start + len("<think>") :]
+                            if next_tag_start > 0:
+                                yield {"event": "text_delta", "data": {"content": raw[:next_tag_start]}}
+                            if next_tag == "think":
+                                _in_think = True
+                                raw = raw[next_tag_start + len("<think>"):]
+                            else:
+                                _in_plan = True
+                                _plan_buf = ""
+                                raw = raw[next_tag_start + len("<plan>"):]
                 continue
             if evt.get("event") == "tool_call_start":
                 data = evt.get("data", {})
                 call_name_by_id[data.get("id", "")] = data.get("name", "")
+                # Advance plan step to "running" (sequential mapping)
+                if _plan_emitted and _plan_step_cursor < len(_plan_steps):
+                    step = _plan_steps[_plan_step_cursor]
+                    yield {
+                        "event": "agent_plan_update",
+                        "data": {
+                            "plan_id": _plan_id,
+                            "step_id": step["id"],
+                            "status": "running",
+                            "tool_call_id": data.get("id", ""),
+                        },
+                    }
             if evt.get("event") == "tool_call_result":
                 data = evt.get("data", {})
                 raw_content = str(data.get("summary", ""))
@@ -179,6 +254,19 @@ async def run_director_stream(
                     except Exception:
                         pass
                 evt["data"]["workspace_mutating"] = ws_mut
+                # Advance plan step to "done" or "error" (sequential mapping)
+                if _plan_emitted and _plan_step_cursor < len(_plan_steps):
+                    step = _plan_steps[_plan_step_cursor]
+                    step_status = "done" if bool(data.get("success")) else "error"
+                    yield {
+                        "event": "agent_plan_update",
+                        "data": {
+                            "plan_id": _plan_id,
+                            "step_id": step["id"],
+                            "status": step_status,
+                        },
+                    }
+                    _plan_step_cursor += 1
             yield evt
         if _think_buf:
             evt_name = "thinking_delta" if _in_think else "text_delta"

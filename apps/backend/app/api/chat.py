@@ -409,6 +409,13 @@ async def send_message(
                     db.commit()
                     yield _sse("done", {})
 
+                elif event_type == "agent_question":
+                    yield _sse("agent_question", data)
+
+                elif event_type in ("agent_plan", "agent_plan_update"):
+                    # Plan events are UI-only metadata — pass through, do not persist
+                    yield _sse(event_type, data)
+
                 elif event_type == "error":
                     yield _sse("error", data)
                     yield _sse("done", {})
