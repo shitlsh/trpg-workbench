@@ -11,6 +11,59 @@ from app.agents.tools import (
 )
 from app.prompts import load_prompt
 
+# M30: canonical 6 built-in types — order determines injection order in prompt
+_BUILTIN_TYPE_KEYS = ["outline", "stage", "npc", "monster", "map", "clue"]
+
+
+def _build_asset_types_section(workspace_context: dict) -> str:
+    """Build the asset type definitions section injected into the Director prompt.
+
+    For built-in types, loads from prompts/asset_types/{type_key}.txt.
+    For custom types, uses the description + template_md fields from workspace_context.
+    Returns an empty string if no type definitions are available.
+    """
+    lines = [
+        "## 可用资产类型",
+        "创建资产时必须从以下列表中选择 `asset_type`，不得使用列表之外的类型。",
+        "",
+    ]
+
+    # Built-in types
+    for type_key in _BUILTIN_TYPE_KEYS:
+        try:
+            content = load_prompt("asset_types", type_key)
+            lines.append(content.strip())
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+        except Exception:
+            # Gracefully skip if file missing (should not happen in production)
+            pass
+
+    # Custom types registered for this workspace's rule set
+    custom_types = workspace_context.get("custom_asset_types", [])
+    if custom_types:
+        lines.append("### 自定义类型（当前规则集注册）")
+        lines.append("")
+        for t in custom_types:
+            type_key = t.get("type_key", "")
+            label = t.get("label", type_key)
+            icon = t.get("icon", "")
+            description = t.get("description", "").strip()
+            template_md = t.get("template_md", "").strip()
+            lines.append(f"#### {icon} {label}（{type_key}）")
+            if description:
+                lines.append("")
+                lines.append(description)
+            if template_md:
+                lines.append("")
+                lines.append("**内容模板：**")
+                lines.append("")
+                lines.append(template_md)
+            lines.append("")
+
+    return "\n".join(lines)
+
 
 def build_director_prompt(workspace_context: dict) -> str:
     system_prompt = load_prompt("director", "system")
@@ -18,8 +71,13 @@ def build_director_prompt(workspace_context: dict) -> str:
     if style:
         prefix = load_prompt("_shared", "style_prefix", style_prompt=style)
         system_prompt = f"{prefix}\n\n{system_prompt}"
+    asset_types_section = _build_asset_types_section(workspace_context)
     snapshot = _build_workspace_snapshot(workspace_context)
-    return f"{system_prompt}\n\n{snapshot}"
+    parts = [system_prompt]
+    if asset_types_section:
+        parts.append(asset_types_section)
+    parts.append(snapshot)
+    return "\n\n".join(parts)
 
 
 def _build_workspace_snapshot(workspace_context: dict) -> str:
@@ -42,8 +100,9 @@ def _build_workspace_snapshot(workspace_context: dict) -> str:
     if style:
         lines.append(f"- 创作风格：{style[:80]}{'…' if len(style) > 80 else ''}")
     if custom_types:
-        type_names = "、".join(t.get("name", "") for t in custom_types[:10])
-        lines.append(f"- 自定义资产类型：{type_names}")
+        # M30 bugfix: was t.get("name") which always returned "" — should be "label"
+        type_names = "、".join(t.get("label", t.get("type_key", "")) for t in custom_types[:10])
+        lines.append(f"- 自定义资产类型：{type_names}（详见上方「可用资产类型」）")
 
     if not assets:
         lines.append("- 现有资产：（空，尚无资产）")
