@@ -10,7 +10,7 @@
   "label": "中文显示名称，2-8字，如 法术 / 道具 / 文件",
   "icon": "一个合适的 emoji，如 ✨ / 📦 / 📄",
   "description": "以下三段内容，用换行分隔：\n\n## 范围与用途\n（3-5句话说明：这个类型是什么、什么时候用它、和其他类型的区别）\n\n## 创建前必须提供\n（列出2-4条必要信息，格式：- **字段名**：说明）",
-  "template_md": "完整的 Markdown 章节模板，包含 frontmatter 和正文章节骨架，参考以下格式：\n---\nname: {类型}名称\ntype: {type_key}\nsummary: 一句话摘要（约50字）\nstatus: draft\n---\n\n# {类型}名称\n\n## 章节1\n说明\n\n## 章节2\n说明"
+  "template_md": "完整的 Markdown 章节模板，包含 frontmatter 和正文章节骨架，参考以下格式：\n---\nname: 类型名称\ntype: 你生成的type_key值\nsummary: 一句话摘要（约50字）\nstatus: draft\n---\n\n# 类型名称\n\n## 章节1\n说明\n\n## 章节2\n说明"
 }}
 
 要求：
