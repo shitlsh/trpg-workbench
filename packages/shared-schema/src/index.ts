@@ -542,6 +542,8 @@ export type SSEEventType =
   | "tool_call_start"
   | "tool_call_result"
   | "agent_question"
+  | "agent_plan"
+  | "agent_plan_update"
   | "done"
   | "error";
 
@@ -599,12 +601,47 @@ export interface SSEAgentQuestion {
   data: AgentQuestion;
 }
 
+// ─── M29: Agent Plan (structured task list) ──────────────────────────────────
+
+export type PlanStepStatus = "pending" | "running" | "done" | "error";
+
+export interface AgentPlanStep {
+  id: string;
+  index: number;
+  label: string;
+  status: PlanStepStatus;
+}
+
+export interface AgentPlan {
+  plan_id: string;
+  steps: AgentPlanStep[];
+}
+
+export interface AgentPlanUpdate {
+  plan_id: string;
+  step_id: string;
+  status: PlanStepStatus;
+  tool_call_id?: string;
+}
+
+export interface SSEAgentPlan {
+  event: "agent_plan";
+  data: AgentPlan;
+}
+
+export interface SSEAgentPlanUpdate {
+  event: "agent_plan_update";
+  data: AgentPlanUpdate;
+}
+
 export type SSEEvent =
   | SSETextDelta
   | SSEToolCallStart
   | SSEToolTrace
   | SSEToolCallResult
   | SSEAgentQuestion
+  | SSEAgentPlan
+  | SSEAgentPlanUpdate
   | SSEDone
   | SSEError;
 
