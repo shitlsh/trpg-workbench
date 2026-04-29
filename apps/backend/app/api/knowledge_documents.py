@@ -720,6 +720,7 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
         fetch_pdf_toc_llm_raw,
         parse_pdf_toc_response,
         full_toc_rows_to_preview,
+        build_full_toc_from_toc_text,
         TocNotRecognizedError,
     )
 
@@ -883,17 +884,48 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
             total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
             rows = _toc_sections_payload(result.sections)
             result_body: dict[str, Any] = {"sections": rows}
-            if result.full_toc is not None:
-                result_body["full_toc"] = result.full_toc
+
+            # Phase-2a: attempt rule-based full_toc from toc_text + heading numbering
+            rule_full_toc: dict[str, Any] | None = None
             try:
-                pe = full_toc_rows_to_preview(result.sections, result.full_toc)
+                rule_full_toc = build_full_toc_from_toc_text(toc_text, result.sections)
+            except Exception as e:
+                _log.warning(
+                    "knowledge_sse operation=analyze_toc build_full_toc_from_toc_text error file_id=%s: %s",
+                    file_id, e, exc_info=True,
+                )
+
+            if rule_full_toc is not None:
+                from app.knowledge.toc_analyzer import _extract_full_toc_rows
+                rule_rows = len(_extract_full_toc_rows(rule_full_toc))
+                _log.info(
+                    "knowledge_sse operation=analyze_toc full_toc_source=rule file_id=%s "
+                    "rule_rows=%s sections=%s → sending rule full_toc to frontend",
+                    file_id, rule_rows, len(result.sections),
+                )
+                result_body["full_toc"] = rule_full_toc
+                result_body["full_toc_source"] = "rule"
+            else:
+                _log.info(
+                    "knowledge_sse operation=analyze_toc full_toc_source=pending_llm file_id=%s "
+                    "sections=%s → rule-based sparse, signalling frontend to call analyze-full-toc",
+                    file_id, len(result.sections),
+                )
+                # Signal to the frontend that it should request a full_toc via analyze-full-toc
+                result_body["full_toc_source"] = "pending_llm"
+
+            try:
+                active_full_toc = rule_full_toc  # may be None → preview_expanded skipped
+                pe = full_toc_rows_to_preview(result.sections, active_full_toc)
                 if pe:
                     result_body["preview_expanded"] = pe
             except Exception as e:
                 _log.debug("analyze_toc preview_expanded skipped: %s", e, exc_info=True)
+
             _log.info(
                 "knowledge_sse operation=analyze_toc phase=complete file_id=%s correlation_id=%s total_ms=%s "
-                "llm_ms=%s parse_ms=%s toc_chars=%s response_chars=%s sections_out=%s parse_ok=true",
+                "llm_ms=%s parse_ms=%s toc_chars=%s response_chars=%s sections_out=%s "
+                "full_toc_source=%s parse_ok=true",
                 file_id,
                 correlation_id,
                 total_ms,
@@ -902,6 +934,7 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
                 toc_chars,
                 response_chars,
                 len(rows),
+                result_body.get("full_toc_source", "none"),
             )
             yield _doc_sse(
                 "progress",
@@ -913,6 +946,7 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
                         "elapsed_ms": parse_ms,
                         "parse_ok": True,
                         "sections_out": len(rows),
+                        "full_toc_source": result_body.get("full_toc_source"),
                     },
                 },
             )
@@ -930,7 +964,160 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
-# ── 3b. CHM: LLM suggest chunk_type (shallow rows + depth inherit) ───────────
+# ── 3b. Async full_toc via LLM (Phase-2 fallback when rule-based is sparse) ───
+
+class AnalyzeFullTocRequest(BaseModel):
+    toc_text: str
+    sections: list[dict[str, Any]]
+    llm_profile_id: str
+    llm_model_name: str = ""
+
+
+@router3.post("/preview/{file_id}/analyze-full-toc")
+async def analyze_full_toc(file_id: str, body: AnalyzeFullTocRequest, db: Session = Depends(get_db)):
+    """Phase-2 SSE endpoint: request full_toc tree from LLM (sections-only output).
+
+    Called by frontend when Phase-1 ``analyze-toc`` returned ``full_toc_source: 'pending_llm'``.
+
+    Events: ``progress`` (phase, message), ``result`` ({full_toc, preview_expanded}), ``error``.
+    """
+    _get_temp(file_id)  # validate file still exists
+
+    from app.models.orm import LLMProfileORM
+    from app.knowledge.toc_analyzer import (
+        TocSection,
+        fetch_full_toc_llm,
+        full_toc_rows_to_preview,
+    )
+
+    profile = db.get(LLMProfileORM, body.llm_profile_id)
+    if not profile:
+        profile = db.query(LLMProfileORM).first()
+    if not profile:
+        async def _no_profile():
+            yield _doc_sse("error", {"message": "No LLM profile configured.", "error_type": "ModelNotConfiguredError"})
+        return StreamingResponse(_no_profile(), media_type="text/event-stream")
+
+    # Reconstruct TocSection list from request body
+    sections: list[TocSection] = []
+    for s in body.sections:
+        if not isinstance(s, dict) or not s.get("title"):
+            continue
+        sections.append(TocSection(
+            title=str(s.get("title", "")),
+            page_from=int(s.get("page_from", 1)),
+            page_to=s.get("page_to"),
+            depth=int(s.get("depth", 1)),
+            suggested_chunk_type=s.get("suggested_chunk_type"),
+        ))
+
+    toc_text = body.toc_text
+    model_name = body.llm_model_name
+    model_label = (model_name or "").strip() or (getattr(profile, "model_name", None) or "")
+
+    _log.info(
+        "knowledge_sse operation=analyze_full_toc ENTER file_id=%s sections=%s toc_chars=%s model=%s",
+        file_id, len(sections), len(toc_text or ""), model_label,
+    )
+
+    async def _stream():
+        correlation_id = uuid.uuid4().hex[:16]
+        t0 = time.perf_counter()
+        detail_base = {
+            "correlation_id": correlation_id,
+            "operation": "analyze_full_toc",
+            "file_id": file_id,
+            "model": model_label,
+        }
+        yield _doc_sse("progress", {"phase": "queued", "message": "已加入完整目录分析队列", "detail": detail_base})
+        yield _doc_sse("progress", {"phase": "llm_request", "message": "正在请求模型生成完整目录树…", "detail": detail_base})
+        yield _doc_sse(
+            "progress",
+            {"phase": "llm_wait", "message": "已发送请求，等待模型响应…", "detail": {**detail_base, "wait_seconds": 0}},
+        )
+        try:
+            q: asyncio.Queue = asyncio.Queue()
+
+            async def _fetch():
+                try:
+                    t_llm = time.perf_counter()
+                    full_toc_local = await fetch_full_toc_llm(toc_text, sections, profile, model_name)
+                    llm_ms_local = round((time.perf_counter() - t_llm) * 1000.0, 2)
+                    await q.put(("ok", full_toc_local, llm_ms_local))
+                except Exception as exc:
+                    await q.put(("err", str(exc)))
+
+            asyncio.create_task(_fetch())
+            t_llm_start = time.perf_counter()
+            full_toc: dict[str, Any] | None = None
+            llm_ms = 0.0
+
+            while True:
+                if (time.perf_counter() - t_llm_start) >= TOC_LLM_MAX_WAIT_SECONDS:
+                    yield _doc_sse(
+                        "error",
+                        {"message": f"完整目录分析超时（>{int(TOC_LLM_MAX_WAIT_SECONDS)}秒），请重试或换更快模型。"},
+                    )
+                    return
+                remaining = TOC_LLM_MAX_WAIT_SECONDS - (time.perf_counter() - t_llm_start)
+                try:
+                    item = await asyncio.wait_for(q.get(), timeout=min(10.0, max(0.1, remaining)))
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    wait_sec = int(time.perf_counter() - t_llm_start)
+                    yield _doc_sse(
+                        "progress",
+                        {"phase": "llm_wait", "message": f"等待模型响应中（已约 {wait_sec} 秒）",
+                         "detail": {**detail_base, "wait_seconds": wait_sec}},
+                    )
+                    continue
+                if item[0] == "err":
+                    yield _doc_sse("error", {"message": item[1]})
+                    return
+                _, full_toc, llm_ms = item
+                break
+
+            total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+            if full_toc is None:
+                _log.info(
+                    "knowledge_sse operation=analyze_full_toc phase=no_result file_id=%s total_ms=%s",
+                    file_id, total_ms,
+                )
+                yield _doc_sse("error", {"message": "模型未能生成有效的完整目录树，请重试。", "error_type": "full_toc_empty"})
+                return
+
+            result_body: dict[str, Any] = {"full_toc": full_toc, "full_toc_source": "llm"}
+            try:
+                pe = full_toc_rows_to_preview(sections, full_toc)
+                if pe:
+                    result_body["preview_expanded"] = pe
+            except Exception as e:
+                _log.debug("analyze_full_toc preview_expanded skipped: %s", e, exc_info=True)
+
+            _log.info(
+                "knowledge_sse operation=analyze_full_toc phase=complete file_id=%s correlation_id=%s "
+                "total_ms=%s llm_ms=%s",
+                file_id, correlation_id, total_ms, llm_ms,
+            )
+            yield _doc_sse("progress", {
+                "phase": "complete",
+                "message": "完整目录树生成完成",
+                "detail": {**detail_base, "elapsed_ms": total_ms},
+            })
+            yield _doc_sse("result", result_body)
+
+        except Exception as exc:
+            total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+            _log.exception(
+                "knowledge_sse operation=analyze_full_toc phase=error file_id=%s total_ms=%s",
+                file_id, total_ms,
+            )
+            yield _doc_sse("error", {"message": str(exc)})
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# ── 3c. CHM: LLM suggest chunk_type (shallow rows + depth inherit) ───────────
 
 class ClassifyChmRequest(BaseModel):
     llm_profile_id: str

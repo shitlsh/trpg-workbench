@@ -1,18 +1,22 @@
 """LLM-based TOC analyzer.
 
-Takes raw text extracted from PDF TOC pages and asks an LLM to return JSON with:
+Two-phase design:
 
-- ``full_toc`` — 树形 ``{ "nodes": [ ... ] }``；前序展平为行，供 UI 与类型继承。兼容扁平行 ``{ "rows": [ ... ] }``。
-- 子行无 ``suggested_chunk_type``（由章级 ``sections`` 按页码归属）。
-- ``sections`` — **chapter-skeleton** list (coarse, for ingest) with
-  ``suggested_chunk_type`` on each major row — see ``prompts/toc_analyzer/system.txt``.
+Phase 1 (fast, ``fetch_pdf_toc_llm_raw`` / ``parse_pdf_toc_response``):
+  LLM only outputs ``sections`` (chapter-skeleton with ``suggested_chunk_type``).
+  Prompt is small → response is small → fast.
 
-The LLM is expected to output JSON only; if the input is not a valid TOC the
-response must include ``"is_toc": false`` and a ``"reason"`` field — we then
-raise TocNotRecognizedError so the caller can surface this to the user.
-If ``is_toc`` is true but ``full_toc`` is missing or empty, the API still
-succeeds for `sections`; line-level ``preview_expanded`` is only filled when
-``full_toc`` yields a non-empty list after flattening ``nodes``/``rows``.
+Phase 2 (optional, ``build_full_toc_from_toc_text`` + ``fetch_full_toc_llm``):
+  Build ``full_toc`` using rule-based numbering heuristics first.
+  If rule-based result is sparse (< sections*2 rows), fall back to a second
+  focused LLM call that only outputs ``{ "full_toc": { "nodes": [...] } }``.
+  Triggered asynchronously from the frontend after Phase 1 completes.
+
+Result types:
+- ``sections`` — chapter-skeleton list (coarse, for ingest) with
+  ``suggested_chunk_type`` on each major row.
+- ``full_toc`` — tree ``{ "nodes": [ ... ] }``; flattened to rows for UI.
+  Child rows inherit ``suggested_chunk_type`` from their parent chapter.
 """
 from __future__ import annotations
 
@@ -316,25 +320,7 @@ def parse_pdf_toc_response(raw: str) -> TocAnalysisResult:
             suggested_chunk_type=sections[-1].suggested_chunk_type,
         )
 
-    ftraw = data.get("full_toc")
-    if isinstance(ftraw, list):
-        full_toc = {"rows": ftraw}
-    elif isinstance(ftraw, dict) and ftraw:
-        full_toc = ftraw
-    else:
-        full_toc = None
-    if full_toc is not None and not _extract_full_toc_rows(full_toc):
-        _log.info(
-            "toc_analyzer operation=parse_pdf_toc_response full_toc_present_but_no_rows response_chars=%s",
-            len(raw or ""),
-        )
-    elif not full_toc and data.get("is_toc", True):
-        _log.info(
-            "toc_analyzer operation=parse_pdf_toc_response full_toc_missing (no line-level preview) response_chars=%s",
-            len(raw or ""),
-        )
-
-    return TocAnalysisResult(sections=sections, full_toc=full_toc)
+    return TocAnalysisResult(sections=sections, full_toc=None)
 
 
 def analyze_toc(
@@ -352,6 +338,265 @@ def analyze_toc(
     """
     raw = asyncio.run(fetch_pdf_toc_llm_raw(toc_text, llm_profile, model_name))
     return parse_pdf_toc_response(raw)
+
+
+# ─── Phase-2: rule-based full_toc builder ────────────────────────────────────
+
+# Patterns for numbered headings, ordered from most-specific to least.
+# Each (pattern, depth) pair; first match wins.
+_NUMBERED_HEADING_PATTERNS: list[tuple[re.Pattern, int]] = [
+    # Arabic multi-level: 1.1.1 / 1.1.1.1
+    (re.compile(r"^(\d+\.\d+\.\d+\.?\d*)\s+\S"), 3),
+    # Arabic two-level: 1.1 / 1.2
+    (re.compile(r"^(\d+\.\d+)\s+\S"), 2),
+    # Arabic chapter: 1. / 2.  (single digit/two-digit, must be followed by space+non-digit to avoid page numbers)
+    (re.compile(r"^\d{1,2}\.\s+[^\d]"), 1),
+    # Chinese sub-section: 第X节 / X、  (appears under 第X章)
+    (re.compile(r"^第[一二三四五六七八九十百千0-9]+[节篇幕]\s*\S"), 2),
+    # Chinese chapter / part / appendix (root level)
+    (re.compile(r"^(第[一二三四五六七八九十百千0-9]+[章部卷]|附录\s*[A-Za-z0-9一二三四五六七八九十]+)\s*\S", re.UNICODE), 1),
+    # Western chapter / appendix root
+    (re.compile(r"^(Chapter|Part|Appendix|Section)\s+\S", re.IGNORECASE), 1),
+]
+
+# Matches trailing page number in a TOC line.
+# Priority (tried in order by _extract_page_from_toc_line):
+#   1. Leader dots/spaces + digits  e.g. "Title ……… 42" or "Title ..... 42"
+#   2. Two-or-more spaces + digits  e.g. "Title   42"
+#   3. Single space + digits at end, BUT only when the digits are clearly a page
+#      (i.e. the part before the space contains a non-digit character right before)
+#      e.g. "第一章 揭开面纱 19"  →  page=19, title="第一章 揭开面纱"
+_RE_PAGE_LEADER = re.compile(r"^(.+?)\s*[·.…]{2,}\s*(\d{1,5})\s*$")
+_RE_PAGE_MULTI_SPACE = re.compile(r"^(.+?)\s{2,}(\d{1,5})\s*$")
+_RE_PAGE_SINGLE_SPACE = re.compile(r"^(.+\D)\s(\d{1,5})\s*$")
+
+
+def _extract_page_from_toc_line(line: str) -> int | None:
+    """Extract trailing page number from a TOC line, or None."""
+    for pat in (_RE_PAGE_LEADER, _RE_PAGE_MULTI_SPACE, _RE_PAGE_SINGLE_SPACE):
+        m = pat.match(line)
+        if m:
+            return int(m.group(2))
+    return None
+
+
+def _strip_page_from_title(line: str) -> str:
+    """Remove the trailing page number and leader dots from a title."""
+    for pat in (_RE_PAGE_LEADER, _RE_PAGE_MULTI_SPACE, _RE_PAGE_SINGLE_SPACE):
+        m = pat.match(line)
+        if m:
+            return m.group(1).strip()
+    return line.strip()
+
+
+def _depth_from_line(line: str) -> int | None:
+    """Return the structural depth (1=chapter, 2=section, 3=sub-section) from heading patterns, or None."""
+    for pattern, depth in _NUMBERED_HEADING_PATTERNS:
+        if pattern.match(line):
+            return depth
+    return None
+
+
+def build_full_toc_from_toc_text(
+    toc_text: str,
+    sections: list[TocSection],
+) -> dict[str, Any] | None:
+    """Build ``full_toc`` from raw toc_text using numbering heuristics.
+
+    Strategy:
+    - Parse each line; determine depth from heading number patterns.
+    - Lines with no recognisable depth pattern are skipped (or treated as
+      depth-1 leaves when they look like TOC entries but have no sub-structure).
+    - Assemble a tree using a depth-stack.
+    - Returns ``{ "nodes": [...] }`` or ``None`` if fewer than
+      ``max(len(sections), 2)`` rows were parsed (sparse → caller falls back
+      to LLM).
+
+    NOTE: x-axis indentation is NOT available (stripped by pdfplumber + preprocess).
+    Depth is determined purely by heading number patterns.
+    """
+    from app.knowledge.toc_extractor import preprocess_toc_text_for_llm
+
+    prepped = preprocess_toc_text_for_llm(toc_text or "")
+    lines = [l.strip() for l in prepped.splitlines()]
+
+    _log.info(
+        "toc_analyzer build_full_toc_from_toc_text START raw_chars=%s prepped_lines=%s sections=%s",
+        len(toc_text or ""), len(lines), len(sections) if sections else 0,
+    )
+
+    parsed: list[tuple[int, str, int]] = []  # (depth, title, page_from)
+
+    # We need at least section page-ranges to give depth-1 fallback lines a page
+    sec_pages = sorted({s.page_from for s in sections} if sections else set())
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or re.match(r"^---\s*Page\s+\d+", line):
+            continue
+        page = _extract_page_from_toc_line(line)
+        title = _strip_page_from_title(line)
+        if not title or len(title) < 2:
+            continue
+        depth = _depth_from_line(line)
+        if depth is None:
+            # Only include depth-1 fallback when the line has a recognisable page number
+            # and matches a section title exactly (to avoid garbage lines)
+            if page is not None and sections:
+                norm = _norm_title_str(title)
+                if any(_norm_title_str(s.title) == norm for s in sections):
+                    depth = 1
+                else:
+                    continue
+            else:
+                continue
+        if page is None:
+            # Try to infer from neighbouring section
+            if sec_pages:
+                page = sec_pages[0]
+            else:
+                page = 1
+        parsed.append((depth, title, page))
+
+    _log.info(
+        "toc_analyzer build_full_toc_from_toc_text parsed=%s lines (from %s input lines)",
+        len(parsed), len(lines),
+    )
+    if parsed:
+        # Log first few parsed entries for diagnosis
+        sample = [(d, t, p) for d, t, p in parsed[:5]]
+        _log.info("toc_analyzer build_full_toc_from_toc_text sample_entries=%s", sample)
+
+    if not parsed:
+        _log.info(
+            "toc_analyzer build_full_toc_from_toc_text parsed=0 → no numbered headings found, returning None"
+        )
+        return None
+
+    # Threshold: if we found fewer lines than sections, rule-based is too sparse
+    min_rows = max(len(sections) if sections else 2, 2)
+    if len(parsed) < min_rows:
+        _log.info(
+            "toc_analyzer build_full_toc_from_toc_text sparse parsed=%s min_rows=%s sections=%s → returning None",
+            len(parsed), min_rows, len(sections) if sections else 0,
+        )
+        return None
+
+    # Build tree using a stack: stack contains (depth, node_dict)
+    root_nodes: list[dict[str, Any]] = []
+    stack: list[tuple[int, dict[str, Any]]] = []  # (depth, node)
+
+    for depth, title, page_from in parsed:
+        node: dict[str, Any] = {"title": title, "page_from": page_from}
+        # Pop stack until top is at shallower depth
+        while stack and stack[-1][0] >= depth:
+            stack.pop()
+        if stack:
+            parent = stack[-1][1]
+            parent.setdefault("children", []).append(node)
+        else:
+            root_nodes.append(node)
+        stack.append((depth, node))
+
+    if not root_nodes:
+        return None
+
+    _log.info(
+        "toc_analyzer build_full_toc_from_toc_text parsed=%s root_nodes=%s",
+        len(parsed),
+        len(root_nodes),
+    )
+    return {"nodes": root_nodes}
+
+
+# ─── Phase-2: LLM full_toc fallback ──────────────────────────────────────────
+
+# Max input chars for the full_toc-only LLM call (can be larger since output is also smaller without sections)
+PDF_FULL_TOC_LLM_MAX_INPUT_CHARS: int = 16000
+
+
+async def fetch_full_toc_llm(
+    toc_text: str,
+    sections: list[TocSection],
+    llm_profile,
+    model_name: str,
+) -> dict[str, Any] | None:
+    """Second-phase LLM call: only asks for full_toc tree (no sections, no chunk_type).
+
+    Returns parsed ``{ "nodes": [...] }`` dict or None on failure.
+    """
+    effective_model_name = model_name or ""
+    _log.info(
+        "toc_analyzer fetch_full_toc_llm START model=%s sections=%s toc_chars=%s",
+        effective_model_name, len(sections), len(toc_text or ""),
+    )
+    system_prompt = load_prompt("toc_analyzer", "system_full_toc")
+    prepped = preprocess_toc_text_for_llm(toc_text or "")
+
+    sections_summary = json.dumps(
+        [{"title": s.title, "page_from": s.page_from} for s in sections],
+        ensure_ascii=False,
+    )
+    user_message = load_prompt(
+        "toc_analyzer",
+        "user_full_toc",
+        sections_json=sections_summary,
+        toc_text=prepped[:PDF_FULL_TOC_LLM_MAX_INPUT_CHARS],
+    )
+    try:
+        t = task_temperature("toc_analysis")
+        prov = (getattr(llm_profile, "provider_type", None) or "").strip().lower()
+        call_kw: dict[str, Any] = {
+            "profile": llm_profile,
+            "model_name": effective_model_name,
+            "system_prompt": system_prompt,
+            "user_prompt": user_message,
+            "temperature": t,
+        }
+        if prov == "anthropic":
+            call_kw["max_tokens"] = DEFAULT_MAX_TOKENS_ANTHROPIC
+        raw = await complete_text_once(**call_kw)
+        raw = strip_code_fence(raw).strip()
+    except Exception as e:
+        _log.warning("toc_analyzer fetch_full_toc_llm failed: %s", e)
+        return None
+
+    # Parse the result
+    data: dict[str, Any] | None = None
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            data = parsed
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if m:
+            try:
+                sub = json.loads(m.group(0))
+                if isinstance(sub, dict):
+                    data = sub
+            except json.JSONDecodeError:
+                pass
+
+    if data is None:
+        _log.warning("toc_analyzer fetch_full_toc_llm could not parse JSON response (chars=%s)", len(raw))
+        return None
+
+    ftraw = data.get("full_toc")
+    if isinstance(ftraw, dict) and ftraw:
+        result = ftraw
+    elif isinstance(ftraw, list):
+        result = {"rows": ftraw}
+    else:
+        _log.info("toc_analyzer fetch_full_toc_llm: no full_toc key in response")
+        return None
+
+    if not _extract_full_toc_rows(result):
+        _log.info("toc_analyzer fetch_full_toc_llm: full_toc present but no rows extracted")
+        return None
+
+    rows_count = len(_extract_full_toc_rows(result))
+    _log.info("toc_analyzer fetch_full_toc_llm success rows=%s", rows_count)
+    return result
 
 
 # ─── CHM structural TOC → TocSection list ────────────────────────────────────

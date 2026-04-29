@@ -1,0 +1,9 @@
+以下是 PDF 目录页的原始文本，以及已分析好的章级骨架（`sections`）供参考。请按 system 要求，输出**一段** JSON，只含 `full_toc`，不要其他说明。
+
+## 章级骨架（sections，供参考）
+
+{sections_json}
+
+## PDF 目录原文
+
+{toc_text}

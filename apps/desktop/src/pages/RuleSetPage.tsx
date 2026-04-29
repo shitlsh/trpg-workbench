@@ -198,16 +198,21 @@ function TocTreeRowsEditable({
                 {n.row.page_to && n.row.page_to !== n.row.page_from ? `–${n.row.page_to}` : ""}
               </td>
               <td style={{ padding: "5px 4px" }} onClick={(e) => e.stopPropagation()}>
-                <select
-                  style={{ fontSize: 12, padding: "2px 4px", borderRadius: 3, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%" }}
-                  value={n.row.chunk_type}
-                  onChange={(e) => onChunkTypeChange(n.index, e.target.value as ChunkType | "")}
-                >
-                  <option value="">— 混合</option>
-                  {CHUNK_TYPES.map((ct) => (
-                    <option key={ct.value} value={ct.value}>{ct.label}</option>
-                  ))}
-                </select>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <select
+                    style={{ fontSize: 12, padding: "2px 4px", borderRadius: 3, border: "1px solid var(--border)", background: "var(--bg)", color: n.row.inherited ? "var(--text-muted)" : "var(--text)", width: "100%" }}
+                    value={n.row.chunk_type}
+                    onChange={(e) => onChunkTypeChange(n.index, e.target.value as ChunkType | "")}
+                  >
+                    <option value="">— 混合</option>
+                    {CHUNK_TYPES.map((ct) => (
+                      <option key={ct.value} value={ct.value}>{ct.label}</option>
+                    ))}
+                  </select>
+                  {n.row.inherited && (
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", opacity: 0.7 }}>继承</span>
+                  )}
+                </div>
               </td>
             </tr>
             {hasKids && isOpen ? (
@@ -218,103 +223,6 @@ function TocTreeRowsEditable({
                 expanded={expanded}
                 onToggle={onToggle}
                 onChunkTypeChange={onChunkTypeChange}
-              />
-            ) : null}
-          </Fragment>
-        );
-      })}
-    </>
-  );
-}
-
-function TocTreeRowsReadonly({
-  nodes,
-  pathPrefix,
-  level,
-  expanded,
-  onToggle,
-}: {
-  nodes: TocTreeNode[];
-  pathPrefix: string;
-  level: number;
-  expanded: Set<string>;
-  onToggle: (path: string) => void;
-}) {
-  return (
-    <>
-      {nodes.map((n, j) => {
-        const path = pathPrefix === "" ? String(j) : `${pathPrefix}/${j}`;
-        const hasKids = n.children.length > 0;
-        const isOpen = hasKids && expanded.has(path);
-        const ctLabel = n.row.chunk_type
-          ? (CHUNK_TYPES.find((c) => c.value === n.row.chunk_type)?.label ?? n.row.chunk_type)
-          : "— 混合";
-        return (
-          <Fragment key={path}>
-            <tr style={{ borderBottom: "1px solid var(--border)", opacity: n.row.inherited ? 0.9 : 1 }}>
-              <td style={{ padding: "4px 8px", paddingLeft: `${6 + level * 16}px`, wordBreak: "break-word" }}>
-                <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 4, width: "100%" }}>
-                  {hasKids ? (
-                    <button
-                      type="button"
-                      aria-expanded={isOpen}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggle(path);
-                      }}
-                      style={{
-                        fontSize: 11,
-                        padding: 0,
-                        minWidth: 22,
-                        minHeight: 22,
-                        border: "none",
-                        background: "transparent",
-                        color: "var(--text-muted)",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                        marginTop: 0,
-                      }}
-                    >
-                      {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    </button>
-                  ) : (
-                    <span style={{ display: "inline-block", minWidth: 22, minHeight: 22, flexShrink: 0 }} />
-                  )}
-                  <span
-                    role={hasKids ? "button" : undefined}
-                    tabIndex={hasKids ? 0 : undefined}
-                    onClick={() => hasKids && onToggle(path)}
-                    onKeyDown={(e) => {
-                      if (hasKids && (e.key === "Enter" || e.key === " ")) {
-                        e.preventDefault();
-                        onToggle(path);
-                      }
-                    }}
-                    style={{ cursor: hasKids ? "pointer" : "default", flex: 1, lineHeight: 1.35 }}
-                  >
-                    {n.row.title}
-                  </span>
-                </span>
-              </td>
-              <td style={{ padding: "4px 8px", textAlign: "center", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{n.row.page_from}</td>
-              <td style={{ padding: "4px 8px" }}>
-                {n.row.inherited
-                  ? (
-                    <span style={{ color: "var(--text-muted)" }}>
-                      {ctLabel} <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.85 }}>继承</span>
-                    </span>
-                  ) : (
-                    <span style={{ color: "var(--text)" }}>{ctLabel}</span>
-                  )}
-              </td>
-            </tr>
-            {hasKids && isOpen ? (
-              <TocTreeRowsReadonly
-                nodes={n.children}
-                pathPrefix={path}
-                level={level + 1}
-                expanded={expanded}
-                onToggle={onToggle}
               />
             ) : null}
           </Fragment>
@@ -1269,48 +1177,35 @@ function LibraryDetailPanel({
     | { step: "toc_preview"; fileId: string; filename: string; fileExt: string;
         tocText: string; pageStart: number; pageEnd: number;
         /** 页码范围手动输入，用字符串便于清空后再输入（不使用 number 控件避免强留最小值） */
-        customStart: string; customEnd: string; redetecting: boolean; redetectError: string }
+        customStart: string; customEnd: string; redetecting: boolean; redetectError: string;
+        /** PDF 物理页 - 印刷页的偏移，用于对齐 TOC 页码与 chunk 页码 */
+        pageOffset: number }
     | { step: "select_llm"; fileId: string; filename: string; fileExt: string;
-        tocText: string; llmProfileId: string; llmModelName: string }
+        tocText: string; llmProfileId: string; llmModelName: string;
+        pageOffset: number }
     | { step: "analyzing_toc"; fileId: string; filename: string; fileExt: string;
-        tocText: string;
+        tocText: string; pageOffset: number;
+        /** 'sections' = Phase-1 LLM 进行中；'full_toc' = Phase-2 full_toc 生成中 */
+        analyzePhase?: "sections" | "full_toc";
         /** 等模型首包 / 长耗时期间由 SSE `llm_wait` 更新，用于展示「已等待 N 秒」 */
         analyzeLlmWaitSeconds?: number;
         analyzeProgressLines?: string[]; partialSections?: TocSectionState[] }
     | { step: "section_confirm"; fileId: string; filename: string; fileExt: string;
         sections: TocSectionState[]; pageOffset: number; analyzeError: string;
         /** PDF：目录行级展开预览（子行 program 继承），可选 */
-        sectionRowsFull?: TocSectionState[] }
+        sectionRowsFull?: TocSectionState[];
+        /** full_toc 来源：'rule' | 'llm' | undefined */
+        fullTocSource?: string; }
     | { step: "ingesting" };
 
   const [wizard, setWizard] = useState<WizardState>({ step: "idle" });
   /** 目录表：按**层级**展开/收起子节点（Set 中 path 表示已展开） */
   const [mainTocTreeExpanded, setMainTocTreeExpanded] = useState<Set<string>>(() => new Set());
-  const [pdfFullTocTreeExpanded, setPdfFullTocTreeExpanded] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     if (wizard.step !== "section_confirm") return;
     setMainTocTreeExpanded(new Set());
-    setPdfFullTocTreeExpanded(new Set());
   }, [wizard.step, wizard.step === "section_confirm" ? wizard.fileId : ""]);
-
-  const sectionWizard = wizard.step === "section_confirm" ? wizard : null;
-  const mainTocTree = useMemo(
-    () => (sectionWizard?.sections?.length ? buildTocTree(sectionWizard.sections) : []),
-    [sectionWizard?.fileId, sectionWizard?.sections],
-  );
-  const pdfFullTocTree = useMemo(
-    () => (sectionWizard?.sectionRowsFull?.length ? buildTocTree(sectionWizard.sectionRowsFull) : []),
-    [sectionWizard?.fileId, sectionWizard?.sectionRowsFull],
-  );
-  const mainTocHasExpandable = useMemo(
-    () => collectExpandablePaths(mainTocTree, "").length > 0,
-    [mainTocTree],
-  );
-  const pdfFullTocHasExpandable = useMemo(
-    () => collectExpandablePaths(pdfFullTocTree, "").length > 0,
-    [pdfFullTocTree],
-  );
 
   const onTocWizardProgress = (p: SSEProgressPayload) => {
     setWizard((prev) => {
@@ -1456,6 +1351,7 @@ function LibraryDetailPanel({
           tocText: JSON.stringify(detectRes.sections ?? []),
           llmProfileId: llmProfilesForUpload[0]?.id ?? "",
           llmModelName: "",
+          pageOffset: 0, // CHM 无物理页码概念，固定为 0
         });
       } else {
         setWizard({
@@ -1468,6 +1364,7 @@ function LibraryDetailPanel({
           customEnd: String(detectRes.page_end),
           redetecting: false,
           redetectError: "",
+          pageOffset: 0,
         });
       }
     } catch (e) {
@@ -1483,7 +1380,7 @@ function LibraryDetailPanel({
         `/knowledge/documents/preview/${fileId}/detect-toc`,
         { method: "POST", body: JSON.stringify({ toc_page_start: start, toc_page_end: end }) },
       );
-      setWizard({
+      setWizard((prev) => ({
         step: "toc_preview",
         fileId, filename, fileExt,
         tocText: res.toc_text,
@@ -1493,7 +1390,9 @@ function LibraryDetailPanel({
         customEnd: String(end),
         redetecting: false,
         redetectError: "",
-      });
+        // 保留用户已填写的 pageOffset
+        pageOffset: prev.step === "toc_preview" ? prev.pageOffset : 0,
+      }));
     } catch (e) {
       setWizard((prev) => prev.step === "toc_preview"
         ? { ...prev, redetecting: false, redetectError: e instanceof Error ? e.message : String(e) }
@@ -1517,31 +1416,98 @@ function LibraryDetailPanel({
     });
   }
 
-  async function analyzeToc(fileId: string, filename: string, fileExt: string, tocText: string, llmProfileId: string, llmModelName: string) {
+  async function analyzeToc(fileId: string, filename: string, fileExt: string, tocText: string, llmProfileId: string, llmModelName: string, pageOffset: number) {
     setWizard({
       step: "analyzing_toc",
-      fileId, filename, fileExt, tocText,
+      fileId, filename, fileExt, tocText, pageOffset,
+      analyzePhase: "sections",
       analyzeLlmWaitSeconds: undefined,
       analyzeProgressLines: [],
     });
     try {
+      // ── Phase-1: sections + optional rule-based full_toc ──────────────────
       const res = await apiPostSSEWithHandlers<{
         sections?: unknown[];
         preview_expanded?: unknown[];
         full_toc?: unknown;
+        full_toc_source?: string;
       }>(
         `/knowledge/documents/preview/${fileId}/analyze-toc`,
         { toc_text: tocText, llm_profile_id: llmProfileId, llm_model_name: llmModelName || undefined },
         { onProgress: onTocWizardProgress },
       );
-      const pex = res.preview_expanded;
+      const parsedSections = mapRawSectionsToState(res.sections ?? []);
+      const phase1Pex = res.preview_expanded;
+      let sectionRowsFull: TocSectionState[] | undefined =
+        Array.isArray(phase1Pex) && phase1Pex.length > 0 ? mapRawSectionsToState(phase1Pex) : undefined;
+      let fullTocSource: string | undefined = res.full_toc_source;
+
+      console.log("[analyzeToc] Phase-1 done", {
+        sections: parsedSections.length,
+        full_toc_source: res.full_toc_source,
+        preview_expanded_rows: Array.isArray(phase1Pex) ? phase1Pex.length : 0,
+        will_trigger_phase2: res.full_toc_source === "pending_llm" && parsedSections.length > 0,
+      });
+
+      // ── Phase-2: if rule-based result was sparse, run LLM full_toc ────────
+      if (res.full_toc_source === "pending_llm" && parsedSections.length > 0) {
+        console.log("[analyzeToc] Phase-2 starting: analyze-full-toc");
+        // Stay in analyzing_toc, update phase label
+        setWizard((prev) => {
+          if (prev.step !== "analyzing_toc") return prev;
+          return { ...prev, analyzePhase: "full_toc", analyzeLlmWaitSeconds: undefined, analyzeProgressLines: [] };
+        });
+        try {
+          const res2 = await apiPostSSEWithHandlers<{
+            full_toc?: unknown;
+            preview_expanded?: unknown[];
+            full_toc_source?: string;
+          }>(
+            `/knowledge/documents/preview/${fileId}/analyze-full-toc`,
+            {
+              toc_text: tocText,
+              sections: parsedSections.map((s) => ({
+                title: s.title,
+                page_from: s.page_from,
+                page_to: s.page_to,
+                depth: s.depth,
+                suggested_chunk_type: s.chunk_type || null,
+              })),
+              llm_profile_id: llmProfileId,
+              llm_model_name: llmModelName || undefined,
+            },
+            { onProgress: onTocWizardProgress },
+          );
+          const pex2 = res2.preview_expanded;
+          console.log("[analyzeToc] Phase-2 done", {
+            full_toc_source: res2.full_toc_source,
+            preview_expanded_rows: Array.isArray(pex2) ? pex2.length : 0,
+          });
+          if (Array.isArray(pex2) && pex2.length > 0) {
+            sectionRowsFull = mapRawSectionsToState(pex2);
+            fullTocSource = res2.full_toc_source ?? "llm";
+          }
+        } catch (_e) {
+          console.warn("[analyzeToc] Phase-2 failed, falling back to sections-only", _e);
+          // Phase-2 失败：降级为无 full_toc，不阻塞流程
+          fullTocSource = undefined;
+        }
+      }
+
+      console.log("[analyzeToc] entering section_confirm", {
+        sections: parsedSections.length,
+        sectionRowsFull: sectionRowsFull?.length ?? 0,
+        fullTocSource,
+      });
+      // ── 两步均完成，进入分类确认页 ─────────────────────────────────────────
       setWizard({
         step: "section_confirm",
         fileId, filename, fileExt,
-        sections: mapRawSectionsToState(res.sections ?? []),
-        sectionRowsFull: Array.isArray(pex) && pex.length > 0 ? mapRawSectionsToState(pex) : undefined,
-        pageOffset: 0,
+        sections: parsedSections,
+        sectionRowsFull,
+        pageOffset,
         analyzeError: "",
+        fullTocSource,
       });
     } catch (e) {
       setWizard({
@@ -1549,7 +1515,7 @@ function LibraryDetailPanel({
         fileId, filename, fileExt,
         sections: [],
         sectionRowsFull: undefined,
-        pageOffset: 0,
+        pageOffset,
         analyzeError: e instanceof Error ? e.message : String(e),
       });
     }
@@ -1564,7 +1530,7 @@ function LibraryDetailPanel({
   ) {
     setWizard({
       step: "analyzing_toc",
-      fileId, filename, fileExt, tocText: "",
+      fileId, filename, fileExt, tocText: "", pageOffset: 0,
       analyzeLlmWaitSeconds: undefined,
       analyzeProgressLines: [],
       partialSections: [],
@@ -1752,7 +1718,9 @@ function LibraryDetailPanel({
                 {wizard.step === "detecting_toc" && "检测目录页"}
                 {wizard.step === "toc_preview" && "确认目录页范围"}
                 {wizard.step === "select_llm" && "选择分析模型"}
-                {wizard.step === "analyzing_toc" && "AI 分析目录"}
+                {wizard.step === "analyzing_toc" && (
+                  wizard.analyzePhase === "full_toc" ? "AI 生成完整目录树" : "AI 分析目录"
+                )}
                 {wizard.step === "section_confirm" && "章节分类确认"}
               </h2>
               <button onClick={() => setWizard({ step: "idle" })} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}><X size={16} /></button>
@@ -1776,7 +1744,17 @@ function LibraryDetailPanel({
                 {wizard.step === "detecting_toc" && "正在自动检测目录页..."}
                 {wizard.step === "analyzing_toc" && (
                   <>
-                    <div style={{ marginBottom: 8 }}>AI 正在解析目录结构，请稍候…</div>
+                    {wizard.analyzePhase === "full_toc" ? (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ marginBottom: 4 }}>章节结构已解析，正在生成完整目录树…</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>（步骤 2/2：生成子节预览）</div>
+                      </div>
+                    ) : (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ marginBottom: 4 }}>AI 正在解析目录结构，请稍候…</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>（步骤 1/2：识别章节与类型）</div>
+                      </div>
+                    )}
                     {"analyzeLlmWaitSeconds" in wizard && wizard.analyzeLlmWaitSeconds != null && (
                       <div className={styles.tocWaitBar} title="后台每约 10 秒更新等待时间；秒数在增加即表示连接仍活跃、程序未卡死">
                         <span className={styles.tocWaitDot} />
@@ -1874,6 +1852,18 @@ function LibraryDetailPanel({
                       {w.tocText || "（未检测到目录文字）"}
                     </pre>
                   </div>
+                  <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <label style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>页码偏移：</label>
+                    <input
+                      type="number"
+                      value={w.pageOffset}
+                      onChange={(e) => setWizard({ ...w, pageOffset: parseInt(e.target.value) || 0 })}
+                      style={{ width: 72, fontSize: 12, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
+                    />
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      逻辑页 = PDF页 − 偏移。书本第1页在 PDF 第5页 → 填 4；目录页码大于 PDF 物理页 → 填负数。
+                    </span>
+                  </div>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                     <button className={styles.btnSecondary} onClick={() => setWizard({ step: "idle" })}>取消</button>
                     <button className={styles.btnPrimary} disabled={!w.tocText}
@@ -1885,6 +1875,7 @@ function LibraryDetailPanel({
                           tocText: w.tocText,
                           llmProfileId: llmProfilesForUpload[0].id,
                           llmModelName: "",
+                          pageOffset: w.pageOffset,
                         });
                       }}>
                       用 AI 分析目录 →
@@ -1955,6 +1946,7 @@ function LibraryDetailPanel({
                             step: "toc_preview",
                             fileId: w.fileId, filename: w.filename, fileExt: w.fileExt, tocText: w.tocText,
                             pageStart: 1, pageEnd: 1, customStart: "1", customEnd: "1", redetecting: false, redetectError: "",
+                            pageOffset: w.pageOffset,
                           });
                         }
                       }}>
@@ -1967,7 +1959,7 @@ function LibraryDetailPanel({
                         if (isChm) {
                           analyzeChmSections(w.fileId, w.filename, w.fileExt, w.llmProfileId, w.llmModelName.trim());
                         } else {
-                          analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText, w.llmProfileId, w.llmModelName.trim());
+                          analyzeToc(w.fileId, w.filename, w.fileExt, w.tocText, w.llmProfileId, w.llmModelName.trim(), w.pageOffset);
                         }
                       }}
                     >
@@ -1981,7 +1973,31 @@ function LibraryDetailPanel({
             {/* section_confirm */}
             {wizard.step === "section_confirm" && (() => {
               const w = wizard;
-              const isPdf = w.fileExt.toLowerCase() === "pdf";
+              const isPdf = w.fileExt.toLowerCase().replace(/^\./, "") === "pdf";
+              // 统一目录行：有 full_toc 行就用（含子节），否则退化为章级骨架
+              const displayRows: TocSectionState[] = w.sectionRowsFull && w.sectionRowsFull.length > 0
+                ? w.sectionRowsFull
+                : w.sections;
+              const displayTree = buildTocTree(displayRows);
+              const displayHasExpandable = collectExpandablePaths(displayTree, "").length > 0;
+              const tocSource = isPdf && w.fullTocSource;
+              const sourceLabel = tocSource === "rule" ? "编号规则" : tocSource === "llm" ? "模型生成" : "";
+
+              // 级联更新：修改某行类型时，同步更新其所有 inherited 子孙行
+              function applyChunkTypeChange(rows: TocSectionState[], idx: number, v: ChunkType | ""): TocSectionState[] {
+                const updated = [...rows];
+                updated[idx] = { ...updated[idx], chunk_type: v, inherited: false };
+                const parentDepth = updated[idx].depth;
+                // 向后遍历，直到遇到同级或更浅的节点
+                for (let i = idx + 1; i < updated.length; i++) {
+                  if (updated[i].depth <= parentDepth) break;
+                  if (updated[i].inherited !== false) {
+                    updated[i] = { ...updated[i], chunk_type: v, inherited: true };
+                  }
+                }
+                return updated;
+              }
+
               return (
                 <>
                   {w.analyzeError && (
@@ -1989,51 +2005,32 @@ function LibraryDetailPanel({
                       {w.analyzeError}
                     </div>
                   )}
-                  {w.sections.length === 0 && !w.analyzeError && (
+                  {displayRows.length === 0 && !w.analyzeError && (
                     <div style={{ marginBottom: 10, color: "var(--text-muted)", fontSize: 13 }}>未检测到章节，将按默认方式切块。</div>
                   )}
-                  {w.sections.length > 0 && (
+                  {displayRows.length > 0 && (
                     <div style={{ marginBottom: 12 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          flexWrap: "wrap",
-                          gap: 8,
-                          marginBottom: 6,
-                        }}
-                      >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
                         <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                          {isPdf ? "章级结构（用于导入）" : "目录行"}
-                          （共 {w.sections.length} 条{isPdf ? "，下表为模型归纳的章/附录" : "，大节下子项类型由继承得到"}；有子层时点击左侧 ▶ 或标题以展开/收起
-                          ）：
+                          目录（{displayRows.length} 行{sourceLabel ? `，来源：${sourceLabel}` : ""}；子节类型继承父节，可单独调整；点击 ▶ 展开/收起）：
                         </label>
-                        {mainTocHasExpandable && (
+                        {displayHasExpandable && (
                           <div style={{ fontSize: 11, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                            <button
-                              type="button"
-                              className={styles.btnSecondary}
-                              style={{ fontSize: 11, padding: "3px 8px" }}
-                              onClick={() => setMainTocTreeExpanded(new Set(collectExpandablePaths(mainTocTree, "")))}
-                            >
-                              全部展开子层
+                            <button type="button" className={styles.btnSecondary} style={{ fontSize: 11, padding: "3px 8px" }}
+                              onClick={() => setMainTocTreeExpanded(new Set(collectExpandablePaths(displayTree, "")))}>
+                              全部展开
                             </button>
-                            <button
-                              type="button"
-                              className={styles.btnSecondary}
-                              style={{ fontSize: 11, padding: "3px 8px" }}
-                              onClick={() => setMainTocTreeExpanded(new Set())}
-                            >
+                            <button type="button" className={styles.btnSecondary} style={{ fontSize: 11, padding: "3px 8px" }}
+                              onClick={() => setMainTocTreeExpanded(new Set())}>
                               全部收起
                             </button>
                           </div>
                         )}
                       </div>
-                      <div style={{ maxHeight: 320, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5 }}>
+                      <div style={{ maxHeight: 360, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5 }}>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                           <thead>
-                            <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                            <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0 }}>
                               <th style={{ padding: "5px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>标题</th>
                               <th style={{ padding: "5px 8px", textAlign: "center", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>页码</th>
                               <th style={{ padding: "5px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>内容类型</th>
@@ -2041,7 +2038,7 @@ function LibraryDetailPanel({
                           </thead>
                           <tbody>
                             <TocTreeRowsEditable
-                              nodes={mainTocTree}
+                              nodes={displayTree}
                               pathPrefix=""
                               level={0}
                               expanded={mainTocTreeExpanded}
@@ -2054,10 +2051,11 @@ function LibraryDetailPanel({
                                 });
                               }}
                               onChunkTypeChange={(idx, v) => {
-                                const updated = [...w.sections];
-                                if (idx >= 0 && idx < updated.length) {
-                                  updated[idx] = { ...updated[idx], chunk_type: v };
-                                  setWizard({ ...w, sections: updated });
+                                const updatedRows = applyChunkTypeChange(displayRows, idx, v);
+                                if (w.sectionRowsFull && w.sectionRowsFull.length > 0) {
+                                  setWizard({ ...w, sectionRowsFull: updatedRows });
+                                } else {
+                                  setWizard({ ...w, sections: updatedRows });
                                 }
                               }}
                             />
@@ -2066,100 +2064,17 @@ function LibraryDetailPanel({
                       </div>
                     </div>
                   )}
-                  {w.sections.length > 0 && isPdf && w.sectionRowsFull && w.sectionRowsFull.length > 0 && (
-                    <div style={{ marginBottom: 12 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          flexWrap: "wrap",
-                          gap: 8,
-                          marginBottom: 6,
-                        }}
-                      >
-                        <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                          完整目录（{w.sectionRowsFull.length} 行，由模型 full_toc 提供；子行标「继承」；点击 ▶ 或标题展开/收起
-                          ）：
-                        </label>
-                        {pdfFullTocHasExpandable && (
-                          <div style={{ fontSize: 11, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                            <button
-                              type="button"
-                              className={styles.btnSecondary}
-                              style={{ fontSize: 11, padding: "3px 8px" }}
-                              onClick={() => setPdfFullTocTreeExpanded(new Set(collectExpandablePaths(pdfFullTocTree, "")))}
-                            >
-                              全部展开子层
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.btnSecondary}
-                              style={{ fontSize: 11, padding: "3px 8px" }}
-                              onClick={() => setPdfFullTocTreeExpanded(new Set())}
-                            >
-                              全部收起
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ maxHeight: 360, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5, fontSize: 12 }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                          <thead>
-                            <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                              <th style={{ padding: "5px 8px", textAlign: "left" }}>原文行</th>
-                              <th style={{ padding: "5px 8px", textAlign: "center", whiteSpace: "nowrap" }}>页</th>
-                              <th style={{ padding: "5px 8px" }}>类型</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <TocTreeRowsReadonly
-                              nodes={pdfFullTocTree}
-                              pathPrefix=""
-                              level={0}
-                              expanded={pdfFullTocTreeExpanded}
-                              onToggle={(path) => {
-                                setPdfFullTocTreeExpanded((prev) => {
-                                  const n = new Set(prev);
-                                  if (n.has(path)) n.delete(path);
-                                  else n.add(path);
-                                  return n;
-                                });
-                              }}
-                            />
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                  {isPdf && (
-                    <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-                      <label style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>页码偏移：</label>
-                      <input
-                        type="number" min={0}
-                        value={w.pageOffset}
-                        onChange={(e) => setWizard({ ...w, pageOffset: Math.max(0, parseInt(e.target.value) || 0) })}
-                        style={{ width: 72, fontSize: 13, padding: "5px 7px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)" }}
-                      />
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
-                        正文从 PDF 第 N 页开始 → 填 N−1
-                      </span>
-                    </div>
-                  )}
                   {embeddingProfiles.length > 0 && (
-                    <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)" }}>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-                        导入前请确认 Embedding Profile（用于建立索引）：
-                      </div>
+                    <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                      <label style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Embedding：</label>
                       <select
-                        style={{ width: "100%", padding: "6px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
+                        style={{ flex: 1, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}
                         value={selectedEmbeddingId || embeddingProfiles[0]?.id}
                         onChange={(e) => setSelectedEmbeddingId(e.target.value)}
                       >
                         {embeddingProfiles.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name} ({p.model_name})
-                            {p.id === (library.embedding_profile_id || "") ? " · 当前库默认" : ""}
+                            {p.name}{p.id === (library.embedding_profile_id || "") ? " · 默认" : ""}
                           </option>
                         ))}
                       </select>
@@ -2168,7 +2083,7 @@ function LibraryDetailPanel({
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                     <button className={styles.btnSecondary} onClick={() => setWizard({ step: "idle" })}>取消</button>
                     <button className={styles.btnPrimary}
-                      onClick={() => startIngest(w.fileId, w.sections, w.pageOffset)}>
+                      onClick={() => startIngest(w.fileId, displayRows, w.pageOffset)}>
                       开始导入
                     </button>
                   </div>
