@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ModelNameInput } from "../components/ModelNameInput";
@@ -61,6 +61,268 @@ const WARNING_LABEL: Record<string, string> = {
   has_table: "包含表格（可能格式异常）", has_multi_column: "包含多列排版",
   page_range_anomaly: "页码范围异常", empty_page: "存在空白页",
 };
+
+/** 由 depth 序列构建树，用于目录表内逐层展开/收起 */
+type TocTreeNode = {
+  index: number;
+  row: {
+    title: string;
+    page_from: number;
+    page_to: number;
+    depth: number;
+    chunk_type: ChunkType | "";
+    inherited?: boolean;
+  };
+  children: TocTreeNode[];
+};
+
+function buildTocTree(
+  rows: {
+    title: string;
+    page_from: number;
+    page_to: number;
+    depth: number;
+    chunk_type: ChunkType | "";
+    inherited?: boolean;
+  }[],
+): TocTreeNode[] {
+  if (!rows.length) return [];
+  const roots: TocTreeNode[] = [];
+  const stack: TocTreeNode[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const d = Math.max(1, Number(row.depth) || 1);
+    const node: TocTreeNode = { index: i, row, children: [] };
+    while (stack.length > 0) {
+      const last = stack[stack.length - 1];
+      const lastD = Math.max(1, Number(last.row.depth) || 1);
+      if (lastD < d) break;
+      stack.pop();
+    }
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      stack[stack.length - 1].children.push(node);
+    }
+    stack.push(node);
+  }
+  return roots;
+}
+
+function collectExpandablePaths(nodes: TocTreeNode[], pathPrefix: string): string[] {
+  const out: string[] = [];
+  nodes.forEach((n, j) => {
+    const path = pathPrefix === "" ? String(j) : `${pathPrefix}/${j}`;
+    if (n.children.length) {
+      out.push(path);
+      out.push(...collectExpandablePaths(n.children, path));
+    }
+  });
+  return out;
+}
+
+function TocTreeRowsEditable({
+  nodes,
+  pathPrefix,
+  level,
+  expanded,
+  onToggle,
+  onChunkTypeChange,
+}: {
+  nodes: TocTreeNode[];
+  pathPrefix: string;
+  level: number;
+  expanded: Set<string>;
+  onToggle: (path: string) => void;
+  onChunkTypeChange: (index: number, v: ChunkType | "") => void;
+}) {
+  return (
+    <>
+      {nodes.map((n, j) => {
+        const path = pathPrefix === "" ? String(j) : `${pathPrefix}/${j}`;
+        const hasKids = n.children.length > 0;
+        const isOpen = hasKids && expanded.has(path);
+        return (
+          <Fragment key={path}>
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <td style={{ padding: "5px 8px", paddingLeft: `${8 + level * 16}px` }}>
+                <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 4, width: "100%" }}>
+                  {hasKids ? (
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(path);
+                      }}
+                      style={{
+                        fontSize: 11,
+                        padding: 0,
+                        minWidth: 22,
+                        minHeight: 22,
+                        lineHeight: 1,
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                        marginTop: 1,
+                      }}
+                    >
+                      {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                  ) : (
+                    <span style={{ display: "inline-block", minWidth: 22, minHeight: 22, flexShrink: 0 }} />
+                  )}
+                  <span
+                    role={hasKids ? "button" : undefined}
+                    tabIndex={hasKids ? 0 : undefined}
+                    onClick={() => hasKids && onToggle(path)}
+                    onKeyDown={(e) => {
+                      if (hasKids && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        onToggle(path);
+                      }
+                    }}
+                    style={{ cursor: hasKids ? "pointer" : "default", flex: 1, textAlign: "left", lineHeight: 1.35 }}
+                  >
+                    {n.row.title}
+                  </span>
+                </span>
+              </td>
+              <td
+                onClick={(e) => e.stopPropagation()}
+                style={{ padding: "5px 8px", textAlign: "center", color: "var(--text-muted)", whiteSpace: "nowrap" }}
+              >
+                {n.row.page_from}
+                {n.row.page_to && n.row.page_to !== n.row.page_from ? `–${n.row.page_to}` : ""}
+              </td>
+              <td style={{ padding: "5px 4px" }} onClick={(e) => e.stopPropagation()}>
+                <select
+                  style={{ fontSize: 12, padding: "2px 4px", borderRadius: 3, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%" }}
+                  value={n.row.chunk_type}
+                  onChange={(e) => onChunkTypeChange(n.index, e.target.value as ChunkType | "")}
+                >
+                  <option value="">— 混合</option>
+                  {CHUNK_TYPES.map((ct) => (
+                    <option key={ct.value} value={ct.value}>{ct.label}</option>
+                  ))}
+                </select>
+              </td>
+            </tr>
+            {hasKids && isOpen ? (
+              <TocTreeRowsEditable
+                nodes={n.children}
+                pathPrefix={path}
+                level={level + 1}
+                expanded={expanded}
+                onToggle={onToggle}
+                onChunkTypeChange={onChunkTypeChange}
+              />
+            ) : null}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+function TocTreeRowsReadonly({
+  nodes,
+  pathPrefix,
+  level,
+  expanded,
+  onToggle,
+}: {
+  nodes: TocTreeNode[];
+  pathPrefix: string;
+  level: number;
+  expanded: Set<string>;
+  onToggle: (path: string) => void;
+}) {
+  return (
+    <>
+      {nodes.map((n, j) => {
+        const path = pathPrefix === "" ? String(j) : `${pathPrefix}/${j}`;
+        const hasKids = n.children.length > 0;
+        const isOpen = hasKids && expanded.has(path);
+        const ctLabel = n.row.chunk_type
+          ? (CHUNK_TYPES.find((c) => c.value === n.row.chunk_type)?.label ?? n.row.chunk_type)
+          : "— 混合";
+        return (
+          <Fragment key={path}>
+            <tr style={{ borderBottom: "1px solid var(--border)", opacity: n.row.inherited ? 0.9 : 1 }}>
+              <td style={{ padding: "4px 8px", paddingLeft: `${6 + level * 16}px`, wordBreak: "break-word" }}>
+                <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 4, width: "100%" }}>
+                  {hasKids ? (
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(path);
+                      }}
+                      style={{
+                        fontSize: 11,
+                        padding: 0,
+                        minWidth: 22,
+                        minHeight: 22,
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                        marginTop: 0,
+                      }}
+                    >
+                      {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                  ) : (
+                    <span style={{ display: "inline-block", minWidth: 22, minHeight: 22, flexShrink: 0 }} />
+                  )}
+                  <span
+                    role={hasKids ? "button" : undefined}
+                    tabIndex={hasKids ? 0 : undefined}
+                    onClick={() => hasKids && onToggle(path)}
+                    onKeyDown={(e) => {
+                      if (hasKids && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        onToggle(path);
+                      }
+                    }}
+                    style={{ cursor: hasKids ? "pointer" : "default", flex: 1, lineHeight: 1.35 }}
+                  >
+                    {n.row.title}
+                  </span>
+                </span>
+              </td>
+              <td style={{ padding: "4px 8px", textAlign: "center", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{n.row.page_from}</td>
+              <td style={{ padding: "4px 8px" }}>
+                {n.row.inherited
+                  ? (
+                    <span style={{ color: "var(--text-muted)" }}>
+                      {ctLabel} <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.85 }}>继承</span>
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--text)" }}>{ctLabel}</span>
+                  )}
+              </td>
+            </tr>
+            {hasKids && isOpen ? (
+              <TocTreeRowsReadonly
+                nodes={n.children}
+                pathPrefix={path}
+                level={level + 1}
+                expanded={expanded}
+                onToggle={onToggle}
+              />
+            ) : null}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
 
 // ─── Create Library Modal ─────────────────────────────────────────────────────
 
@@ -1000,7 +1262,6 @@ function LibraryDetailPanel({
     /** 子行等：类型由章级行继承，导入仍以章级表为准；仅影响展示/核对 */
     inherited?: boolean;
   };
-  const TOC_FOLD_DEFAULT_VISIBLE = 12;
   type WizardState =
     | { step: "idle" }
     | { step: "uploading" }
@@ -1023,15 +1284,33 @@ function LibraryDetailPanel({
     | { step: "ingesting" };
 
   const [wizard, setWizard] = useState<WizardState>({ step: "idle" });
-  /** 章节表过长时默认折叠；PDF 的「行级全表」是否展开 */
-  const [tocListExpanded, setTocListExpanded] = useState(false);
-  const [pdfLinePreviewOpen, setPdfLinePreviewOpen] = useState(false);
+  /** 目录表：按**层级**展开/收起子节点（Set 中 path 表示已展开） */
+  const [mainTocTreeExpanded, setMainTocTreeExpanded] = useState<Set<string>>(() => new Set());
+  const [pdfFullTocTreeExpanded, setPdfFullTocTreeExpanded] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     if (wizard.step !== "section_confirm") return;
-    setTocListExpanded(false);
-    setPdfLinePreviewOpen(false);
+    setMainTocTreeExpanded(new Set());
+    setPdfFullTocTreeExpanded(new Set());
   }, [wizard.step, wizard.step === "section_confirm" ? wizard.fileId : ""]);
+
+  const sectionWizard = wizard.step === "section_confirm" ? wizard : null;
+  const mainTocTree = useMemo(
+    () => (sectionWizard?.sections?.length ? buildTocTree(sectionWizard.sections) : []),
+    [sectionWizard?.fileId, sectionWizard?.sections],
+  );
+  const pdfFullTocTree = useMemo(
+    () => (sectionWizard?.sectionRowsFull?.length ? buildTocTree(sectionWizard.sectionRowsFull) : []),
+    [sectionWizard?.fileId, sectionWizard?.sectionRowsFull],
+  );
+  const mainTocHasExpandable = useMemo(
+    () => collectExpandablePaths(mainTocTree, "").length > 0,
+    [mainTocTree],
+  );
+  const pdfFullTocHasExpandable = useMemo(
+    () => collectExpandablePaths(pdfFullTocTree, "").length > 0,
+    [pdfFullTocTree],
+  );
 
   const onTocWizardProgress = (p: SSEProgressPayload) => {
     setWizard((prev) => {
@@ -1713,20 +1992,45 @@ function LibraryDetailPanel({
                   {w.sections.length === 0 && !w.analyzeError && (
                     <div style={{ marginBottom: 10, color: "var(--text-muted)", fontSize: 13 }}>未检测到章节，将按默认方式切块。</div>
                   )}
-                  {w.sections.length > 0 && (() => {
-                    const nAll = w.sections.length;
-                    const chmFolded = !isPdf && nAll > TOC_FOLD_DEFAULT_VISIBLE && !tocListExpanded;
-                    const rowSlice = isPdf
-                      ? w.sections
-                      : chmFolded
-                        ? w.sections.slice(0, TOC_FOLD_DEFAULT_VISIBLE)
-                        : w.sections;
-                    return (
+                  {w.sections.length > 0 && (
                     <div style={{ marginBottom: 12 }}>
-                      <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
-                        {isPdf ? "章级结构（用于导入）" : "目录行"}（共 {nAll} 条{isPdf ? "，下表为模型归纳的章/附录" : "，大节下子项类型由继承得到"}）：
-                      </label>
-                      <div style={{ maxHeight: 280, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                          {isPdf ? "章级结构（用于导入）" : "目录行"}
+                          （共 {w.sections.length} 条{isPdf ? "，下表为模型归纳的章/附录" : "，大节下子项类型由继承得到"}；有子层时点击左侧 ▶ 或标题以展开/收起
+                          ）：
+                        </label>
+                        {mainTocHasExpandable && (
+                          <div style={{ fontSize: 11, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              className={styles.btnSecondary}
+                              style={{ fontSize: 11, padding: "3px 8px" }}
+                              onClick={() => setMainTocTreeExpanded(new Set(collectExpandablePaths(mainTocTree, "")))}
+                            >
+                              全部展开子层
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.btnSecondary}
+                              style={{ fontSize: 11, padding: "3px 8px" }}
+                              onClick={() => setMainTocTreeExpanded(new Set())}
+                            >
+                              全部收起
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ maxHeight: 320, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5 }}>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                           <thead>
                             <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
@@ -1736,94 +2040,96 @@ function LibraryDetailPanel({
                             </tr>
                           </thead>
                           <tbody>
-                            {rowSlice.map((s, i) => (
-                              <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
-                                <td style={{ padding: "5px 8px", paddingLeft: `${8 + (s.depth ?? 0) * 12}px` }}>{s.title}</td>
-                                <td style={{ padding: "5px 8px", textAlign: "center", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                                  {s.page_from}{s.page_to && s.page_to !== s.page_from ? `–${s.page_to}` : ""}
-                                </td>
-                                <td style={{ padding: "5px 4px" }}>
-                                  <select
-                                    style={{ fontSize: 12, padding: "2px 4px", borderRadius: 3, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", width: "100%" }}
-                                    value={s.chunk_type}
-                                    onChange={(e) => {
-                                      const updated = [...w.sections];
-                                      updated[i] = { ...s, chunk_type: e.target.value as ChunkType | "" };
-                                      setWizard({ ...w, sections: updated });
-                                    }}
-                                  >
-                                    <option value="">— 混合</option>
-                                    {CHUNK_TYPES.map((ct) => (
-                                      <option key={ct.value} value={ct.value}>{ct.label}</option>
-                                    ))}
-                                  </select>
-                                </td>
-                              </tr>
-                            ))}
+                            <TocTreeRowsEditable
+                              nodes={mainTocTree}
+                              pathPrefix=""
+                              level={0}
+                              expanded={mainTocTreeExpanded}
+                              onToggle={(path) => {
+                                setMainTocTreeExpanded((prev) => {
+                                  const n = new Set(prev);
+                                  if (n.has(path)) n.delete(path);
+                                  else n.add(path);
+                                  return n;
+                                });
+                              }}
+                              onChunkTypeChange={(idx, v) => {
+                                const updated = [...w.sections];
+                                if (idx >= 0 && idx < updated.length) {
+                                  updated[idx] = { ...updated[idx], chunk_type: v };
+                                  setWizard({ ...w, sections: updated });
+                                }
+                              }}
+                            />
                           </tbody>
                         </table>
                       </div>
-                      {!isPdf && nAll > TOC_FOLD_DEFAULT_VISIBLE && (
-                        <div style={{ marginTop: 8 }}>
-                          <button
-                            type="button"
-                            className={styles.btnSecondary}
-                            style={{ fontSize: 12, padding: "4px 10px" }}
-                            onClick={() => setTocListExpanded((e) => !e)}
-                          >
-                            {tocListExpanded ? "收起" : "展开全部"}（{nAll} 行）
-                            {!tocListExpanded ? <ChevronRight size={14} style={{ verticalAlign: "middle", marginLeft: 4 }} /> : <ChevronDown size={14} style={{ verticalAlign: "middle", marginLeft: 4 }} />}
-                          </button>
-                        </div>
-                      )}
                     </div>
-                    );
-                  })()}
+                  )}
                   {w.sections.length > 0 && isPdf && w.sectionRowsFull && w.sectionRowsFull.length > 0 && (
                     <div style={{ marginBottom: 12 }}>
-                      <button
-                        type="button"
-                        onClick={() => setPdfLinePreviewOpen((o) => !o)}
-                        className={styles.btnSecondary}
-                        style={{ fontSize: 12, padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 8 }}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          marginBottom: 6,
+                        }}
                       >
-                        {pdfLinePreviewOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        完整目录行（{w.sectionRowsFull.length} 行，子行类型由章继承，仅供核对，默认折叠）
-                      </button>
-                      {pdfLinePreviewOpen && (
-                        <div style={{ maxHeight: 360, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5, fontSize: 12 }}>
-                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                            <thead>
-                              <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                                <th style={{ padding: "5px 8px", textAlign: "left" }}>原文行</th>
-                                <th style={{ padding: "5px 8px", textAlign: "center", whiteSpace: "nowrap" }}>页</th>
-                                <th style={{ padding: "5px 8px" }}>类型</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {w.sectionRowsFull.map((s, i) => {
-                                const ctLabel = s.chunk_type ? (CHUNK_TYPES.find((c) => c.value === s.chunk_type)?.label ?? s.chunk_type) : "— 混合";
-                                return (
-                                  <tr key={i} style={{ borderBottom: "1px solid var(--border)", opacity: s.inherited ? 0.9 : 1 }}>
-                                    <td style={{ padding: "4px 8px", paddingLeft: `${6 + (s.depth ?? 0) * 10}px`, wordBreak: "break-word" }}>{s.title}</td>
-                                    <td style={{ padding: "4px 8px", textAlign: "center", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{s.page_from}</td>
-                                    <td style={{ padding: "4px 8px" }}>
-                                      {s.inherited
-                                        ? (
-                                          <span style={{ color: "var(--text-muted)" }}>
-                                            {ctLabel} <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.85 }}>继承</span>
-                                          </span>
-                                        ) : (
-                                          <span style={{ color: "var(--text)" }}>{ctLabel}</span>
-                                        )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                        <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                          完整目录（{w.sectionRowsFull.length} 行，由模型 full_toc 提供；子行标「继承」；点击 ▶ 或标题展开/收起
+                          ）：
+                        </label>
+                        {pdfFullTocHasExpandable && (
+                          <div style={{ fontSize: 11, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              className={styles.btnSecondary}
+                              style={{ fontSize: 11, padding: "3px 8px" }}
+                              onClick={() => setPdfFullTocTreeExpanded(new Set(collectExpandablePaths(pdfFullTocTree, "")))}
+                            >
+                              全部展开子层
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.btnSecondary}
+                              style={{ fontSize: 11, padding: "3px 8px" }}
+                              onClick={() => setPdfFullTocTreeExpanded(new Set())}
+                            >
+                              全部收起
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ maxHeight: 360, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5, fontSize: 12 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                          <thead>
+                            <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                              <th style={{ padding: "5px 8px", textAlign: "left" }}>原文行</th>
+                              <th style={{ padding: "5px 8px", textAlign: "center", whiteSpace: "nowrap" }}>页</th>
+                              <th style={{ padding: "5px 8px" }}>类型</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <TocTreeRowsReadonly
+                              nodes={pdfFullTocTree}
+                              pathPrefix=""
+                              level={0}
+                              expanded={pdfFullTocTreeExpanded}
+                              onToggle={(path) => {
+                                setPdfFullTocTreeExpanded((prev) => {
+                                  const n = new Set(prev);
+                                  if (n.has(path)) n.delete(path);
+                                  else n.add(path);
+                                  return n;
+                                });
+                              }}
+                            />
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                   {isPdf && (
