@@ -25,7 +25,11 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
-from app.agents.model_adapter import strip_code_fence, complete_text_once
+from app.agents.model_adapter import (
+    DEFAULT_MAX_TOKENS_ANTHROPIC,
+    strip_code_fence,
+    complete_text_once,
+)
 
 _log = logging.getLogger(__name__)
 from app.prompts import load_prompt
@@ -35,6 +39,8 @@ from app.services.llm_defaults import task_temperature
 TOC_LLM_MAX_WAIT_SECONDS: float = 900.0
 # PDF: raw TOC text sent to the model (output is already chapter-skeleton; allow longer multi-page TOCs).
 PDF_TOC_LLM_MAX_INPUT_CHARS: int = 12000
+# Anthropic TOC/CHM: use ``DEFAULT_MAX_TOKENS_ANTHROPIC`` (see ``model_adapter``). OpenAI /
+# OpenRouter / ``openai_compatible`` / **Google** do not pass max output — provider defaults.
 # CHM: only ask the LLM for rows with depth <= this; deeper rows inherit (default 1 = top-level part/book, like PDF big chapters).
 CHM_CLASSIFY_MAX_DEPTH: int = 1
 # CHM batch line: index + depth + tab + title; long HHC titles are truncated for prompt size.
@@ -184,13 +190,17 @@ async def fetch_pdf_toc_llm_raw(toc_text: str, llm_profile, model_name: str) -> 
     )
     try:
         t = task_temperature("toc_analysis")
-        raw = await complete_text_once(
-            profile=llm_profile,
-            model_name=effective_model_name,
-            system_prompt=system_prompt,
-            user_prompt=user_message,
-            temperature=t,
-        )
+        prov = (getattr(llm_profile, "provider_type", None) or "").strip().lower()
+        call_kw: dict[str, Any] = {
+            "profile": llm_profile,
+            "model_name": effective_model_name,
+            "system_prompt": system_prompt,
+            "user_prompt": user_message,
+            "temperature": t,
+        }
+        if prov == "anthropic":
+            call_kw["max_tokens"] = DEFAULT_MAX_TOKENS_ANTHROPIC
+        raw = await complete_text_once(**call_kw)
         out = strip_code_fence(raw)
         _log.debug(
             "toc_analyzer operation=fetch_pdf_toc_llm_raw toc_chars=%s response_chars=%s",
@@ -202,30 +212,62 @@ async def fetch_pdf_toc_llm_raw(toc_text: str, llm_profile, model_name: str) -> 
         raise RuntimeError(f"LLM call for TOC analysis failed: {e}") from e
 
 
+def _log_toc_json_parse_failure(raw: str, err: json.JSONDecodeError | None) -> None:
+    msg = err.msg if err else ""
+    pos = err.pos if err else -1
+    n = len(raw)
+    head = (raw[:500] if n > 500 else raw).replace("\n", " ")
+    tail = (raw[-500:] if n > 500 else "").replace("\n", " ")
+    _log.warning(
+        "toc_analyzer operation=parse_pdf_toc_response parse_ok=false json_error=%s json_pos=%s response_chars=%s head_500=%s tail_500=%s",
+        msg,
+        pos,
+        n,
+        head,
+        tail,
+    )
+
+
+def _toc_json_user_message(raw: str, err: json.JSONDecodeError | None) -> str:
+    n = len(raw)
+    t = raw.rstrip()
+    truncated_hint = bool(n > 200 and not t.endswith("}"))
+    if err and err.msg:
+        if "Unterminated" in err.msg or (err.pos is not None and n > 100 and err.pos >= n - 80):
+            truncated_hint = True
+    core = f"无法解析模型返回的 JSON（约 {n} 个字符）"
+    if err is not None:
+        core += f"。JSON: {err.msg}，位置: {err.pos}"
+    if truncated_hint:
+        core += "。常见原因：整段在末尾被截断（`full_toc` 行数多时会很长）。可缩短抽到的目录页后重试；若仍失败请查服务端日志中的 `tail_500`。"
+    else:
+        core += "。请检查是否混有说明文字、或未转义引号/换行。"
+    return core
+
+
 def parse_pdf_toc_response(raw: str) -> TocAnalysisResult:
     """Parse LLM JSON into sections. Raises TocNotRecognizedError or RuntimeError."""
     raw = strip_code_fence(raw).strip()
+    data: dict[str, Any] | None = None
+    last_err: json.JSONDecodeError | None = None
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
+        first = json.loads(raw)
+        if isinstance(first, dict):
+            data = first
+    except json.JSONDecodeError as e:
+        last_err = e
+    if data is None and raw:
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m:
             try:
-                data = json.loads(m.group())
-            except json.JSONDecodeError:
-                _log.info(
-                    "toc_analyzer operation=parse_pdf_toc_response parse_ok=false response_chars=%s snippet=%s",
-                    len(raw),
-                    raw[:300],
-                )
-                raise RuntimeError(f"LLM returned non-JSON output: {raw[:300]}")
-        else:
-            _log.info(
-                "toc_analyzer operation=parse_pdf_toc_response parse_ok=false response_chars=%s snippet=%s",
-                len(raw),
-                raw[:300],
-            )
-            raise RuntimeError(f"LLM returned non-JSON output: {raw[:300]}")
+                sub = json.loads(m.group(0))
+                if isinstance(sub, dict):
+                    data = sub
+            except json.JSONDecodeError as e:
+                last_err = e
+    if data is None:
+        _log_toc_json_parse_failure(raw, last_err)
+        raise RuntimeError(_toc_json_user_message(raw, last_err))
 
     if not data.get("is_toc", True):
         raise TocNotRecognizedError(data.get("reason", "LLM could not identify a table of contents"))
@@ -406,14 +448,17 @@ async def iter_assign_chm_section_chunk_types(
             len(user_message),
         )
         try:
+            chm_kw: dict[str, Any] = {
+                "profile": llm_profile,
+                "model_name": effective_model_name,
+                "system_prompt": system_prompt,
+                "user_prompt": user_message,
+                "temperature": task_temperature("toc_analysis"),
+            }
+            if (getattr(llm_profile, "provider_type", None) or "").strip().lower() == "anthropic":
+                chm_kw["max_tokens"] = DEFAULT_MAX_TOKENS_ANTHROPIC
             raw = await asyncio.wait_for(
-                complete_text_once(
-                    profile=llm_profile,
-                    model_name=effective_model_name,
-                    system_prompt=system_prompt,
-                    user_prompt=user_message,
-                    temperature=task_temperature("toc_analysis"),
-                ),
+                complete_text_once(**chm_kw),
                 timeout=TOC_LLM_MAX_WAIT_SECONDS,
             )
             raw = strip_code_fence(raw)

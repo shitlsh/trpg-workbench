@@ -9,6 +9,14 @@ from openai import AsyncOpenAI
 
 from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
 
+# Anthropic Messages API *requires* ``max_tokens``; the SDK will not let you omit it. This is
+# only a default when the caller does not pass ``max_tokens=``; the model may still cap lower.
+# (Current project default 32768 — align with your deployment’s Claude max output when you add
+# per-model profile config.)
+# OpenAI / OpenRouter / ``openai_compatible`` / **Google Gemini** do *not* set a default here:
+# the request omits max output and uses each provider’s own defaults.
+DEFAULT_MAX_TOKENS_ANTHROPIC: int = 32768
+
 
 def strip_code_fence(text: str) -> str:
     """Remove markdown code fences (``` or ```json etc.) from LLM responses."""
@@ -96,8 +104,17 @@ async def complete_text_once(
     system_prompt: str | None,
     user_prompt: str,
     temperature: float = 0.2,
+    max_tokens: int | None = None,
 ) -> str:
-    """Simple single-turn completion for utility endpoints (non tool-calling)."""
+    """Simple single-turn completion for utility endpoints (non tool-calling).
+
+    **max_tokens** (optional):
+    - If **omitted** for OpenAI-compatible providers: **we do not send** ``max_tokens`` so the
+      **server / model** chooses (Gemini: same—see Google branch, no max output set).
+    - **Anthropic**: the API **requires** a value; if you omit the argument, we use
+      :data:`DEFAULT_MAX_TOKENS_ANTHROPIC`. Pass ``max_tokens`` explicitly to raise the ceiling
+      (subject to the model’s hard cap).
+    """
     provider = (profile.provider_type or "").strip().lower()
     if provider in {"openai", "openrouter", "openai_compatible"}:
         client = AsyncOpenAI(**_openai_client_kwargs(profile))
@@ -105,11 +122,14 @@ async def complete_text_once(
         if system_prompt:
             msgs.append({"role": "system", "content": system_prompt})
         msgs.append({"role": "user", "content": user_prompt})
-        resp = await client.chat.completions.create(
-            model=model_name,
-            messages=msgs,
-            temperature=temperature,
-        )
+        create_kwargs: dict[str, Any] = {
+            "model": model_name,
+            "messages": msgs,
+            "temperature": temperature,
+        }
+        if max_tokens is not None:
+            create_kwargs["max_tokens"] = max_tokens
+        resp = await client.chat.completions.create(**create_kwargs)
         return resp.choices[0].message.content or ""
 
     if provider == "anthropic":
@@ -122,11 +142,12 @@ async def complete_text_once(
         if LLM_REQUEST_TIMEOUT_SECONDS is not None:
             client_kw["timeout"] = float(LLM_REQUEST_TIMEOUT_SECONDS)
         client = AsyncAnthropic(**client_kw)
+        anthropic_max = max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS_ANTHROPIC
         resp = await client.messages.create(
             model=model_name,
             system=system_prompt or "",
             messages=[{"role": "user", "content": user_prompt}],
-            max_tokens=2048,
+            max_tokens=anthropic_max,
             temperature=temperature,
         )
         parts = [getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"]
@@ -141,6 +162,7 @@ async def complete_text_once(
             raise RuntimeError("Google API key is required")
         client = genai.Client(api_key=key)
         prompt = (system_prompt or "") + "\n\n" + user_prompt
+        # Intentionally omit max_output_tokens so Gemini / GenAI use provider defaults per model.
         resp = await asyncio.to_thread(client.models.generate_content, model=model_name, contents=prompt)
         return getattr(resp, "text", "") or ""
 
@@ -207,7 +229,7 @@ async def iter_complete_text_deltas(
             model=model_name,
             system=system_prompt or "",
             messages=[{"role": "user", "content": user_prompt}],
-            max_tokens=8192,
+            max_tokens=DEFAULT_MAX_TOKENS_ANTHROPIC,
             temperature=temperature,
         ) as stream:
             async for text in stream.text_stream:
@@ -224,6 +246,7 @@ async def iter_complete_text_deltas(
             raise RuntimeError("Google API key is required")
         client = genai.Client(api_key=key)
         merged = ((system_prompt or "").strip() + "\n\n" if (system_prompt or "").strip() else "") + user_prompt
+        # No max_output_tokens — model / API defaults apply.
         config = types.GenerateContentConfig(temperature=temperature)
         async for chunk in await client.aio.models.generate_content_stream(
             model=model_name,

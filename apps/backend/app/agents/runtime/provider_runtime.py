@@ -9,6 +9,7 @@ from typing import Any
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 
+from app.agents.model_adapter import DEFAULT_MAX_TOKENS_ANTHROPIC
 from app.agents.runtime.policy import resolve_policy
 from app.agents.tooling import build_openai_tool_specs
 from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
@@ -413,7 +414,7 @@ async def _chat_anthropic(req: RuntimeRequest):
             "model": req.model_name,
             "system": system_prompt,
             "messages": payload_messages,
-            "max_tokens": 2048,
+            "max_tokens": DEFAULT_MAX_TOKENS_ANTHROPIC,
             "temperature": req.temperature,
         }
         if tool_specs:
