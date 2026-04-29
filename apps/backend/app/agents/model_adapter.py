@@ -112,9 +112,9 @@ async def complete_text_once(
     **max_tokens** (optional, internal — not planned as end-user config):
     - If **omitted** for OpenAI-compatible providers: **we do not send** ``max_tokens`` so the
       **server / model** chooses (Gemini: same—see Google branch, no max output set).
-    - **Anthropic**: the API **requires** a value; if you omit the argument, we use
-      :data:`DEFAULT_MAX_TOKENS_ANTHROPIC`. Callers may pass ``max_tokens`` explicitly (e.g. once
-      model catalog supplies per-model limits).
+    - **Anthropic**: the API **requires** ``max_tokens``; if you omit the argument, we use
+      :data:`DEFAULT_MAX_TOKENS_ANTHROPIC`. We call ``messages.stream`` and concatenate text
+      (the SDK disallows long non-streaming calls — see ``anthropic`` Python SDK long requests).
     """
     provider = (profile.provider_type or "").strip().lower()
     if provider in {"openai", "openrouter", "openai_compatible"}:
@@ -144,15 +144,29 @@ async def complete_text_once(
             client_kw["timeout"] = float(LLM_REQUEST_TIMEOUT_SECONDS)
         client = AsyncAnthropic(**client_kw)
         anthropic_max = max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS_ANTHROPIC
-        resp = await client.messages.create(
+        # `messages.create` is rejected for requests the SDK classifies as long (e.g. high
+        # `max_tokens` or large I/O) — "Streaming is required for operations that may take
+        # longer than 10 minutes." Stream and concatenate like `iter_complete_text_deltas`.
+        text_parts: list[str] = []
+        async with client.messages.stream(
             model=model_name,
             system=system_prompt or "",
             messages=[{"role": "user", "content": user_prompt}],
             max_tokens=anthropic_max,
             temperature=temperature,
-        )
-        parts = [getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"]
-        return "".join(parts)
+        ) as stream:
+            async for fragment in stream.text_stream:
+                if fragment:
+                    text_parts.append(fragment)
+            final = await stream.get_final_message()
+        out = "".join(text_parts)
+        if not (out and out.strip()) and final is not None:
+            out = "".join(
+                getattr(b, "text", "")
+                for b in final.content
+                if getattr(b, "type", "") == "text"
+            )
+        return out
 
     if provider == "google":
         from google import genai
