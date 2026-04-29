@@ -9,9 +9,10 @@ import { useModelList } from "../../hooks/useModelList";
 import type {
   ChatSession, ChatSessionCreate, ChatMessage, ToolCall,
   LLMProfile, ModelCatalogEntry, WorkspaceConfigResponse,
-  AgentQuestion,
+  AgentQuestion, AgentPlan, AgentPlanUpdate, PlanStepStatus,
 } from "@trpg-workbench/shared-schema";
 import { QuestionCard } from "./QuestionCard";
+import { PlanCard } from "./PlanCard";
 import { useAgentStore } from "@/stores/agentStore";
 import ContextUsageBadge from "./ContextUsageBadge";
 import { ToolCallCard } from "./ToolCallCard";
@@ -164,7 +165,8 @@ type StreamEvent =
   | { kind: "text_chunk"; text: string }
   | { kind: "tool_call"; toolCall: ToolCall }
   | { kind: "question_interrupt"; question: AgentQuestion }
-  | { kind: "thinking_chunk"; text: string; done: boolean };
+  | { kind: "thinking_chunk"; text: string; done: boolean }
+  | { kind: "plan"; plan: AgentPlan };
 
 // ─── ThinkingBlock ────────────────────────────────────────────────────────────
 
@@ -333,6 +335,14 @@ function StreamingBubble({
                 key={`qi_${i}`}
                 question={e.question}
                 onSubmit={onQuestionSubmit}
+              />
+            );
+          }
+          if (e.kind === "plan") {
+            return (
+              <PlanCard
+                key={`plan_${e.plan.plan_id}`}
+                plan={e.plan}
               />
             );
           }
@@ -818,6 +828,31 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               flushUi(true);
               // Stream ends after this (backend emits done next); keep isStreaming=true until done
 
+            } else if (currentEvent === "agent_plan") {
+              // Director emitted a structured task plan before starting execution
+              const plan = data as unknown as AgentPlan;
+              accEvents = [...accEvents, { kind: "plan", plan }];
+              flushUi(true);
+
+            } else if (currentEvent === "agent_plan_update") {
+              // A plan step changed status (pending → running → done/error)
+              const update = data as unknown as AgentPlanUpdate;
+              accEvents = accEvents.map((e) => {
+                if (e.kind !== "plan" || e.plan.plan_id !== update.plan_id) return e;
+                return {
+                  ...e,
+                  plan: {
+                    ...e.plan,
+                    steps: e.plan.steps.map((s) =>
+                      s.id === update.step_id
+                        ? { ...s, status: update.status as PlanStepStatus }
+                        : s
+                    ),
+                  },
+                };
+              });
+              flushUi();
+
             } else if (currentEvent === "done") {
               if (textCarry) {
                 flushTextChunk("", true);
@@ -843,6 +878,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                   accThinking += ev.text;
                 }
                 // question_interrupt: skip (user reply becomes a separate user message)
+                // plan: skip — UI-only metadata, not stored in message content
               }
               const accText = contentWithPlaceholders.trim();
               const accToolCalls = Object.values(accToolCallsById).map((tc) =>
