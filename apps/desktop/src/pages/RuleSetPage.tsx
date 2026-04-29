@@ -2890,58 +2890,67 @@ export default function RuleSetPage() {
             <h2 className={styles.modalTitle}>添加资产类型</h2>
 
             {/* Mode tabs */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
               {(["manual", "ai"] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => { setNewTypeFormMode(mode); setTypeGenError(null); setNewTypeError(null); }}
                   style={{
-                    fontSize: 12, padding: "4px 14px", borderRadius: 4, border: "1px solid var(--border)",
+                    fontSize: 12, padding: "5px 16px", borderRadius: 4, border: "1px solid var(--border)",
                     background: newTypeFormMode === mode ? "var(--accent)" : "transparent",
                     color: newTypeFormMode === mode ? "#fff" : "var(--text-muted)",
-                    cursor: "pointer", whiteSpace: "nowrap",
+                    cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                    display: "flex", alignItems: "center", gap: 4,
                   }}
                 >
-                  {mode === "manual" ? "手动填写" : <><Sparkles size={11} style={{ verticalAlign: "middle", marginRight: 3 }} />AI 生成</>}
+                  {mode === "manual" ? "手动填写" : <><Sparkles size={11} />AI 生成</>}
                 </button>
               ))}
             </div>
 
             {/* AI generation mode */}
             {newTypeFormMode === "ai" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <select
-                    className={styles.select}
-                    value={typeGenLlmId}
-                    onChange={(e) => { setTypeGenLlmId(e.target.value); setTypeGenModelName(""); }}
-                    style={{ flex: 1, fontSize: 12 }}
-                  >
-                    <option value="">选择 LLM 供应商</option>
-                    {llmProfilesForType.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name || p.provider_type}</option>
-                    ))}
-                  </select>
-                  <input
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <label className={styles.label}>
+                  LLM 供应商 / 模型
+                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                    <select
+                      className={styles.select}
+                      value={typeGenLlmId}
+                      onChange={(e) => { setTypeGenLlmId(e.target.value); setTypeGenModelName(""); }}
+                      style={{ flex: 1, fontSize: 12 }}
+                    >
+                      <option value="">选择供应商</option>
+                      {llmProfilesForType.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name || p.provider_type}</option>
+                      ))}
+                    </select>
+                    <input
+                      className={styles.input}
+                      placeholder="模型名称（如 gemini-2.0-flash）"
+                      value={typeGenModelName}
+                      onChange={(e) => setTypeGenModelName(e.target.value)}
+                      list="type-gen-models"
+                      style={{ flex: 2, fontSize: 12 }}
+                    />
+                    <datalist id="type-gen-models">
+                      {typeGenProbedModels.map((m) => <option key={m} value={m} />)}
+                    </datalist>
+                  </div>
+                </label>
+
+                <label className={styles.label}>
+                  描述你想要的类型
+                  <textarea
                     className={styles.input}
-                    placeholder="模型名称（如 gemini-2.0-flash）"
-                    value={typeGenModelName}
-                    onChange={(e) => setTypeGenModelName(e.target.value)}
-                    list="type-gen-models"
-                    style={{ flex: 2, fontSize: 12 }}
+                    placeholder="例：我想要一个记录法术的类型，包括施法条件、效果和代价"
+                    value={typeGenIntent}
+                    onChange={(e) => setTypeGenIntent(e.target.value)}
+                    rows={3}
+                    style={{ fontSize: 12, resize: "vertical", marginTop: 4 }}
                   />
-                  <datalist id="type-gen-models">
-                    {typeGenProbedModels.map((m) => <option key={m} value={m} />)}
-                  </datalist>
-                </div>
-                <textarea
-                  className={styles.input}
-                  placeholder="描述你想要的类型（如：我想要一个记录法术的类型，包括施法条件、效果和代价）"
-                  value={typeGenIntent}
-                  onChange={(e) => setTypeGenIntent(e.target.value)}
-                  rows={3}
-                  style={{ fontSize: 12, resize: "vertical" }}
-                />
+                </label>
+
                 {typeGenPhase && (
                   <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>{typeGenPhase}</p>
                 )}
@@ -2954,9 +2963,10 @@ export default function RuleSetPage() {
                   </pre>
                 )}
                 {typeGenDone && (
-                  <p style={{ fontSize: 11, color: "var(--accent)", margin: 0 }}>✓ 生成完成，已切换到手动模式，请检查后创建</p>
+                  <p style={{ fontSize: 11, color: "var(--accent)", margin: 0 }}>✓ 生成完成，已切换到手动填写，请检查后创建</p>
                 )}
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
                   <button
                     className={styles.btnSecondary}
                     style={{ fontSize: 12 }}
@@ -2964,13 +2974,13 @@ export default function RuleSetPage() {
                   >取消</button>
                   <button
                     className={styles.btnPrimary}
-                    style={{ fontSize: 12, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}
+                    style={{ fontSize: 12, whiteSpace: "nowrap", flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "6px 16px" }}
                     disabled={typeGenLoading || !typeGenLlmId || !typeGenModelName.trim() || !typeGenIntent.trim()}
                     onClick={handleGenerateAssetType}
                   >
                     {typeGenLoading
                       ? <><Hourglass className={styles.animatedHourglass} size={13} strokeWidth={1.9} />生成中…</>
-                      : <><Sparkles size={12} />生成类型定义</>
+                      : <><Sparkles size={13} />生成类型定义</>
                     }
                   </button>
                 </div>
@@ -2979,52 +2989,71 @@ export default function RuleSetPage() {
 
             {/* Manual / review mode */}
             {newTypeFormMode === "manual" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    className={styles.input}
-                    placeholder="类型键（英文，如 spell）"
-                    value={newTypeKey}
-                    onChange={(e) => setNewTypeKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                    style={{ flex: 2, fontSize: 12 }}
-                    autoFocus
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="显示名称（如 法术）"
-                    value={newTypeLabel}
-                    onChange={(e) => setNewTypeLabel(e.target.value)}
-                    style={{ flex: 2, fontSize: 12 }}
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="图标"
-                    value={newTypeIcon}
-                    onChange={(e) => setNewTypeIcon(e.target.value)}
-                    style={{ flex: 1, textAlign: "center", fontSize: 16 }}
-                    maxLength={4}
-                  />
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* Basic info row: key + label + icon */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 64px", gap: 8 }}>
+                  <label className={styles.label}>
+                    类型键 <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(英文)</span>
+                    <input
+                      className={styles.input}
+                      placeholder="如 spell"
+                      value={newTypeKey}
+                      onChange={(e) => setNewTypeKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                      style={{ marginTop: 4, fontSize: 12 }}
+                      autoFocus
+                    />
+                  </label>
+                  <label className={styles.label}>
+                    显示名称
+                    <input
+                      className={styles.input}
+                      placeholder="如 法术"
+                      value={newTypeLabel}
+                      onChange={(e) => setNewTypeLabel(e.target.value)}
+                      style={{ marginTop: 4, fontSize: 12 }}
+                    />
+                  </label>
+                  <label className={styles.label} style={{ textAlign: "center" }}>
+                    图标
+                    <input
+                      className={styles.input}
+                      placeholder="✨"
+                      value={newTypeIcon}
+                      onChange={(e) => setNewTypeIcon(e.target.value)}
+                      style={{ marginTop: 4, fontSize: 18, textAlign: "center", padding: "4px 6px" }}
+                      maxLength={4}
+                    />
+                  </label>
                 </div>
-                <textarea
-                  className={styles.input}
-                  placeholder={"范围说明（可选）：这个类型是什么、什么时候用、和其他类型的区别。\n建议包含「创建前必须提供」段落，AI 会参考它来判断是否需要向用户提问。"}
-                  value={newTypeDescription}
-                  onChange={(e) => setNewTypeDescription(e.target.value)}
-                  rows={4}
-                  style={{ fontSize: 12, resize: "vertical" }}
-                />
-                <textarea
-                  className={styles.input}
-                  placeholder={"Markdown 章节模板（可选）：包含 frontmatter + 章节骨架，AI 创建此类型资产时会参考此格式。\n不填时 AI 会自由发挥，建议填写以保证输出质量。"}
-                  value={newTypeTemplateMd}
-                  onChange={(e) => setNewTypeTemplateMd(e.target.value)}
-                  rows={5}
-                  style={{ fontSize: 12, resize: "vertical", fontFamily: "monospace" }}
-                />
+
+                <label className={styles.label}>
+                  范围说明 <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(可选，AI 会参考)</span>
+                  <textarea
+                    className={styles.input}
+                    placeholder={"这个类型是什么、什么时候用、和其他类型的区别。\n建议包含「创建前必须提供」段落，AI 会据此判断是否向用户提问。"}
+                    value={newTypeDescription}
+                    onChange={(e) => setNewTypeDescription(e.target.value)}
+                    rows={4}
+                    style={{ fontSize: 12, resize: "vertical", marginTop: 4 }}
+                  />
+                </label>
+
+                <label className={styles.label}>
+                  Markdown 章节模板 <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(可选，AI 按此结构生成内容)</span>
+                  <textarea
+                    className={styles.input}
+                    placeholder={"---\nname: 类型名称\ntype: spell\nsummary: ...\nstatus: draft\n---\n\n# 名称\n\n## 章节1\n...\n\n## 章节2\n..."}
+                    value={newTypeTemplateMd}
+                    onChange={(e) => setNewTypeTemplateMd(e.target.value)}
+                    rows={6}
+                    style={{ fontSize: 11, resize: "vertical", fontFamily: "monospace", marginTop: 4 }}
+                  />
+                </label>
+
                 {newTypeError && (
                   <p className={styles.error} style={{ margin: 0 }}>{newTypeError}</p>
                 )}
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
                   <button
                     className={styles.btnSecondary}
                     style={{ fontSize: 12 }}
