@@ -174,19 +174,6 @@ export interface EmbeddingTestResult {
   error?: string;
 }
 
-// ─── M6: LLM Usage Records ────────────────────────────────────────────────────
-
-export interface LLMUsageRecord {
-  id: string;
-  llm_profile_id: string;
-  workspace_id: string | null;
-  task_type: string;
-  prompt_tokens: number | null;
-  completion_tokens: number | null;
-  total_tokens: number | null;
-  created_at: string;
-}
-
 // ─── M2: Knowledge ────────────────────────────────────────────────────────────
 
 /**
@@ -725,74 +712,7 @@ export interface ModelCatalogEntry {
   updated_at: string;
 }
 
-export interface EmbeddingCatalogEntry {
-  id: string; // "{provider_type}:{model_name}"
-  provider_type: EmbeddingProviderType;
-  model_name: string;
-  display_name: string | null;
-  dimensions: number | null;
-  max_input_tokens: number | null;
-  input_price_per_1m: number | null;
-  source: "static" | "api_fetched" | "user";
-  fetched_at: string | null;
-  updated_at: string;
-}
 
-export interface UpdateModelCatalogEntryRequest {
-  input_price_per_1m?: number | null;
-  output_price_per_1m?: number | null;
-  context_window?: number | null;
-  supports_json_mode?: boolean | null;
-  supports_tools?: boolean | null;
-}
-
-export interface CatalogRefreshRequest {
-  provider_type: LLMProviderType | "openai_compatible";
-  llm_profile_id?: string;         // required for cloud providers
-  base_url?: string;               // for openai_compatible direct probe
-  api_key?: string | null;         // optional override
-}
-
-export interface CatalogRefreshResult {
-  provider_type: LLMProviderType;
-  models_added: number;
-  models_updated: number;
-  error: string | null;
-}
-
-// ─── M7: Usage ────────────────────────────────────────────────────────────────
-
-export interface UsageByModel {
-  provider_type: LLMProviderType;
-  model_name: string;
-  input_tokens: number;
-  output_tokens: number;
-  estimated_cost_usd: number | null;
-  call_count: number;
-}
-
-export interface UsageSummary {
-  period: { from: string | null; to: string | null };
-  total_input_tokens: number;
-  total_output_tokens: number;
-  estimated_cost_usd: number | null;
-  call_count: number;
-  by_model: UsageByModel[];
-}
-
-export interface UsageRecord {
-  id: string;
-  workspace_id: string | null;
-  provider_type: string;
-  model_name: string;
-  task_type: string;
-  workflow_source: string | null;
-  input_tokens: number | null;
-  output_tokens: number | null;
-  total_tokens: number | null;
-  estimated_cost_usd: number | null;
-  created_at: string;
-}
 
 // ─── M8: Rerank Profiles ──────────────────────────────────────────────────────
 

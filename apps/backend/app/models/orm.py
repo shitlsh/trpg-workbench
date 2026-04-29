@@ -80,19 +80,6 @@ class EmbeddingProfileORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
-class LLMUsageRecordORM(Base):
-    __tablename__ = "llm_usage_records"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    llm_profile_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    task_type: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g. "create_module", "rules_review"
-    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-
-
 # ─── M2: Knowledge ────────────────────────────────────────────────────────────
 
 class KnowledgeLibraryORM(Base):
@@ -259,42 +246,6 @@ class RerankProfileORM(Base):
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
-
-class ModelCatalogEntryORM(Base):
-    __tablename__ = "model_catalog_entries"
-
-    id: Mapped[str] = mapped_column(String(300), primary_key=True)  # "{provider_type}:{model_name}"
-    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    display_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    supports_json_mode: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    supports_tools: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    input_price_per_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
-    output_price_per_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
-    pricing_currency: Mapped[str] = mapped_column(String(10), default="USD")
-    is_deprecated: Mapped[bool] = mapped_column(Boolean, default=False)
-    source: Mapped[str] = mapped_column(String(20), default="static")  # "static" | "api_fetched"
-    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
-
-
-class EmbeddingCatalogEntryORM(Base):
-    __tablename__ = "embedding_catalog_entries"
-
-    id: Mapped[str] = mapped_column(String(300), primary_key=True)  # "{provider_type}:{model_name}"
-    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    display_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    max_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    input_price_per_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
-    source: Mapped[str] = mapped_column(String(20), default="static")
-    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
-
 
 # ─── M16: Custom Asset Type Configs ──────────────────────────────────────────
 

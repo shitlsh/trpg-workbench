@@ -6,15 +6,14 @@ import {
   RefreshCw, FileText, ChevronDown, ChevronUp, MessageSquare, Brain,
 } from "lucide-react";
 import { useModelList } from "../../hooks/useModelList";
+import { useAgentStore } from "@/stores/agentStore";
 import type {
   ChatSession, ChatSessionCreate, ChatMessage, ToolCall,
-  LLMProfile, ModelCatalogEntry, WorkspaceConfigResponse,
+  LLMProfile, WorkspaceConfigResponse,
   AgentQuestion, AgentPlan, AgentPlanUpdate, PlanStepStatus,
 } from "@trpg-workbench/shared-schema";
 import { QuestionCard } from "./QuestionCard";
 import { PlanCard } from "./PlanCard";
-import { useAgentStore } from "@/stores/agentStore";
-import ContextUsageBadge from "./ContextUsageBadge";
 import { ToolCallCard } from "./ToolCallCard";
 import { MentionInput } from "./MentionInput";
 import { SessionDrawer } from "./SessionDrawer";
@@ -508,16 +507,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const { models: availableModels } = useModelList(activeProfile?.id ?? null);
   const modelOptions = availableModels;
 
-  const effectiveModel = sessionModel || defaultLlmModel;
 
-  const { data: catalogEntry } = useQuery({
-    queryKey: ["model-catalog-entry", activeProfile?.provider_type, effectiveModel],
-    queryFn: () =>
-      apiFetch<ModelCatalogEntry[]>(
-        `/settings/model-catalog?provider_type=${activeProfile!.provider_type}`
-      ).then((entries) => entries.find((e) => e.model_name === effectiveModel) ?? null),
-    enabled: !!activeProfile && !!effectiveModel,
-  });
+
+
 
   // Logs
   const { data: logsData } = useQuery({
@@ -1119,15 +1111,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
-      {/* Context usage badge */}
-      {messages.length > 0 && (
-        <div style={{ padding: "0 12px" }}>
-          <ContextUsageBadge
-            messages={messages.map((m) => m.content)}
-            contextWindow={catalogEntry?.context_window ?? null}
-          />
-        </div>
-      )}
+
 
       {/* Session error */}
       {sessionError && (

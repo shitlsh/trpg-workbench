@@ -12,13 +12,10 @@ from app.api.llm_profiles import router as llm_profiles_router
 from app.api.embedding_profiles import router as embedding_profiles_router
 from app.api.rerank_profiles import router as rerank_profiles_router
 from app.api.knowledge_preview import router as knowledge_preview_router
-from app.api.model_catalog import router as model_catalog_router
-from app.api.usage import router as usage_router
 from app.api.custom_asset_type_configs import router as custom_asset_type_configs_router
 from app.api.workspace_skills import router as workspace_skills_router
-from app.storage.database import init_db, get_db
+from app.storage.database import init_db
 from app.storage.seed import seed_default_data
-from app.services.catalog_service import load_static_catalog
 
 app = FastAPI(title="TRPG Workbench Backend", version="0.1.0")
 
@@ -35,12 +32,6 @@ app.add_middleware(
 async def on_startup():
     init_db()
     seed_default_data()
-    # M7: seed static model catalog
-    db = next(get_db())
-    try:
-        load_static_catalog(db)
-    finally:
-        db.close()
 
 
 app.include_router(health.router)
@@ -49,8 +40,6 @@ app.include_router(rule_sets.router)
 app.include_router(llm_profiles_router)
 app.include_router(embedding_profiles_router)
 app.include_router(rerank_profiles_router)
-app.include_router(model_catalog_router)
-app.include_router(usage_router)
 app.include_router(knowledge_libraries.router)
 app.include_router(knowledge_documents.router)
 # router3 before router2: DELETE /knowledge/documents/{id} would otherwise match

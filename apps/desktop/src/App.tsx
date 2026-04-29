@@ -9,7 +9,6 @@ import HomePage from "./pages/HomePage";
 import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
 import SettingsPage from "./pages/SettingsPage";
 import PromptProfilesPage from "./pages/PromptProfilesPage";
-import UsagePage from "./pages/UsagePage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import HelpPage from "./pages/HelpPage";
 import RuleSetPage from "./pages/RuleSetPage";
@@ -115,7 +114,6 @@ export default function App() {
         <Route path="/settings/rule-sets" element={<RuleSetPage />} />
         <Route path="/settings/models" element={<SettingsPage />} />
         <Route path="/settings/prompts" element={<PromptProfilesPage />} />
-        <Route path="/usage" element={<UsagePage />} />
         <Route path="/workspace/:id/settings" element={<WorkspaceSettingsPage />} />
         <Route path="/workspace/:id" element={<WorkspacePage />} />
         <Route path="/help/:doc" element={<HelpPage />} />

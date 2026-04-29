@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { BookMarked, Cpu, BarChart2, FolderOpen } from "lucide-react";
+import { BookMarked, Cpu, FolderOpen } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { apiFetch } from "../lib/api";
 import type {
@@ -134,10 +134,7 @@ export default function HomePage() {
             <Cpu size={14} style={{ flexShrink: 0 }} />
             模型配置
           </button>
-          <button className={styles.btnSecondary} onClick={() => navigate("/usage")}>
-            <BarChart2 size={14} style={{ flexShrink: 0 }} />
-            用量观测
-          </button>
+
           <button className={styles.btnSecondary} onClick={handleOpenBrowse}>
             <FolderOpen size={14} style={{ flexShrink: 0 }} />
             打开已有
