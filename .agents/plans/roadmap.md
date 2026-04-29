@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路 **M1–M28 已完成**，下一个 milestone 待规划。
+核心功能链路 **M1–M28 已完成**，**M29 Agent 交互质量提升** 进行中。
 
 ```
 ✅ M1 基础骨架
@@ -33,7 +33,8 @@
                                                                                                                                                                                    ├── ✅ M25 LLM Profile 字段瘦身
                                                                                                                                                                                    ├── ✅ M26 探索子 Agent 与 Prompt 体系统一
                                                                                                                                                                                    └── ✅ M27 资产单步操作与批处理
-                                                                                                                                                                                          └── ✅ M28 原生 SDK Agent 运行时替换
+                                                                                                                                                                                           └── ✅ M28 原生 SDK Agent 运行时替换
+                                                                                                                                                                                                  └── 🔄 M29 Agent 交互质量提升
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -82,7 +83,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| — | — | 下一个 milestone 待规划 | — |
+| M29 🔄 | Agent 交互质量提升 | 修复 ask_user 触发率过低、建立单轮完成感知、引入批量任务计划输出 | [m29-agent-interaction-quality.md](m29-agent-interaction-quality.md) |
 
 ---
 
