@@ -693,6 +693,10 @@ async def detect_toc(file_id: str, body: DetectTocRequest = Body(default=DetectT
     }
 
 
+# PDF `analyze-toc`：整本书目录的 JSON 输出可能让模型跑满数分钟，Wall-clock 等待上限要大于单次 HTTP/用户感知。
+# 原先用「仅统计 10s 超时间隔」在边界上与墙上时间一致，现改为 `perf_counter` 与下面常量统一，避免误杀。
+ANALYZE_TOC_LLM_MAX_WAIT_SECONDS = 900.0
+
 # ── 3. Analyze TOC with LLM ───────────────────────────────────────────────────
 
 class AnalyzeTocRequest(BaseModel):
@@ -768,32 +772,50 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
                     await q.put(("fetch_err", str(exc)))
 
             asyncio.create_task(_fetch_raw())
-            deadline = 300
-            elapsed = 0
+            t_llm_start = time.perf_counter()
             raw = ""
             llm_ms = 0.0
-            while elapsed < deadline:
+            while True:
+                if (time.perf_counter() - t_llm_start) >= ANALYZE_TOC_LLM_MAX_WAIT_SECONDS:
+                    w = int(time.perf_counter() - t_llm_start)
+                    _log.warning(
+                        "knowledge_sse operation=analyze_toc phase=llm_wait_exceeded file_id=%s correlation_id=%s "
+                        "wall_wait_s=%s toc_chars=%s model=%s (LLM 未在时限内返回完整响应)",
+                        file_id,
+                        correlation_id,
+                        w,
+                        toc_chars,
+                        model_label,
+                    )
+                    yield _doc_sse(
+                        "error",
+                        {
+                            "message": (
+                                f"目录分析超时：等待模型返回已超过 {int(ANALYZE_TOC_LLM_MAX_WAIT_SECONDS)} 秒。"
+                                " 整本目录的 JSON 输出可能较慢，请稍后重试、换更快模型，或只选取较短目录页范围。"
+                            ),
+                        },
+                    )
+                    return
+                remaining = ANALYZE_TOC_LLM_MAX_WAIT_SECONDS - (time.perf_counter() - t_llm_start)
                 try:
-                    item = await asyncio.wait_for(q.get(), timeout=10.0)
-                    if item[0] == "fetch_err":
-                        raise RuntimeError(item[1])
-                    _, raw, llm_ms = item
-                    break
+                    item = await asyncio.wait_for(q.get(), timeout=min(10.0, max(0.1, remaining)))
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
-                    elapsed += 10
-                    # Client-visible progress (raw ``: keepalive`` is ignored by the desktop helper)
+                    wait_sec = int(time.perf_counter() - t_llm_start)
                     yield _doc_sse(
                         "progress",
                         {
                             "phase": "llm_wait",
-                            "message": f"等待模型响应当中（已约 {elapsed} 秒）",
-                            "detail": {**detail_base, "wait_seconds": elapsed},
+                            "message": f"等待模型响应当中（已约 {wait_sec} 秒）",
+                            "detail": {**detail_base, "wait_seconds": wait_sec},
                         },
                     )
-            else:
-                yield _doc_sse("error", {"message": "TOC analysis timed out (300s). Try a faster model."})
-                return
+                    continue
+                if item[0] == "fetch_err":
+                    raise RuntimeError(item[1])
+                _, raw, llm_ms = item
+                break
 
             response_chars = len(raw or "")
             yield _doc_sse(

@@ -296,15 +296,21 @@
 .docList { display: flex; flex-direction: column; gap: 6px; }
 
 /* TOC / CHM 分析等待：动效，避免长时间无反馈时像卡死 */
-.tocAnalyzeEmoji {
-  font-size: 22px;
-  line-height: 1;
-  display: inline-block;
-  animation: tocAnalyzeBreathe 1.4s ease-in-out infinite;
+.tocHourglassWrap {
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
-@keyframes tocAnalyzeBreathe {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.08); opacity: 0.75; }
+.animatedHourglass {
+  color: var(--accent);
+  flex-shrink: 0;
+  animation: hourglassRock 2.2s ease-in-out infinite;
+  transform-origin: 50% 55%;
+}
+@keyframes hourglassRock {
+  0%, 100% { transform: rotate(-12deg); }
+  50% { transform: rotate(12deg); }
 }
 .tocWaitBar {
   display: flex;

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ModelNameInput } from "../components/ModelNameInput";
 import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
-  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check, RotateCcw,
+  Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check, RotateCcw, Hourglass,
 } from "lucide-react";
 import { apiFetch, apiPostSSEWithHandlers, apiFetchWithTotalCount, BACKEND_URL, type SSEProgressPayload } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
@@ -475,7 +475,11 @@ function SetPromptModal({
                     onClick={handleGenerate}
                     style={{ display: "flex", alignItems: "center", gap: 6 }}
                   >
-                    <Sparkles size={13} />
+                    {isGenerating ? (
+                      <Hourglass className={styles.animatedHourglass} size={15} strokeWidth={1.9} />
+                    ) : (
+                      <Sparkles size={13} />
+                    )}
                     {isGenerating ? "生成中..." : "生成提示词"}
                   </button>
                 </div>
@@ -1462,7 +1466,9 @@ function LibraryDetailPanel({
             {/* uploading / detecting_toc / analyzing_toc: spinner */}
             {(wizard.step === "uploading" || wizard.step === "detecting_toc" || wizard.step === "analyzing_toc") && (
               <div style={{ padding: "24px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                <div className={wizard.step === "analyzing_toc" ? styles.tocAnalyzeEmoji : undefined} style={{ marginBottom: 10, fontSize: 20 }}>⏳</div>
+                <div className={styles.tocHourglassWrap} aria-hidden>
+                  <Hourglass className={styles.animatedHourglass} size={30} strokeWidth={1.75} />
+                </div>
                 {wizard.step === "uploading" && "正在上传文件..."}
                 {wizard.step === "detecting_toc" && "正在自动检测目录页..."}
                 {wizard.step === "analyzing_toc" && (
