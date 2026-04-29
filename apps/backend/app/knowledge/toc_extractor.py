@@ -24,8 +24,36 @@ _TOC_KEYWORDS = re.compile(
     r"目\s*录|contents?|table\s+of\s+contents|inhaltsverzeichnis|sommaire",
     re.IGNORECASE,
 )
-# A TOC line typically ends with a run of dots/spaces and then page digits.
-_TOC_LINE_RE = re.compile(r"[\.\s]{3,}\d{1,4}\s*$")
+# 西式目录：行末为引导点/空白后接页码。
+_TOC_LINE_DOTTED = re.compile(r"[\.\s·…]{3,}\d{1,4}\s*$")
+# 扫描前若干页、单段目录取多页，与 ``fetch_pdf_toc`` 入模上限一起考虑。
+TOC_DETECT_DEFAULT_SCAN_FIRST_N: int = 20
+TOC_DETECT_MAX_SPAN_EXTRA_PAGES: int = 9  # 与起始页连续时最多再含 9 页（共 10 页）
+
+
+def _loose_toc_line_ends_with_page(s: str) -> bool:
+    """无点线时，行末为「任意正文 + 空白 + 1～4 位页码」（含以「1. 章名」起头的行）。"""
+    s = s.strip()
+    m = re.match(r"^(.+)\s+(\d{1,4})\s*$", s)
+    if not m or len(s) < 4:
+        return False
+    body, num_s = m.group(1), m.group(2)
+    if re.fullmatch(r"\d{1,4}", body.strip()):
+        return False
+    if len(num_s) == 4 and 1800 <= int(num_s) < 3000:
+        return False
+    if len(body.strip()) < 2:
+        return False
+    return True
+
+
+def _is_toc_like_line(line: str) -> bool:
+    s = line.strip()
+    if len(s) < 4:
+        return False
+    if _TOC_LINE_DOTTED.search(s):
+        return True
+    return _loose_toc_line_ends_with_page(s)
 
 
 def _score_toc_page(text: str) -> float:
@@ -36,23 +64,47 @@ def _score_toc_page(text: str) -> float:
     if not lines:
         return 0.0
 
+    n = max(len(lines), 1)
     score = 0.0
-    # Keyword bonus
     if _TOC_KEYWORDS.search(text):
         score += 0.3
 
-    # Fraction of lines that end with a page number pattern
-    dotted = sum(1 for l in lines if _TOC_LINE_RE.search(l))
-    score += min(0.7, dotted / max(len(lines), 1) * 1.4)
+    toc_rows = sum(1 for l in lines if _is_toc_like_line(l))
+    score += min(0.7, toc_rows / n * 1.35)
 
     return min(1.0, score)
 
 
+def _bridge_toc_page_scores(
+    raw_scores: list[float],
+    *,
+    th: float = 0.3,
+    max_pass: int = 2,
+) -> list[float]:
+    """若某页分略低于 th，但前后两页都 ≥ th，则视为同一跨页目录的「薄弱页」并抬到 th，避免 2-2 / 2 与 3-4-5 断开。
+
+    两栏 PDF 在某一页上可能整页少匹配点线/行形，用夹心补齐一段连续区间。
+    """
+    if len(raw_scores) < 3:
+        return list(raw_scores)
+    s = list(raw_scores)
+    for _ in range(max_pass):
+        prev = s[:]
+        for i in range(1, len(s) - 1):
+            if s[i] < th and s[i - 1] >= th and s[i + 1] >= th:
+                s[i] = th
+        if s == prev:
+            break
+    return s
+
+
 def detect_toc_pages_sync(
     pdf_path: Path,
-    scan_first_n: int = 12,
+    scan_first_n: int = TOC_DETECT_DEFAULT_SCAN_FIRST_N,
 ) -> tuple[str, int, int]:
     """Scan the first *scan_first_n* pages of a PDF and find the TOC range.
+
+    启发式：「目录/contents」关键词 + 行是否像「点线+页码」或「词+空格+页码」；两栏/中文无点线靠后者与夹心补页。
 
     Returns (toc_text, page_start, page_end) — page numbers are 1-indexed.
     Raises RuntimeError if pdfplumber is unavailable or the file cannot be read.
@@ -71,8 +123,11 @@ def detect_toc_pages_sync(
             text = pdf.pages[i].extract_text() or ""
             page_texts.append((i + 1, text))
 
-    # Score each page
-    scores = [(pn, txt, _score_toc_page(txt)) for pn, txt in page_texts]
+    raw_sc = [_score_toc_page(txt) for _, txt in page_texts]
+    br = _bridge_toc_page_scores(raw_sc)
+    scores: list[tuple[int, str, float]] = [
+        (page_texts[i][0], page_texts[i][1], br[i]) for i in range(len(page_texts))
+    ]
 
     # Find the best contiguous run of high-scoring pages
     THRESHOLD = 0.3
@@ -105,14 +160,9 @@ def detect_toc_pages_sync(
         best_start = 1
         best_end = min(3, total)
 
-    # Clamp to at most 6 pages to keep LLM input manageable
-    best_end = min(best_end, best_start + 5)
+    # 单段目录页数上限（多页长目录）
+    best_end = min(best_end, best_start + TOC_DETECT_MAX_SPAN_EXTRA_PAGES)
 
-    toc_text = "\n\n--- Page {} ---\n".format(best_start)
-    toc_text += "\n\n--- Page {} ---\n".join(
-        str(pn) for pn, _ in page_texts if best_start <= pn <= best_end
-    )
-    # Rebuild properly
     toc_parts = []
     with pdfplumber.open(str(pdf_path)) as pdf:
         for pn in range(best_start, best_end + 1):

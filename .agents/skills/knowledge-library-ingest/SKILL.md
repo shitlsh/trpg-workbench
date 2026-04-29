@@ -68,7 +68,7 @@ description: 约束 trpg-workbench 中知识库文档（PDF/CHM）的导入、TO
 | 3b | `POST /knowledge/documents/preview/{file_id}/classify-chm-sections`（CHM，SSE，须 `llm_model_name` 非空） |
 | 4 | `POST /knowledge/libraries/{library_id}/documents/ingest-confirmed` |
 
-**PDF**：`detect-toc` 用 `toc_extractor.detect_toc_pages_sync` 或手选 `toc_page_start`/`end` 时 `extract_pages_text_sync` → 返回 `toc_text`、`page_start`/`end`（1-based）、`is_structural: false`、无 `sections`。`analyze-toc`：`fetch_pdf_toc_llm_raw` → `parse_pdf_toc_response`；`toc_text` 入模截断 `PDF_TOC_LLM_MAX_INPUT_CHARS`（**12000**）；`system.txt`、`user_pdf.txt`；`toc_analysis` 温度 **0.2**；单次 LLM 墙钟 `TOC_LLM_MAX_WAIT_SECONDS`（**900**）；`is_toc: false` → `TocNotRecognizedError`。
+**PDF**：`detect-toc` 用 `toc_extractor.detect_toc_pages_sync`（前 **20** 页启发式：点线+页、无点线「行末词+页码」、**夹心**抬中间薄弱页，单段至 **10** 页）或手选 `toc_page_start`/`end` 时 `extract_pages_text_sync` → 返回 `toc_text`、`page_start`/`end`（1-based）、`is_structural: false`、无 `sections`。`analyze-toc`：`fetch_pdf_toc_llm_raw` → `parse_pdf_toc_response`；`toc_text` 入模截断 `PDF_TOC_LLM_MAX_INPUT_CHARS`（**12000**）；`system.txt`、`user_pdf.txt`；`toc_analysis` 温度 **0.2**；单次 LLM 墙钟 `TOC_LLM_MAX_WAIT_SECONDS`（**900**）；`is_toc: false` → `TocNotRecognizedError`。
 
 **CHM**：`detect-toc`：`extract_chm_toc_sync` → `chm_structure_to_sections`；`page_from` 为话题序 **1…N**；`is_structural: true`；`toc_text` 空。`classify-chm-sections`：每批 `user_chm_batch` + 行表；`CHM_CLASSIFY_MAX_DEPTH` 默认 **1**（最外大节，与 PDF 章级粗粒度一致；`body.max_classify_depth=2` 可标到 HHC 第二层）；深行 `_inherit_chm_chunk_types`；`CHM_CLASSIFY_BATCH` **120**；温度 **0.2**；每批/总墙钟见 `TOC_LLM_MAX_WAIT_SECONDS` 与 `knowledge_documents`。
 
