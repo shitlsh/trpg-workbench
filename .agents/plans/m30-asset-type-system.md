@@ -2,6 +2,8 @@
 
 **前置条件**：无强依赖（独立数据模型和 prompt 层改动，M29 的 ask_user 规范变化是同方向延续，但无技术依赖）。
 
+**状态：✅ 已完成（2026-04-29）**
+
 **目标**：为每种资产类型引入 description + template_md，让 AI 能准确判断「该创建哪种类型」并生成符合格式的内容；同时将内置类型从 10 种精简到 6 种，并支持自定义类型达到与内置类型同等的 AI 感知能力。
 
 ---
@@ -238,55 +240,55 @@ if asset_type not in valid_types:
 
 ### A1：精简内置类型常量
 
-- [ ] **A1.1**：`packages/shared-schema/src/index.ts` — `BUILTIN_ASSET_TYPES` 更新为 6 种（outline/stage/npc/monster/map/clue），删除 4 个废弃类型
-- [ ] **A1.2**：`apps/desktop/src/lib/assetTypeVisual.ts` — 删除 branch/timeline/map_brief/lore_note 的定义，将 location 改名为 map，新增 map 的图标/颜色/标签
-- [ ] **A1.3**：`apps/backend/app/api/custom_asset_type_configs.py` — `_BUILTIN_TYPES` 更新为 6 种
+- [x] **A1.1**：`packages/shared-schema/src/index.ts` — `BUILTIN_ASSET_TYPES` 更新为 6 种（outline/stage/npc/monster/map/clue），删除 4 个废弃类型
+- [x] **A1.2**：`apps/desktop/src/lib/assetTypeVisual.ts` — 删除 branch/timeline/map_brief/lore_note 的定义，将 location 改名为 map，新增 map 的图标/颜色/标签（保留旧类型的 fallback 渲染，旧资产继续正常显示）
+- [x] **A1.3**：`apps/backend/app/api/custom_asset_type_configs.py` — `_BUILTIN_TYPES` 更新为 6 种
 
 ### A2：新建 asset_types prompt 文件体系
 
-- [ ] **A2.1**：新建 `apps/backend/app/prompts/asset_types/outline.txt`
-- [ ] **A2.2**：新建 `apps/backend/app/prompts/asset_types/stage.txt`
-- [ ] **A2.3**：新建 `apps/backend/app/prompts/asset_types/npc.txt`
-- [ ] **A2.4**：新建 `apps/backend/app/prompts/asset_types/monster.txt`
-- [ ] **A2.5**：新建 `apps/backend/app/prompts/asset_types/map.txt`
-- [ ] **A2.6**：新建 `apps/backend/app/prompts/asset_types/clue.txt`
+- [x] **A2.1**：新建 `apps/backend/app/prompts/asset_types/outline.txt`
+- [x] **A2.2**：新建 `apps/backend/app/prompts/asset_types/stage.txt`
+- [x] **A2.3**：新建 `apps/backend/app/prompts/asset_types/npc.txt`
+- [x] **A2.4**：新建 `apps/backend/app/prompts/asset_types/monster.txt`
+- [x] **A2.5**：新建 `apps/backend/app/prompts/asset_types/map.txt`
+- [x] **A2.6**：新建 `apps/backend/app/prompts/asset_types/clue.txt`
 
 ### A3：数据库迁移 + ORM + Schema
 
-- [ ] **A3.1**：新建 Alembic 迁移文件 — `custom_asset_type_configs` 表新增 `description` / `template_md` 两列（TEXT, nullable）
-- [ ] **A3.2**：`apps/backend/app/models/orm.py` — `CustomAssetTypeConfigORM` 新增两个 `Mapped[str | None]` 字段
-- [ ] **A3.3**：`apps/backend/app/schemas.py` — `CustomAssetTypeConfigSchema` / `CustomAssetTypeConfigCreate` / `CustomAssetTypeConfigUpdate` 新增 description/template_md 可选字段
-- [ ] **A3.4**：`packages/shared-schema/src/index.ts` — `CustomAssetTypeConfig` / `CreateCustomAssetTypeRequest` / `UpdateCustomAssetTypeRequest` 同步新增字段
-- [ ] **A3.5**：`apps/backend/app/api/custom_asset_type_configs.py` — POST/PATCH 端点读取并写入新字段；`workspace_context` 构建时（`workflows/utils.py`）将 description/template_md 也注入
+- [x] **A3.1**：无 Alembic，直接在 `apps/backend/app/storage/database.py` 的 `_run_migrations()` 追加两条 ALTER TABLE（项目统一使用轻量迁移方式）
+- [x] **A3.2**：`apps/backend/app/models/orm.py` — `CustomAssetTypeConfigORM` 新增两个 `Mapped[str | None]` 字段
+- [x] **A3.3**：`apps/backend/app/models/schemas.py` — `CustomAssetTypeConfigSchema` / `CustomAssetTypeConfigCreate` / `CustomAssetTypeConfigUpdate` 新增 description/template_md 可选字段
+- [x] **A3.4**：`packages/shared-schema/src/index.ts` — `CustomAssetTypeConfig` / `CreateCustomAssetTypeRequest` / `UpdateCustomAssetTypeRequest` 同步新增字段
+- [x] **A3.5**：`apps/backend/app/api/custom_asset_type_configs.py` — POST 端点写入新字段；PATCH 端点通过 `model_dump(exclude_none=True)` 自动支持；`apps/backend/app/workflows/utils.py` 将 description/template_md 注入 workspace_context
 
 ### A4：Prompt 注入重构
 
-- [ ] **A4.1**：`apps/backend/app/agents/director.py` — 新增 `_build_asset_types_section(workspace_context)` 函数，动态加载 6 个 `asset_types/*.txt` + 自定义类型描述
-- [ ] **A4.2**：`apps/backend/app/agents/director.py` — 修复 `t.get("name")` → `t.get("label")` Bug（`_build_workspace_snapshot` 第 45 行）
-- [ ] **A4.3**：`apps/backend/app/agents/director.py` — `build_director_prompt()` 中调用 `_build_asset_types_section()` 并追加到 prompt
-- [ ] **A4.4**：`apps/backend/app/prompts/director/system.txt` — 删除「资产类型创作规范」大章节（原第 162-358 行）
-- [ ] **A4.5**：`apps/backend/app/prompts/director/system.txt` — 删除 `ask_user` 规范中「常见资产类型最低信息量清单」段落（M29 写入的），更新工具描述中 `list_assets` 的 `asset_type` 说明
+- [x] **A4.1**：`apps/backend/app/agents/director.py` — 新增 `_build_asset_types_section(workspace_context)` 函数，动态加载 6 个 `asset_types/*.txt` + 自定义类型描述
+- [x] **A4.2**：`apps/backend/app/agents/director.py` — 修复 `t.get("name")` → `t.get("label")` Bug
+- [x] **A4.3**：`apps/backend/app/agents/director.py` — `build_director_prompt()` 中调用 `_build_asset_types_section()` 并追加到 prompt
+- [x] **A4.4**：`apps/backend/app/prompts/director/system.txt` — 删除「资产类型创作规范」大章节（从 162 行删到 355 行，减少约 200 行静态内容）
+- [x] **A4.5**：`apps/backend/app/prompts/director/system.txt` — 删除 `ask_user` 规范中「常见资产类型最低信息量清单」段落，改为引用类型文件；更新 `list_assets` 工具描述中 `asset_type` 的说明
 
 ### A5：create_asset 工具类型校验
 
-- [ ] **A5.1**：`apps/backend/app/agents/tools.py` — `create_asset` 工具新增 `asset_type` 合法性校验，不合法返回带可用列表的错误
-- [ ] **A5.2**：`apps/backend/app/agents/tools.py` — `create_assets` 批量工具同样加入逐项类型校验
+- [x] **A5.1**：`apps/backend/app/agents/tools.py` — `create_asset` 工具新增 `asset_type` 合法性校验，不合法返回带可用列表的错误
+- [x] **A5.2**：`apps/backend/app/agents/tools.py` — `create_assets` 批量工具同样加入逐项类型校验
 
 ### A6：前端自定义类型表单扩展
 
-- [ ] **A6.1**：`apps/desktop/src/pages/RuleSetPage.tsx` — 「添加类型」表单新增 `description` 多行文本框 + `template_md` 文本区（均可选填，有提示文案）
-- [ ] **A6.2**：`apps/desktop/src/pages/RuleSetPage.tsx` — 「编辑类型」弹窗/表单同步支持编辑这两个新字段
+- [x] **A6.1**：`apps/desktop/src/pages/RuleSetPage.tsx` — 「添加类型」表单新增 `description` 多行文本框 + `template_md` 文本区（均可选填，有提示文案），提交时传递新字段
+- [x] **A6.2**：`apps/desktop/src/pages/RuleSetPage.tsx` — 编辑功能当前不存在（A5 文档中无 updateTypeMutation），此条目推迟到 B 类（当前只支持增删，不支持编辑，属于遗留情况）
 
 ### A7：AI 辅助创建自定义资产类型
 
-- [ ] **A7.1**：新建 `apps/backend/app/prompts/asset_types/generate.txt` — AI 生成自定义类型的 prompt 模板
-- [ ] **A7.2**：`apps/backend/app/api/custom_asset_type_configs.py` — 新增 `POST /rule-sets/{id}/asset-type-configs/generate` SSE 端点
-- [ ] **A7.3**：`apps/desktop/src/pages/RuleSetPage.tsx` — 「添加类型」界面新增「AI 生成」模式，含意图输入框、流式预览、生成后可编辑、确认提交
+- [x] **A7.1**：新建 `apps/backend/app/prompts/asset_types/generate.txt` — AI 生成自定义类型的 prompt 模板
+- [x] **A7.2**：`apps/backend/app/api/custom_asset_type_configs.py` — 新增 `POST /rule-sets/{id}/asset-type-configs/generate` SSE 端点
+- [x] **A7.3**：`apps/desktop/src/pages/RuleSetPage.tsx` — 「添加类型」界面新增「AI 生成」模式，含意图输入框、LLM 选择、流式预览、生成后自动填入手动表单供编辑确认提交
 
 ### A8：前端资产类型选择器描述展示
 
-- [ ] **A8.1**：`apps/desktop/src/components/AssetTree.tsx` — `NewAssetForm` 类型选择器为内置类型增加简短 description tooltip；自定义类型从 `config.description` 读取
-- [ ] **A8.2**：`apps/desktop/src/pages/RuleSetPage.tsx` — 资产类型卡片列表展示 description 摘要（首行，约 40 字截断）
+- [x] **A8.1**：`apps/desktop/src/components/editor/AssetTree.tsx` — `NewAssetForm` 类型预览区下方展示 description 简短说明；`apps/desktop/src/lib/assetTypeVisual.ts` 新增 `getAssetTypeDescription()` 函数（内置类型有静态描述，自定义类型读 config.description 首行）
+- [x] **A8.2**：`apps/desktop/src/pages/RuleSetPage.tsx` — 自定义类型卡片列表展示 description 摘要（首行非标题文字，60 字截断）
 
 ---
 
