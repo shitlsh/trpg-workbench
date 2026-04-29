@@ -2,6 +2,8 @@
 
 **前置条件**：无强依赖（prompt 层改动 + 轻量前端组件，不依赖 M28 的特定产出，可独立启动）。
 
+**状态：✅ 已完成（2026-04-29）**
+
 **目标**：修复 `ask_user` 触发率过低的问题，建立单轮对话的完成感知机制，并通过结构化 PlanCard 为批量任务提供执行前的进度预知能力。
 
 ---
@@ -193,22 +195,22 @@ apps/desktop/src/components/agent/PlanCard.tsx
 
 ### A1：重写 ask_user 触发规则
 
-- [ ] **A1.1**：`apps/backend/app/prompts/director/system.txt` — 将「ask_user 调用规范」段落重写为包含「信息量不足型」和「关键分叉型」两类触发规则的新版本
-- [ ] **A1.2**：`apps/backend/app/prompts/director/system.txt` — 删除「问题可以通过合理假设后在回复中说明」兜底禁止条款，替换为「按修改成本高低判断」的精确规则
-- [ ] **A1.3**：`apps/backend/app/prompts/director/system.txt` — 新增常见资产类型最低信息量清单（NPC/场景/线索/怪物四类）
+- [x] **A1.1**：`apps/backend/app/prompts/director/system.txt` — 将「ask_user 调用规范」段落重写为包含「信息量不足型」和「关键分叉型」两类触发规则的新版本
+- [x] **A1.2**：`apps/backend/app/prompts/director/system.txt` — 删除「问题可以通过合理假设后在回复中说明」兜底禁止条款，替换为「按修改成本高低判断」的精确规则
+- [x] **A1.3**：`apps/backend/app/prompts/director/system.txt` — 新增常见资产类型最低信息量清单（NPC/场景/线索/怪物四类）
 
 ### A2：单轮完成回复规范
 
-- [ ] **A2.1**：`apps/backend/app/prompts/director/system.txt` — 新增「完成回复规范」段落，约束每轮对话结束时的「已完成」列表输出格式
+- [x] **A2.1**：`apps/backend/app/prompts/director/system.txt` — 新增「完成回复规范」段落，约束每轮对话结束时的「已完成」列表输出格式
 
 ### A3：结构化 PlanCard
 
-- [ ] **A3.1**：`apps/backend/app/prompts/director/system.txt` — 新增 `<plan>` 标签输出规范，约束 Director 在批量任务前输出 JSON 步骤列表的格式和触发条件
-- [ ] **A3.2**：`apps/backend/app/agents/director.py` — 新增 `<plan>` 标签解析状态机（`_in_plan`、`_plan_buf`、`_plan_steps`、`_plan_step_cursor` 等变量），在 `text_delta` 处理块中解析，在 `tool_call_start` 和 `tool_call_result` 分支中 yield `agent_plan_update`
-- [ ] **A3.3**：`apps/backend/app/api/chat.py` — 在 `_event_generator` 中透传 `agent_plan` 和 `agent_plan_update` 事件（不持久化）
-- [ ] **A3.4**：`packages/shared-schema/src/index.ts` — 新增 `PlanStepStatus`、`AgentPlanStep`、`AgentPlan`、`AgentPlanUpdate`、`SSEAgentPlan`、`SSEAgentPlanUpdate` 类型；更新 `SSEEventType` union 和 `SSEEvent` union
-- [ ] **A3.5**：`apps/desktop/src/components/agent/AgentPanel.tsx` — `StreamEvent` union 新增 `plan` 种类；SSE 解析新增 `agent_plan` / `agent_plan_update` 分支（含步骤状态 immutable 更新逻辑）；`StreamingBubble` 新增 `PlanCard` 渲染分支；`done` 事件处理时 plan 事件不计入正文 content
-- [ ] **A3.6**：新建 `apps/desktop/src/components/agent/PlanCard.tsx` — 步骤列表组件，支持 pending/running/done/error 四种状态图标，`done` 后变为只读最终态
+- [x] **A3.1**：`apps/backend/app/prompts/director/system.txt` — 新增 `<plan>` 标签输出规范，约束 Director 在批量任务前输出 JSON 步骤列表的格式和触发条件
+- [x] **A3.2**：`apps/backend/app/agents/director.py` — 新增 `<plan>` 标签解析状态机（`_in_plan`、`_plan_buf`、`_plan_steps`、`_plan_step_cursor` 等变量），在 `text_delta` 处理块中解析，在 `tool_call_start` 和 `tool_call_result` 分支中 yield `agent_plan_update`
+- [x] **A3.3**：`apps/backend/app/api/chat.py` — 在 `_event_generator` 中透传 `agent_question`（原先缺失）、`agent_plan` 和 `agent_plan_update` 事件（不持久化）
+- [x] **A3.4**：`packages/shared-schema/src/index.ts` — 新增 `PlanStepStatus`、`AgentPlanStep`、`AgentPlan`、`AgentPlanUpdate`、`SSEAgentPlan`、`SSEAgentPlanUpdate` 类型；更新 `SSEEventType` union 和 `SSEEvent` union
+- [x] **A3.5**：`apps/desktop/src/components/agent/AgentPanel.tsx` — `StreamEvent` union 新增 `plan` 种类；SSE 解析新增 `agent_plan` / `agent_plan_update` 分支（含步骤状态 immutable 更新逻辑）；`StreamingBubble` 新增 `PlanCard` 渲染分支；`done` 事件处理时 plan 事件不计入正文 content
+- [x] **A3.6**：新建 `apps/desktop/src/components/agent/PlanCard.tsx` — 步骤列表组件，支持 pending/running/done/error 四种状态图标，`done` 后变为只读最终态（顺带发现并修复了 `agent_question` 在 chat.py 中缺少透传分支的 bug）
 
 ---
 
