@@ -6,7 +6,6 @@ import type {
   LLMProfile, CreateLLMProfileRequest, UpdateLLMProfileRequest,
   EmbeddingProfile, CreateEmbeddingProfileRequest, UpdateEmbeddingProfileRequest,
   LLMTestResult, EmbeddingTestResult,
-  ModelCatalogEntry,
   RerankProfile, CreateRerankProfileRequest, UpdateRerankProfileRequest,
   RerankProviderType, RerankTestResult,
   ProbeModelsResponse,
@@ -90,14 +89,7 @@ function LLMSection() {
     queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
   });
 
-  const { data: formLlmCatalog = [] } = useQuery({
-    queryKey: ["model-catalog", form.provider_type],
-    queryFn: () =>
-      apiFetch<ModelCatalogEntry[]>(
-        `/settings/model-catalog?provider_type=${encodeURIComponent(form.provider_type)}`,
-      ),
-    enabled: showForm && !!form.provider_type,
-  });
+
 
   const createMutation = useMutation({
     mutationFn: (body: CreateLLMProfileRequest) =>
@@ -176,7 +168,6 @@ function LLMSection() {
   function handleRefreshModelList() {
     if (!editTarget) return;
     void queryClient.invalidateQueries({ queryKey: ["model-list", editTarget.id] });
-    void queryClient.invalidateQueries({ queryKey: ["model-catalog", form.provider_type] });
   }
 
   async function handleTest() {
@@ -327,7 +318,7 @@ function LLMSection() {
                         providerType={form.provider_type}
                         value={testModelName}
                         onChange={setTestModelName}
-                        catalogEntries={formLlmCatalog}
+                        catalogEntries={[]}
                         fetchedModels={profileModels.length > 0 ? profileModels : fetchedModels}
                         placeholder="例：claude-sonnet-4-20250514 / gemini-2.0-flash"
                         className={styles.input}

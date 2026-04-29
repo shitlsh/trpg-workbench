@@ -1,8 +1,10 @@
 /**
- * ModelNameInput — LLM or embedding model picker with optional catalog + probe merge,
- * search, capability filters, and token hints (LLM catalog mode).
+ * ModelNameInput — LLM or embedding model picker.
  *
- * LLM 下拉仅合并：本地「模型发现」条目 + 供应商 probe 返回的 id，不再混入内置字符串列表。
+ * Model list = probe results from the provider API (via useModelList / fetchedModels).
+ * catalogEntries is kept for backward compatibility but is always passed as [] now that
+ * the local model catalog DB has been removed (M7 cleanup). Capability filters
+ * (requireTools / requireJsonMode) have no effect when catalogEntries is empty.
  */
 import { useId, useMemo, useState, useEffect, useRef } from "react";
 import type { ModelCatalogEntry } from "@trpg-workbench/shared-schema";
