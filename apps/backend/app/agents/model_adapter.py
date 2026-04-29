@@ -1,6 +1,10 @@
 """Adapter utilities for profile auth/config + native SDK invocations."""
+import inspect
 import re
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
+
 from openai import AsyncOpenAI
 
 from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
@@ -141,6 +145,132 @@ async def complete_text_once(
         return getattr(resp, "text", "") or ""
 
     raise ValueError(f"Unsupported provider_type: {provider}")
+
+
+StreamDeltaCallback = Callable[[str], Awaitable[None] | None]
+
+
+async def _maybe_await(cb: StreamDeltaCallback | None, fragment: str) -> None:
+    if not cb or not fragment:
+        return
+    out = cb(fragment)
+    if inspect.isawaitable(out):
+        await out
+
+
+async def iter_complete_text_deltas(
+    *,
+    profile,
+    model_name: str,
+    system_prompt: str | None,
+    user_prompt: str,
+    temperature: float = 0.2,
+) -> AsyncIterator[str]:
+    """Async iterator of assistant text fragments (single-turn chat completion)."""
+    provider = (profile.provider_type or "").strip().lower()
+
+    if provider in {"openai", "openrouter", "openai_compatible"}:
+        client = AsyncOpenAI(**_openai_client_kwargs(profile))
+        msgs: list[dict[str, Any]] = []
+        if system_prompt:
+            msgs.append({"role": "system", "content": system_prompt})
+        msgs.append({"role": "user", "content": user_prompt})
+        stream = await client.chat.completions.create(
+            model=model_name,
+            messages=msgs,
+            temperature=temperature,
+            stream=True,
+        )
+        async for chunk in stream:
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            delta = getattr(choices[0], "delta", None)
+            if delta is None:
+                continue
+            content = getattr(delta, "content", None)
+            if isinstance(content, str) and content:
+                yield content
+        return
+
+    if provider == "anthropic":
+        from anthropic import AsyncAnthropic
+
+        key = _decrypt_key(profile)
+        if not key:
+            raise RuntimeError("Anthropic API key is required")
+        client_kw: dict[str, Any] = {"api_key": key}
+        if LLM_REQUEST_TIMEOUT_SECONDS is not None:
+            client_kw["timeout"] = float(LLM_REQUEST_TIMEOUT_SECONDS)
+        client = AsyncAnthropic(**client_kw)
+        async with client.messages.stream(
+            model=model_name,
+            system=system_prompt or "",
+            messages=[{"role": "user", "content": user_prompt}],
+            max_tokens=8192,
+            temperature=temperature,
+        ) as stream:
+            async for text in stream.text_stream:
+                if text:
+                    yield text
+        return
+
+    if provider == "google":
+        from google import genai
+        from google.genai import types
+
+        key = _decrypt_key(profile)
+        if not key:
+            raise RuntimeError("Google API key is required")
+        client = genai.Client(api_key=key)
+        merged = ((system_prompt or "").strip() + "\n\n" if (system_prompt or "").strip() else "") + user_prompt
+        config = types.GenerateContentConfig(temperature=temperature)
+        async for chunk in await client.aio.models.generate_content_stream(
+            model=model_name,
+            contents=merged,
+            config=config,
+        ):
+            chunk_text = getattr(chunk, "text", None)
+            if isinstance(chunk_text, str) and chunk_text:
+                yield chunk_text
+        return
+
+    raise ValueError(f"Unsupported provider_type for iter_complete_text_deltas: {provider}")
+
+
+async def stream_complete_text(
+    *,
+    profile,
+    model_name: str,
+    system_prompt: str | None,
+    user_prompt: str,
+    temperature: float = 0.2,
+    on_delta: StreamDeltaCallback | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Stream a single-turn completion; accumulate full text. Returns (full_text, meta).
+
+    meta includes: provider, first_chunk_ms (float | None), used_stream (bool).
+    """
+    provider = (profile.provider_type or "").strip().lower()
+    meta: dict[str, Any] = {"provider": provider, "first_chunk_ms": None, "used_stream": True}
+    t0 = time.perf_counter()
+    first = True
+    parts: list[str] = []
+
+    async for fragment in iter_complete_text_deltas(
+        profile=profile,
+        model_name=model_name,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        temperature=temperature,
+    ):
+        if first:
+            meta["first_chunk_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
+            first = False
+        parts.append(fragment)
+        await _maybe_await(on_delta, fragment)
+
+    return "".join(parts), meta
 
 
 def embedding_from_profile(profile) -> Any:

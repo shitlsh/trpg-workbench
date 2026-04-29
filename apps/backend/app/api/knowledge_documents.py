@@ -1,12 +1,16 @@
 import asyncio
 import json
 import logging
+import queue
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any
+
+from app.knowledge.toc_analyzer import TocSection
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -24,6 +28,19 @@ _log = logging.getLogger(__name__)
 
 def _doc_sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _toc_sections_payload(sections: list[TocSection]) -> list[dict[str, Any]]:
+    return [
+        {
+            "title": s.title,
+            "page_from": s.page_from,
+            "page_to": s.page_to,
+            "depth": s.depth,
+            "suggested_chunk_type": s.suggested_chunk_type,
+        }
+        for s in sections
+    ]
 
 
 @router.get("/{library_id}/documents", response_model=list[KnowledgeDocumentSchema])
@@ -688,17 +705,18 @@ class AnalyzeTocRequest(BaseModel):
 
 @router3.post("/preview/{file_id}/analyze-toc")
 async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depends(get_db)):
-    """Parse TOC text via SSE stream with keepalive comments.
+    """Parse TOC text via SSE: progress phases, keepalive, then result or error.
 
-    Yields:
-      `: keepalive`       — every 10s while the LLM is running
-      `event: result`     — on success, data = {sections: [...]}
-      `event: error`      — on failure, data = {message, error_type?}
+    Events: ``progress`` (phase, message, detail), ``result``, ``error``.
     """
     _get_temp(file_id)  # validate file still exists
 
     from app.models.orm import LLMProfileORM
-    from app.knowledge.toc_analyzer import analyze_toc as _analyze, TocNotRecognizedError
+    from app.knowledge.toc_analyzer import (
+        fetch_pdf_toc_llm_raw,
+        parse_pdf_toc_response,
+        TocNotRecognizedError,
+    )
 
     profile = db.get(LLMProfileORM, body.llm_profile_id)
     if not profile:
@@ -710,46 +728,155 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
 
     toc_text = body.toc_text
     model_name = body.llm_model_name
-
-    def _run() -> list[dict]:
-        result = _analyze(toc_text, profile, model_name)
-        return [
-            {"title": s.title, "page_from": s.page_from, "page_to": s.page_to,
-             "depth": s.depth, "suggested_chunk_type": s.suggested_chunk_type}
-            for s in result.sections
-        ]
+    model_label = (model_name or "").strip() or (getattr(profile, "model_name", None) or "")
+    toc_chars = len(toc_text or "")
 
     async def _stream():
-        queue: asyncio.Queue = asyncio.Queue()
+        correlation_id = uuid.uuid4().hex[:16]
+        t0 = time.perf_counter()
+        detail_base = {
+            "correlation_id": correlation_id,
+            "operation": "analyze_toc",
+            "file_id": file_id,
+            "model": model_label,
+            "provider_kind": (profile.provider_type or "").strip().lower(),
+        }
+        yield _doc_sse(
+            "progress",
+            {"phase": "queued", "message": "已加入分析队列", "detail": {**detail_base, "toc_chars": toc_chars}},
+        )
+        yield _doc_sse(
+            "progress",
+            {"phase": "llm_request", "message": "正在请求模型解析目录…", "detail": detail_base},
+        )
+        try:
+            q: asyncio.Queue = asyncio.Queue()
 
-        async def _produce():
-            try:
-                sections = await asyncio.to_thread(_run)
-                await queue.put(("result", sections))
-            except TocNotRecognizedError as exc:
-                await queue.put(("toc_error", exc.reason))
-            except Exception as exc:
-                await queue.put(("error", str(exc)))
+            async def _fetch_raw():
+                try:
+                    t_llm = time.perf_counter()
+                    raw_local = await asyncio.to_thread(fetch_pdf_toc_llm_raw, toc_text, profile, model_name)
+                    llm_ms_local = round((time.perf_counter() - t_llm) * 1000.0, 2)
+                    await q.put(("raw", raw_local, llm_ms_local))
+                except Exception as exc:
+                    await q.put(("fetch_err", str(exc)))
 
-        asyncio.create_task(_produce())
-
-        deadline = 300
-        elapsed = 0
-        while elapsed < deadline:
-            try:
-                kind, payload = await asyncio.wait_for(queue.get(), timeout=10.0)
-                if kind == "result":
-                    yield _doc_sse("result", {"sections": payload})
-                elif kind == "toc_error":
-                    yield _doc_sse("error", {"message": payload, "error_type": "toc_not_recognized"})
-                else:
-                    yield _doc_sse("error", {"message": payload})
+            asyncio.create_task(_fetch_raw())
+            deadline = 300
+            elapsed = 0
+            raw = ""
+            llm_ms = 0.0
+            while elapsed < deadline:
+                try:
+                    item = await asyncio.wait_for(q.get(), timeout=10.0)
+                    if item[0] == "fetch_err":
+                        raise RuntimeError(item[1])
+                    _, raw, llm_ms = item
+                    break
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    elapsed += 10
+            else:
+                yield _doc_sse("error", {"message": "TOC analysis timed out (300s). Try a faster model."})
                 return
-            except asyncio.TimeoutError:
-                yield ": keepalive\n\n"
-                elapsed += 10
 
-        yield _doc_sse("error", {"message": "TOC analysis timed out (300s). Try a faster model."})
+            response_chars = len(raw or "")
+            yield _doc_sse(
+                "progress",
+                {
+                    "phase": "llm_response_received",
+                    "message": "已收到模型响应，正在解析 JSON…",
+                    "detail": {**detail_base, "elapsed_ms": llm_ms, "response_chars": response_chars},
+                },
+            )
+            t_parse = time.perf_counter()
+            try:
+                result = await asyncio.to_thread(parse_pdf_toc_response, raw)
+            except TocNotRecognizedError as exc:
+                parse_ms = round((time.perf_counter() - t_parse) * 1000.0, 2)
+                total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+                _log.info(
+                    "knowledge_sse operation=analyze_toc phase=json_parse_error file_id=%s correlation_id=%s "
+                    "total_ms=%s parse_ms=%s toc_chars=%s response_chars=%s error_type=toc_not_recognized",
+                    file_id,
+                    correlation_id,
+                    total_ms,
+                    parse_ms,
+                    toc_chars,
+                    response_chars,
+                )
+                yield _doc_sse(
+                    "progress",
+                    {
+                        "phase": "json_parse_error",
+                        "message": "模型判定输入不是有效目录",
+                        "detail": {**detail_base, "elapsed_ms": parse_ms, "parse_ok": False},
+                    },
+                )
+                yield _doc_sse("error", {"message": exc.reason, "error_type": "toc_not_recognized"})
+                return
+            except Exception as exc:
+                parse_ms = round((time.perf_counter() - t_parse) * 1000.0, 2)
+                total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+                snippet = str(exc)[:240]
+                _log.info(
+                    "knowledge_sse operation=analyze_toc phase=json_parse_error file_id=%s correlation_id=%s "
+                    "total_ms=%s parse_ms=%s parse_ok=false parse_error_snippet=%s",
+                    file_id,
+                    correlation_id,
+                    total_ms,
+                    parse_ms,
+                    snippet,
+                )
+                yield _doc_sse(
+                    "progress",
+                    {
+                        "phase": "json_parse_error",
+                        "message": "解析模型输出失败",
+                        "detail": {**detail_base, "elapsed_ms": parse_ms, "parse_ok": False},
+                    },
+                )
+                yield _doc_sse("error", {"message": str(exc)})
+                return
+
+            parse_ms = round((time.perf_counter() - t_parse) * 1000.0, 2)
+            total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+            rows = _toc_sections_payload(result.sections)
+            _log.info(
+                "knowledge_sse operation=analyze_toc phase=complete file_id=%s correlation_id=%s total_ms=%s "
+                "llm_ms=%s parse_ms=%s toc_chars=%s response_chars=%s sections_out=%s parse_ok=true",
+                file_id,
+                correlation_id,
+                total_ms,
+                llm_ms,
+                parse_ms,
+                toc_chars,
+                response_chars,
+                len(rows),
+            )
+            yield _doc_sse(
+                "progress",
+                {
+                    "phase": "json_parse",
+                    "message": "目录结构解析完成",
+                    "detail": {
+                        **detail_base,
+                        "elapsed_ms": parse_ms,
+                        "parse_ok": True,
+                        "sections_out": len(rows),
+                    },
+                },
+            )
+            yield _doc_sse("result", {"sections": rows})
+        except Exception as exc:
+            total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+            _log.exception(
+                "knowledge_sse operation=analyze_toc phase=error file_id=%s correlation_id=%s total_ms=%s",
+                file_id,
+                correlation_id,
+                total_ms,
+            )
+            yield _doc_sse("error", {"message": str(exc)})
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
@@ -766,7 +893,7 @@ class ClassifyChmRequest(BaseModel):
 async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Session = Depends(get_db)):
     """Re-read CHM from temp storage, run batched LLM on shallow TOC rows, return sections with types.
 
-    SSE: `event: result` with `{sections: [...]}` (same shape as detect-toc for CHM).
+    SSE: ``progress``, ``partial`` (sections snapshot per batch), ``result``, ``error``.
     """
     entry = _get_temp(file_id)
     if entry["ext"] != ".chm":
@@ -776,7 +903,7 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
     file_path = Path(entry["path"])
 
     from app.knowledge.toc_extractor import extract_chm_toc_sync
-    from app.knowledge.toc_analyzer import chm_structure_to_sections, assign_chm_section_chunk_types
+    from app.knowledge.toc_analyzer import chm_structure_to_sections, iter_assign_chm_section_chunk_types
     from app.models.orm import LLMProfileORM
 
     try:
@@ -794,49 +921,120 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
 
         return StreamingResponse(_no_profile(), media_type="text/event-stream")
 
-    def _run():
-        return assign_chm_section_chunk_types(
-            sections_orm,
-            profile,
-            body.llm_model_name,
-            max_classify_depth=body.max_classify_depth,
-        )
+    model_label = body.llm_model_name.strip()
+    sections_in = len(sections_orm)
 
     async def _stream():
-        queue: asyncio.Queue = asyncio.Queue()
+        correlation_id = uuid.uuid4().hex[:16]
+        t0 = time.perf_counter()
+        tq: queue.Queue = queue.Queue()
 
-        async def _produce():
+        def _chm_worker() -> None:
+            last_rows: list[dict[str, Any]] = []
             try:
-                done = await asyncio.to_thread(_run)
-                rows = [
-                    {
-                        "title": s.title,
-                        "page_from": s.page_from,
-                        "page_to": s.page_to,
-                        "depth": s.depth,
-                        "suggested_chunk_type": s.suggested_chunk_type,
-                    }
-                    for s in done
-                ]
-                await queue.put(("result", rows))
+                for bi, bt, br, merged in iter_assign_chm_section_chunk_types(
+                    sections_orm,
+                    profile,
+                    body.llm_model_name,
+                    max_classify_depth=body.max_classify_depth,
+                ):
+                    last_rows = _toc_sections_payload(merged)
+                    tq.put(
+                        (
+                            "progress",
+                            {
+                                "phase": "chm_batch",
+                                "message": f"目录类型标注：第 {bi + 1}/{bt} 批",
+                                "detail": {
+                                    "correlation_id": correlation_id,
+                                    "batch_index": bi,
+                                    "batch_total": bt,
+                                    "batch_row_count": br,
+                                    "sections_in": sections_in,
+                                    "sections_out": len(last_rows),
+                                    "model": model_label,
+                                    "operation": "classify_chm",
+                                    "file_id": file_id,
+                                },
+                            },
+                        )
+                    )
+                    tq.put(("partial", {"sections": last_rows}))
+                tq.put(("result", last_rows))
             except Exception as exc:
-                await queue.put(("error", str(exc)))
+                tq.put(("error", str(exc)))
 
-        asyncio.create_task(_produce())
-
+        threading.Thread(
+            target=_chm_worker,
+            daemon=True,
+            name=f"chm-classify-{file_id[:8]}",
+        ).start()
+        detail_base = {
+            "correlation_id": correlation_id,
+            "operation": "classify_chm",
+            "file_id": file_id,
+            "model": model_label,
+            "provider_kind": (profile.provider_type or "").strip().lower(),
+            "sections_in": sections_in,
+        }
+        yield _doc_sse(
+            "progress",
+            {"phase": "queued", "message": "已开始 CHM 目录类型分析", "detail": detail_base},
+        )
         deadline = 600
         elapsed = 0
         while elapsed < deadline:
             try:
-                kind, payload = await asyncio.wait_for(queue.get(), timeout=10.0)
-                if kind == "result":
-                    yield _doc_sse("result", {"sections": payload})
-                else:
-                    yield _doc_sse("error", {"message": payload})
-                return
-            except asyncio.TimeoutError:
+                item = await asyncio.to_thread(tq.get, True, 10.0)
+            except queue.Empty:
                 yield ": keepalive\n\n"
                 elapsed += 10
+                continue
+            kind = item[0]
+            if kind == "progress":
+                _log.info(
+                    "knowledge_sse operation=classify_chm phase=chm_batch file_id=%s correlation_id=%s detail=%s",
+                    file_id,
+                    correlation_id,
+                    json.dumps(item[1].get("detail", {}), ensure_ascii=False) if isinstance(item[1], dict) else "",
+                )
+                yield _doc_sse("progress", item[1])
+                continue
+            if kind == "partial":
+                yield _doc_sse("partial", item[1])
+                continue
+            if kind == "result":
+                total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+                rows = item[1]
+                _log.info(
+                    "knowledge_sse operation=classify_chm phase=complete file_id=%s correlation_id=%s total_ms=%s "
+                    "sections_out=%s",
+                    file_id,
+                    correlation_id,
+                    total_ms,
+                    len(rows),
+                )
+                yield _doc_sse(
+                    "progress",
+                    {
+                        "phase": "complete",
+                        "message": "CHM 目录类型标注完成",
+                        "detail": {**detail_base, "total_ms": total_ms, "sections_out": len(rows)},
+                    },
+                )
+                yield _doc_sse("result", {"sections": rows})
+                return
+            if kind == "error":
+                total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+                _log.info(
+                    "knowledge_sse operation=classify_chm phase=error file_id=%s correlation_id=%s total_ms=%s message=%s",
+                    file_id,
+                    correlation_id,
+                    total_ms,
+                    str(item[1])[:300],
+                )
+                yield _doc_sse("error", {"message": item[1]})
+                return
 
         yield _doc_sse("error", {"message": "CHM classification timed out (600s). Try a faster model or lower max_classify_depth."})
 

@@ -55,11 +55,27 @@ export async function apiFetchWithTotalCount<T>(path: string): Promise<{ data: T
   return { data, total: Number.isFinite(total) ? total : null };
 }
 
+export type SSEProgressPayload = {
+  phase: string;
+  message?: string;
+  detail?: Record<string, unknown>;
+};
+
+export type SSEHandlers = {
+  onProgress?: (p: SSEProgressPayload) => void;
+  onPartial?: (data: unknown) => void;
+};
+
 /**
  * POST to an SSE endpoint and return the first `event: result` payload.
- * Ignores `: keepalive` comments. Throws on `event: error`.
+ * Ignores `: keepalive` comments. Invokes optional handlers for `progress` / `partial`.
+ * Throws on `event: error`.
  */
-export async function apiPostSSE<T>(path: string, body: unknown): Promise<T> {
+export async function apiPostSSEWithHandlers<T>(
+  path: string,
+  body: unknown,
+  handlers?: SSEHandlers,
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
@@ -72,7 +88,12 @@ export async function apiPostSSE<T>(path: string, body: unknown): Promise<T> {
   }
   if (!res.ok || !res.body) {
     let detail = `HTTP ${res.status}`;
-    try { const b = await res.json(); detail = b.detail ?? b.message ?? detail; } catch {}
+    try {
+      const b = await res.json();
+      detail = b.detail ?? b.message ?? detail;
+    } catch {
+      /* ignore */
+    }
     throw new Error(detail);
   }
 
@@ -95,13 +116,26 @@ export async function apiPostSSE<T>(path: string, body: unknown): Promise<T> {
       } else if (line.startsWith("event: ")) {
         currentEvent = line.slice(7).trim();
       } else if (line.startsWith("data: ")) {
-        const data = JSON.parse(line.slice(6).trim());
+        const data = JSON.parse(line.slice(6).trim()) as unknown;
         if (currentEvent === "result") return data as T;
-        if (currentEvent === "error") throw new Error(data.message ?? "Unknown error");
+        if (currentEvent === "error") {
+          const msg = (data as { message?: string }).message ?? "Unknown error";
+          throw new Error(msg);
+        }
+        if (currentEvent === "progress" && handlers?.onProgress) {
+          handlers.onProgress(data as SSEProgressPayload);
+        }
+        if (currentEvent === "partial" && handlers?.onPartial) {
+          handlers.onPartial(data);
+        }
       }
       // `: keepalive` lines (starting with ":") are silently ignored
     }
   }
+}
+
+export async function apiPostSSE<T>(path: string, body: unknown): Promise<T> {
+  return apiPostSSEWithHandlers<T>(path, body, undefined);
 }
 
 export async function checkHealth(): Promise<boolean> {

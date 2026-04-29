@@ -6,7 +6,7 @@ import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
   Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check, RotateCcw,
 } from "lucide-react";
-import { apiFetch, apiPostSSE, apiFetchWithTotalCount, BACKEND_URL } from "../lib/api";
+import { apiFetch, apiPostSSEWithHandlers, apiFetchWithTotalCount, BACKEND_URL } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useModelList } from "../hooks/useModelList";
 import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
@@ -209,6 +209,8 @@ function SetPromptModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [generated, setGenerated] = useState(false);
+  const [genPhaseLine, setGenPhaseLine] = useState("");
+  const [streamPreview, setStreamPreview] = useState("");
 
   async function handleGenerate() {
     if (!selectedLlmId || !aiModelName.trim()) {
@@ -217,14 +219,25 @@ function SetPromptModal({
     }
     setIsGenerating(true);
     setGenError(null);
+    setGenPhaseLine("");
+    setStreamPreview("");
     try {
-      const res = await apiPostSSE<{ name: string; system_prompt: string; style_notes: string }>(
+      const res = await apiPostSSEWithHandlers<{ name: string; system_prompt: string; style_notes: string }>(
         "/prompt-profiles/generate",
         {
           rule_set_id: ruleSetId,
           llm_profile_id: selectedLlmId,
           model_name: aiModelName.trim(),
           style_description: aiStyleDesc.trim() || undefined,
+        },
+        {
+          onProgress: (p) => {
+            setGenPhaseLine(p.message || p.phase);
+          },
+          onPartial: (data) => {
+            const t = (data as { text?: string }).text;
+            if (typeof t === "string") setStreamPreview(t);
+          },
         },
       );
       setAiName(res.name || `创作风格`);
@@ -426,6 +439,34 @@ function SetPromptModal({
             {!generated && (
               <>
                 {genError && <p className={styles.error}>{genError}</p>}
+                {isGenerating && (genPhaseLine || streamPreview) && (
+                  <div style={{ marginBottom: 10 }}>
+                    {genPhaseLine && (
+                      <div style={{ fontSize: 12, color: "var(--accent)", marginBottom: 6 }}>{genPhaseLine}</div>
+                    )}
+                    {streamPreview && (
+                      <pre
+                        style={{
+                          margin: 0,
+                          maxHeight: 140,
+                          overflow: "auto",
+                          fontSize: 11,
+                          lineHeight: 1.45,
+                          padding: "8px 10px",
+                          borderRadius: 6,
+                          border: "1px solid var(--border)",
+                          background: "var(--bg)",
+                          color: "var(--text-muted)",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          textAlign: "left",
+                        }}
+                      >
+                        {streamPreview}
+                      </pre>
+                    )}
+                  </div>
+                )}
                 <div className={styles.formActions}>
                   <button className={styles.btnSecondary} onClick={onClose}>取消</button>
                   <button
@@ -964,7 +1005,7 @@ function LibraryDetailPanel({
     | { step: "select_llm"; fileId: string; filename: string; fileExt: string;
         tocText: string; llmProfileId: string; llmModelName: string }
     | { step: "analyzing_toc"; fileId: string; filename: string; fileExt: string;
-        tocText: string }
+        tocText: string; analyzeProgressLines?: string[]; partialSections?: TocSectionState[] }
     | { step: "section_confirm"; fileId: string; filename: string; fileExt: string;
         sections: TocSectionState[]; pageOffset: number; analyzeError: string }
     | { step: "ingesting" };
@@ -1141,21 +1182,42 @@ function LibraryDetailPanel({
     }
   }
 
+  function mapRawSectionsToState(rows: unknown[]): TocSectionState[] {
+    return rows.map((s) => {
+      const r = s as Record<string, unknown>;
+      const rawCt = (r.suggested_chunk_type ?? r.chunk_type ?? "") as string;
+      const ct = rawCt && CHUNK_TYPES.some((c) => c.value === rawCt) ? (rawCt as ChunkType) : ("" as const);
+      return {
+        title: String(r.title ?? ""),
+        page_from: Number(r.page_from ?? 0),
+        page_to: Number(r.page_to ?? 0),
+        depth: Number(r.depth ?? 1),
+        chunk_type: ct,
+      };
+    });
+  }
+
   async function analyzeToc(fileId: string, filename: string, fileExt: string, tocText: string, llmProfileId: string, llmModelName: string) {
-    setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText });
+    setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText, analyzeProgressLines: [] });
     try {
-      const res = await apiPostSSE<{ sections: TocSectionState[] }>(
+      const res = await apiPostSSEWithHandlers<{ sections: TocSectionState[] }>(
         `/knowledge/documents/preview/${fileId}/analyze-toc`,
         { toc_text: tocText, llm_profile_id: llmProfileId, llm_model_name: llmModelName || undefined },
+        {
+          onProgress: (p) => {
+            const line = p.message || p.phase;
+            setWizard((prev) => {
+              if (prev.step !== "analyzing_toc") return prev;
+              const lines = [...(prev.analyzeProgressLines ?? []), line].slice(-16);
+              return { ...prev, analyzeProgressLines: lines };
+            });
+          },
+        },
       );
       setWizard({
         step: "section_confirm",
         fileId, filename, fileExt,
-        sections: res.sections.map((s) => {
-          const raw = s as unknown as Record<string, unknown>;
-          const ct = (raw.suggested_chunk_type ?? raw.chunk_type ?? "") as ChunkType | "";
-          return { title: String(raw.title ?? ""), page_from: Number(raw.page_from ?? 0), page_to: Number(raw.page_to ?? 0), depth: Number(raw.depth ?? 1), chunk_type: ct };
-        }),
+        sections: mapRawSectionsToState((res as { sections?: unknown[] }).sections ?? []),
         pageOffset: 0,
         analyzeError: "",
       });
@@ -1177,11 +1239,29 @@ function LibraryDetailPanel({
     llmProfileId: string,
     llmModelName: string,
   ) {
-    setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText: "" });
+    setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText: "", analyzeProgressLines: [], partialSections: [] });
     try {
-      const res = await apiPostSSE<{ sections: TocSectionState[] }>(
+      const res = await apiPostSSEWithHandlers<{ sections: TocSectionState[] }>(
         `/knowledge/documents/preview/${fileId}/classify-chm-sections`,
         { llm_profile_id: llmProfileId, llm_model_name: llmModelName.trim() },
+        {
+          onProgress: (p) => {
+            const line = p.message || p.phase;
+            setWizard((prev) => {
+              if (prev.step !== "analyzing_toc") return prev;
+              const lines = [...(prev.analyzeProgressLines ?? []), line].slice(-16);
+              return { ...prev, analyzeProgressLines: lines };
+            });
+          },
+          onPartial: (data) => {
+            const rows = (data as { sections?: unknown[] }).sections;
+            if (!Array.isArray(rows)) return;
+            setWizard((prev) => {
+              if (prev.step !== "analyzing_toc") return prev;
+              return { ...prev, partialSections: mapRawSectionsToState(rows) };
+            });
+          },
+        },
       );
       const rows = (res as { sections?: unknown[] }).sections ?? [];
       setWizard({
@@ -1189,18 +1269,7 @@ function LibraryDetailPanel({
         fileId,
         filename,
         fileExt,
-        sections: rows.map((s) => {
-          const r = s as Record<string, unknown>;
-          const rawCt = (r.suggested_chunk_type ?? r.chunk_type ?? "") as string;
-          const ct = rawCt && CHUNK_TYPES.some((c) => c.value === rawCt) ? (rawCt as ChunkType) : ("" as const);
-          return {
-            title: String(r.title ?? ""),
-            page_from: Number(r.page_from ?? 0),
-            page_to: Number(r.page_to ?? 0),
-            depth: Number(r.depth ?? 1),
-            chunk_type: ct,
-          };
-        }),
+        sections: mapRawSectionsToState(rows),
         pageOffset: 0,
         analyzeError: "",
       });
@@ -1379,7 +1448,37 @@ function LibraryDetailPanel({
                 <div style={{ marginBottom: 10, fontSize: 20 }}>⏳</div>
                 {wizard.step === "uploading" && "正在上传文件..."}
                 {wizard.step === "detecting_toc" && "正在自动检测目录页..."}
-                {wizard.step === "analyzing_toc" && "AI 正在解析目录结构，请稍候..."}
+                {wizard.step === "analyzing_toc" && (
+                  <>
+                    <div style={{ marginBottom: 8 }}>AI 正在解析目录结构，请稍候…</div>
+                    {"analyzeProgressLines" in wizard && (wizard.analyzeProgressLines?.length ?? 0) > 0 && (
+                      <ul
+                        style={{
+                          textAlign: "left",
+                          margin: "12px 0 0",
+                          padding: "8px 12px 8px 22px",
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          borderRadius: 6,
+                          border: "1px solid var(--border)",
+                          background: "var(--bg)",
+                          color: "var(--text-muted)",
+                          maxHeight: 160,
+                          overflowY: "auto",
+                        }}
+                      >
+                        {wizard.analyzeProgressLines!.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {"partialSections" in wizard && (wizard.partialSections?.length ?? 0) > 0 && (
+                      <div style={{ marginTop: 10, fontSize: 12, color: "var(--accent)" }}>
+                        已收到部分结果：{wizard.partialSections!.length} 条章节（类型标注进行中）
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

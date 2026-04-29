@@ -12,9 +12,13 @@ from __future__ import annotations
 import json
 import re
 import asyncio
+import logging
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from app.agents.model_adapter import strip_code_fence, complete_text_once
+
+_log = logging.getLogger(__name__)
 from app.prompts import load_prompt
 from app.services.llm_defaults import task_temperature
 
@@ -44,22 +48,11 @@ class TocNotRecognizedError(ValueError):
 
 # ─── Main function ────────────────────────────────────────────────────────────
 
-def analyze_toc(
-    toc_text: str,
-    llm_profile,       # LLMProfileORM instance
-    model_name: str,   # e.g. "gpt-4o", "claude-3-5-sonnet-20241022"
-) -> TocAnalysisResult:
-    """Parse TOC text using an LLM and return structured sections.
-
-    Raises TocNotRecognizedError if the LLM says the input is not a TOC.
-    Raises RuntimeError on LLM/parse failures.
-    """
+def fetch_pdf_toc_llm_raw(toc_text: str, llm_profile, model_name: str) -> str:
+    """Call LLM only; return raw assistant text (may include fences). Raises RuntimeError on failure."""
     effective_model_name = model_name or ""
-
     system_prompt = load_prompt("toc_analyzer", "system")
-
     user_message = load_prompt("toc_analyzer", "user_pdf", toc_text=toc_text[:6000])
-
     try:
         t = task_temperature("toc_analysis")
         raw = asyncio.run(
@@ -71,24 +64,40 @@ def analyze_toc(
                 temperature=t,
             )
         )
-        raw = strip_code_fence(raw)
+        out = strip_code_fence(raw)
+        _log.debug(
+            "toc_analyzer operation=fetch_pdf_toc_llm_raw toc_chars=%s response_chars=%s",
+            len(toc_text or ""),
+            len(out or ""),
+        )
+        return out
     except Exception as e:
         raise RuntimeError(f"LLM call for TOC analysis failed: {e}") from e
 
-    raw = strip_code_fence(raw).strip()
 
-    # Parse JSON
+def parse_pdf_toc_response(raw: str) -> TocAnalysisResult:
+    """Parse LLM JSON into sections. Raises TocNotRecognizedError or RuntimeError."""
+    raw = strip_code_fence(raw).strip()
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # Try to extract JSON object from the response
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m:
             try:
                 data = json.loads(m.group())
             except json.JSONDecodeError:
+                _log.info(
+                    "toc_analyzer operation=parse_pdf_toc_response parse_ok=false response_chars=%s snippet=%s",
+                    len(raw),
+                    raw[:300],
+                )
                 raise RuntimeError(f"LLM returned non-JSON output: {raw[:300]}")
         else:
+            _log.info(
+                "toc_analyzer operation=parse_pdf_toc_response parse_ok=false response_chars=%s snippet=%s",
+                len(raw),
+                raw[:300],
+            )
             raise RuntimeError(f"LLM returned non-JSON output: {raw[:300]}")
 
     if not data.get("is_toc", True):
@@ -104,7 +113,6 @@ def analyze_toc(
     for i, s in enumerate(raw_sections):
         if not isinstance(s, dict) or not s.get("title"):
             continue
-        # Infer page_to from next section's page_from
         page_to: int | None = None
         if i + 1 < len(raw_sections):
             next_pf = raw_sections[i + 1].get("page_from")
@@ -123,7 +131,6 @@ def analyze_toc(
             suggested_chunk_type=ctype,
         ))
 
-    # Assign page_to for the last section: use a large sentinel
     if sections and sections[-1].page_to is None:
         sections[-1] = TocSection(
             title=sections[-1].title,
@@ -134,6 +141,20 @@ def analyze_toc(
         )
 
     return TocAnalysisResult(sections=sections)
+
+
+def analyze_toc(
+    toc_text: str,
+    llm_profile,       # LLMProfileORM instance
+    model_name: str,   # e.g. "gpt-4o", "claude-3-5-sonnet-20241022"
+) -> TocAnalysisResult:
+    """Parse TOC text using an LLM and return structured sections.
+
+    Raises TocNotRecognizedError if the LLM says the input is not a TOC.
+    Raises RuntimeError on LLM/parse failures.
+    """
+    raw = fetch_pdf_toc_llm_raw(toc_text, llm_profile, model_name)
+    return parse_pdf_toc_response(raw)
 
 
 # ─── CHM structural TOC → TocSection list ────────────────────────────────────
@@ -192,42 +213,43 @@ def _inherit_chm_chunk_types(
     ]
 
 
-def assign_chm_section_chunk_types(
+def iter_assign_chm_section_chunk_types(
     sections: list[TocSection],
     llm_profile,
     model_name: str,
     *,
     max_classify_depth: int = CHM_CLASSIFY_MAX_DEPTH,
-) -> list[TocSection]:
-    """Label CHM sections with `suggested_chunk_type` using LLM on shallow nodes (depth ≤ max);
-    deeper nodes inherit from parent chain in the flat HHC order.
+) -> Iterator[tuple[int, int, int, list[TocSection]]]:
+    """Yield after each LLM batch: (batch_index_0based, batch_total, batch_row_count, merged_sections).
 
-    Large CHMs (thousands of leaves) are handled by classifying only the top
-    `max_classify_depth` levels — typically a few hundred calls at most.
+    When there is nothing to label, yields a single (0, 1, 0, sections) with types unchanged.
     """
     if not sections:
-        return []
+        return
     to_label_idx = [i for i, s in enumerate(sections) if s.depth <= max_classify_depth]
     if not to_label_idx:
-        return list(sections)
+        yield (0, 1, 0, list(sections))
+        return
 
     effective_model_name = model_name or ""
     system_prompt = load_prompt("toc_analyzer", "chm_classify_system")
     valid = {"rule", "example", "lore", "table", "procedure", "flavor"}
     n = len(sections)
     anchor: dict[int, str | None] = {}
+    num_batches = (len(to_label_idx) + CHM_CLASSIFY_BATCH - 1) // CHM_CLASSIFY_BATCH
+    batch_num = 0
 
     for batch_start in range(0, len(to_label_idx), CHM_CLASSIFY_BATCH):
-        batch_idx = to_label_idx[batch_start : batch_start + CHM_CLASSIFY_BATCH]
+        batch_rows = to_label_idx[batch_start : batch_start + CHM_CLASSIFY_BATCH]
         lines = "\n".join(
             f"{i + 1}.\tdepth={sections[i].depth}\t{sections[i].title}"
-            for i in batch_idx
+            for i in batch_rows
         )
         user_message = load_prompt(
             "toc_analyzer",
             "user_chm_batch",
             total=n,
-            batch_size=len(batch_idx),
+            batch_size=len(batch_rows),
             lines=lines,
         )
         try:
@@ -257,7 +279,7 @@ def assign_chm_section_chunk_types(
         if not isinstance(classifs, list):
             raise RuntimeError("CHM classifier: missing 'classifications' array")
 
-        for j, bi in enumerate(batch_idx):
+        for j, bi in enumerate(batch_rows):
             item = classifs[j] if j < len(classifs) and isinstance(classifs[j], dict) else {}
             if isinstance(item, dict) and item.get("i") is not None:
                 idx = int(item["i"]) - 1
@@ -273,4 +295,27 @@ def assign_chm_section_chunk_types(
             else:
                 anchor[idx] = None
 
-    return _inherit_chm_chunk_types(sections, anchor)
+        merged = _inherit_chm_chunk_types(sections, anchor)
+        yield (batch_num, num_batches, len(batch_rows), merged)
+        batch_num += 1
+
+
+def assign_chm_section_chunk_types(
+    sections: list[TocSection],
+    llm_profile,
+    model_name: str,
+    *,
+    max_classify_depth: int = CHM_CLASSIFY_MAX_DEPTH,
+) -> list[TocSection]:
+    """Label CHM sections with `suggested_chunk_type` using LLM on shallow nodes (depth ≤ max);
+    deeper nodes inherit from parent chain in the flat HHC order.
+
+    Large CHMs (thousands of leaves) are handled by classifying only the top
+    `max_classify_depth` levels — typically a few hundred calls at most.
+    """
+    last: list[TocSection] = list(sections)
+    for *_, merged in iter_assign_chm_section_chunk_types(
+        sections, llm_profile, model_name, max_classify_depth=max_classify_depth
+    ):
+        last = merged
+    return last
