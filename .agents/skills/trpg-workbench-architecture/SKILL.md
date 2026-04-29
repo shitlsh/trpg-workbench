@@ -80,9 +80,7 @@ Workspace（工作空间）── 文件夹即工作空间
 
 LLMProfile（LLM 供应商配置，全局可复用）
 EmbeddingProfile（Embedding 供应商配置，全局可复用）
-ModelCatalogEntry（LLM 模型目录，含 pricing/context_window 元数据）
-EmbeddingCatalogEntry（Embedding 模型目录）
-LLMUsageRecord（每次 LLM 调用的 token 用量记录，绑定 workspace）
+（ModelCatalogEntry / EmbeddingCatalogEntry / LLMUsageRecord 已在 M7 后移除，不再维护）
 ```
 
 ### M18 File-First 架构（关键变更）

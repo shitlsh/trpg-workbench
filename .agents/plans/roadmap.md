@@ -54,7 +54,7 @@
 | M4 ✅ | Agent 创作 | 对话驱动生成/修改资产，Workflow 持久化 | [archive/m4-agent-creation.md](archive/m4-agent-creation.md) |
 | M5 ✅ | 产品打磨 | 补全 Agent，图像生成，导出，体验完整 | [archive/m5-polish.md](archive/m5-polish.md) |
 | M6 ✅ | 模型配置管理 | LLM/Embedding 双 Profile，Workspace 路由绑定，模型决策层，usage 埋点 | [archive/m6-model-management.md](archive/m6-model-management.md) |
-| M7 ✅ | 模型发现与用量观测 | Provider catalog，动态模型发现，usage 统计，成本估算，context window 展示 | [archive/m7-model-discovery.md](archive/m7-model-discovery.md) |
+| M7 ✅ | 模型发现与用量观测 | Provider catalog，动态模型发现，usage 统计，成本估算，context window 展示 | [archive/m7-model-discovery.md](archive/m7-model-discovery.md) | ⚠ 已于 2026-04-29 移除：Catalog/Usage UI 和后端已删除，probe-models 端点保留供下拉选择使用 |
 | M8 ✅ | 知识库预览、质量检查与增强解析扩展 | ingest 结果可视化，chunk/页级预览，检索测试，质量告警 | [archive/m8-knowledge-preview.md](archive/m8-knowledge-preview.md) |
 | M9 ✅ | 前端 Smoke Test、截图与帮助文档系统 | 关键页面 smoke test，截图产物，Help 文档，Tauri Help 菜单接入 | [archive/m9-smoke-and-help.md](archive/m9-smoke-and-help.md) |
 | M9a ✅ | 规则集统一管理 | 规则集 CRUD UI，知识库↔规则集绑定，PromptProfile 接入 Agent 运行时，工作空间知识库继承链路打通 | [archive/m9a-ruleset-unification.md](archive/m9a-ruleset-unification.md) |
