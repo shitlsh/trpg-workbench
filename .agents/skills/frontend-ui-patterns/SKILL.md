@@ -588,35 +588,38 @@ Step 5: 完成 → 跳转到新建 Workspace
 
 ### 图标与颜色映射表（强制约束）
 
-| AssetType    | 中文标签 | Lucide 图标        | CSS 变量                  | 颜色值（dark）  |
-|--------------|---------|-------------------|--------------------------|----------------|
-| `outline`    | 大纲     | `BookOpen`        | `--color-type-outline`   | `#7c6af7`      |
-| `stage`      | 场景     | `Theater`         | `--color-type-stage`     | `#e05252`      |
-| `npc`        | NPC      | `Users`           | `--color-type-npc`       | `#52b4c9`      |
-| `monster`    | 怪物     | `Skull`           | `--color-type-monster`   | `#f07030`      |
-| `location`   | 地点     | `MapPin`          | `--color-type-location`  | `#52c97e`      |
-| `clue`       | 线索     | `Search`          | `--color-type-clue`      | `#f0c050`      |
-| `branch`     | 分支     | `GitBranch`       | `--color-type-branch`    | `#c97052`      |
-| `timeline`   | 时间线   | `Clock`           | `--color-type-timeline`  | `#a07af0`      |
-| `map_brief`  | 地图简报  | `Map`             | `--color-type-map-brief` | `#52c9a8`      |
-| `lore_note`  | 世界设定  | `Scroll`          | `--color-type-lore-note` | `#9090b0`      |
+> **M30 更新**：内置类型精简为 6 种。旧类型（location/branch/timeline/map_brief/lore_note）保留 fallback 渲染，
+> 不出现在新建资产流程中。
+
+| AssetType | 中文标签 | Lucide 图标  | CSS 变量               | 颜色值（dark） |
+|-----------|---------|-------------|----------------------|--------------|
+| `outline` | 大纲     | `BookOpen`  | `--color-type-outline` | `#7c6af7`   |
+| `stage`   | 场景     | `Theater`   | `--color-type-stage`   | `#e05252`   |
+| `npc`     | NPC      | `Users`     | `--color-type-npc`     | `#52b4c9`   |
+| `monster` | 敌人     | `Skull`     | `--color-type-monster` | `#f07030`   |
+| `map`     | 地图     | `Map`       | `--color-type-map`     | `#52c97e`   |
+| `clue`    | 线索     | `Search`    | `--color-type-clue`    | `#f0c050`   |
+| 自定义类型 | 取 config.label | — (emoji via config.icon) | `--text-muted` (fallback) | — |
 
 ### 使用规则
 
 - 图标颜色使用对应 CSS 变量，不得硬编码颜色值
 - 所有用到 AssetType 的地方（资产树、Agent 面板资产列表、Tab 标签）必须使用上表中对应的图标和颜色
 - 禁止在资产列表/树中使用通用 `<File>` 图标替代
+- 自定义类型用 `getCustomTypeEmoji(type, customConfigs)` 获取 emoji；内置类型返回 null
 
 ### 辅助函数约定
 
 在 `src/lib/assetTypeVisual.ts` 中统一导出以下辅助函数，各组件从此处引入，不得各自重复定义：
 
 ```typescript
-import type { AssetType } from "@trpg-workbench/shared-schema";
+import type { CustomAssetTypeConfig } from "@trpg-workbench/shared-schema";
 
-export function getAssetTypeIcon(type: AssetType): LucideIcon { ... }
-export function getAssetTypeColor(type: AssetType): string { ... }   // 返回 CSS 变量字符串，如 "var(--color-type-npc)"
-export function getAssetTypeLabel(type: AssetType): string { ... }   // 返回中文标签
+export function getAssetTypeIcon(type: string): LucideIcon { ... }
+export function getAssetTypeColor(type: string): string { ... }        // 返回 CSS 变量字符串，如 "var(--color-type-npc)"
+export function getAssetTypeLabel(type: string, customConfigs?: CustomAssetTypeConfig[]): string { ... }  // 返回中文标签
+export function getCustomTypeEmoji(type: string, customConfigs: CustomAssetTypeConfig[]): string | null { ... }
+export function getAssetTypeDescription(type: string, customConfigs?: CustomAssetTypeConfig[]): string { ... }  // M30 新增，用于 tooltip
 ```
 
 ---

@@ -55,18 +55,22 @@ summary: 镇长，表面亲和，实则掩盖旧案
 
 ## 资产类型与惯例目录
 
+> **M30 更新**：内置类型从 10 种精简为 6 种。已废弃 `location`、`branch`、`timeline`、`map_brief`、`lore_note`（已有此类型的旧资产继续可读，但 AI 不再创建这些类型）。
+
 | type 值 | 惯例目录 | 说明 |
 |---------|---------|------|
-| `outline` | `outline/` | 故事大纲，通常只有一个 |
-| `stage` | `stage/` | 场景/幕 |
-| `npc` | `npc/` | 人物角色 |
-| `monster` | `monster/` | 怪物/异常实体 |
-| `location` | `location/` | 地点 |
-| `clue` | `clue/` | 线索 |
-| `branch` | `branch/` | 分支 |
-| `timeline` | `timeline/` | 时间线 |
-| `map_brief` | `map_brief/` | 地图说明 |
-| `lore_note` | `lore_note/` | 设定词条 |
+| `outline` | `outlines/` | 整体故事框架，含世界背景和分支结局（原 outline + lore_note + branch 合并） |
+| `stage` | `stages/` | 故事单元（幕），含事件序列和 NPC 出场（原 stage + timeline 合并） |
+| `npc` | `npcs/` | 玩家会直接交互的人物角色 |
+| `monster` | `monsters/` | 玩家的威胁来源（怪物/异常实体/敌人） |
+| `map` | `maps/` | 地点网络和连接路径（原 location + map_brief 合并） |
+| `clue` | `clues/` | 可被玩家发现的关键信息载体 |
+| `{custom}` | `{custom}s/` | 用户在 RuleSet 中注册的自定义类型 |
+
+每种内置类型的完整规范（范围说明 + 必要信息 + Markdown 模板）位于：
+`apps/backend/app/prompts/asset_types/{type_key}.txt`
+
+新建资产时，Director 会先调用 `get_asset_type_spec(type_key)` 工具获取完整规范，再编写 `content_md`。
 
 ---
 
@@ -76,10 +80,10 @@ summary: 镇长，表面亲和，实则掩盖旧案
 格式：{slug}.md（不含 type 前缀）
 
 示例：
-  mayor-arthur.md        → 放在 npc/ 下
-  deep-one-elder.md      → 放在 monster/ 下
-  act1-village-arrival.md → 放在 stage/ 下
-  old-lighthouse.md      → 放在 location/ 下
+  mayor-arthur.md        → 放在 npcs/ 下
+  deep-one-elder.md      → 放在 monsters/ 下
+  act1-village-arrival.md → 放在 stages/ 下
+  arkham-town.md         → 放在 maps/ 下
 ```
 
 **slug 规范**：
@@ -182,16 +186,18 @@ clues_available:
 ---
 ```
 
-### Location / 地点
+### Map / 地图（含地点网络）
+
+> M30 起 `location` 和 `map_brief` 合并为 `map` 类型，描述地点网络和连接路径。
 
 ```yaml
 ---
-type: location
-name: 废弃灯塔
-slug: old-lighthouse
+type: map
+name: 废弃灯塔区域
+slug: old-lighthouse-area
 status: draft
 version: 1
-summary: 废弃灯塔，关键地点，藏有推进主线的隐秘线索
+summary: 海崖边废弃灯塔及周边地点，藏有推进主线的隐秘线索
 description_brief: 建于1890年代，海崖边，长期废弃，海鸟聚集
 atmosphere: 荒凉、潮湿、隐约有腐烂气息
 accessible_in_stages:
