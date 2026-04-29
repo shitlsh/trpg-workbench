@@ -1,10 +1,8 @@
 import asyncio
 import json
 import logging
-import queue
 import shutil
 import tempfile
-import threading
 import time
 import uuid
 from pathlib import Path
@@ -755,7 +753,7 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
             async def _fetch_raw():
                 try:
                     t_llm = time.perf_counter()
-                    raw_local = await asyncio.to_thread(fetch_pdf_toc_llm_raw, toc_text, profile, model_name)
+                    raw_local = await fetch_pdf_toc_llm_raw(toc_text, profile, model_name)
                     llm_ms_local = round((time.perf_counter() - t_llm) * 1000.0, 2)
                     await q.put(("raw", raw_local, llm_ms_local))
                 except Exception as exc:
@@ -927,48 +925,42 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
     async def _stream():
         correlation_id = uuid.uuid4().hex[:16]
         t0 = time.perf_counter()
-        tq: queue.Queue = queue.Queue()
+        tq: asyncio.Queue = asyncio.Queue()
 
-        def _chm_worker() -> None:
-            last_rows: list[dict[str, Any]] = []
+        async def _pump_chm() -> None:
             try:
-                for bi, bt, br, merged in iter_assign_chm_section_chunk_types(
+                if not sections_orm:
+                    await tq.put(("done", []))
+                    return
+                last_rows: list[dict[str, Any]] = []
+                async for bi, bt, br, merged in iter_assign_chm_section_chunk_types(
                     sections_orm,
                     profile,
                     body.llm_model_name,
                     max_classify_depth=body.max_classify_depth,
                 ):
                     last_rows = _toc_sections_payload(merged)
-                    tq.put(
-                        (
-                            "progress",
-                            {
-                                "phase": "chm_batch",
-                                "message": f"目录类型标注：第 {bi + 1}/{bt} 批",
-                                "detail": {
-                                    "correlation_id": correlation_id,
-                                    "batch_index": bi,
-                                    "batch_total": bt,
-                                    "batch_row_count": br,
-                                    "sections_in": sections_in,
-                                    "sections_out": len(last_rows),
-                                    "model": model_label,
-                                    "operation": "classify_chm",
-                                    "file_id": file_id,
-                                },
-                            },
-                        )
-                    )
-                    tq.put(("partial", {"sections": last_rows}))
-                tq.put(("result", last_rows))
+                    prog: dict[str, Any] = {
+                        "phase": "chm_batch",
+                        "message": f"目录类型标注：第 {bi + 1}/{bt} 批",
+                        "detail": {
+                            "correlation_id": correlation_id,
+                            "batch_index": bi,
+                            "batch_total": bt,
+                            "batch_row_count": br,
+                            "sections_in": sections_in,
+                            "sections_out": len(last_rows),
+                            "model": model_label,
+                            "operation": "classify_chm",
+                            "file_id": file_id,
+                        },
+                    }
+                    await tq.put(("batch", prog, {"sections": last_rows}))
+                await tq.put(("done", last_rows))
             except Exception as exc:
-                tq.put(("error", str(exc)))
+                await tq.put(("error", str(exc)))
 
-        threading.Thread(
-            target=_chm_worker,
-            daemon=True,
-            name=f"chm-classify-{file_id[:8]}",
-        ).start()
+        asyncio.create_task(_pump_chm())
         detail_base = {
             "correlation_id": correlation_id,
             "operation": "classify_chm",
@@ -985,27 +977,25 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
         elapsed = 0
         while elapsed < deadline:
             try:
-                item = await asyncio.to_thread(tq.get, True, 10.0)
-            except queue.Empty:
+                item = await asyncio.wait_for(tq.get(), timeout=10.0)
+            except asyncio.TimeoutError:
                 yield ": keepalive\n\n"
                 elapsed += 10
                 continue
-            kind = item[0]
-            if kind == "progress":
+            if item[0] == "batch":
+                _, prog, partial_body = item
                 _log.info(
                     "knowledge_sse operation=classify_chm phase=chm_batch file_id=%s correlation_id=%s detail=%s",
                     file_id,
                     correlation_id,
-                    json.dumps(item[1].get("detail", {}), ensure_ascii=False) if isinstance(item[1], dict) else "",
+                    json.dumps(prog.get("detail", {}), ensure_ascii=False) if isinstance(prog, dict) else "",
                 )
-                yield _doc_sse("progress", item[1])
+                yield _doc_sse("progress", prog)
+                yield _doc_sse("partial", partial_body)
                 continue
-            if kind == "partial":
-                yield _doc_sse("partial", item[1])
-                continue
-            if kind == "result":
-                total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+            if item[0] == "done":
                 rows = item[1]
+                total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
                 _log.info(
                     "knowledge_sse operation=classify_chm phase=complete file_id=%s correlation_id=%s total_ms=%s "
                     "sections_out=%s",
@@ -1024,7 +1014,7 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
                 )
                 yield _doc_sse("result", {"sections": rows})
                 return
-            if kind == "error":
+            if item[0] == "error":
                 total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
                 _log.info(
                     "knowledge_sse operation=classify_chm phase=error file_id=%s correlation_id=%s total_ms=%s message=%s",

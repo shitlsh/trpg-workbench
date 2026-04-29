@@ -13,7 +13,7 @@ import json
 import re
 import asyncio
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from app.agents.model_adapter import strip_code_fence, complete_text_once
@@ -48,21 +48,23 @@ class TocNotRecognizedError(ValueError):
 
 # ─── Main function ────────────────────────────────────────────────────────────
 
-def fetch_pdf_toc_llm_raw(toc_text: str, llm_profile, model_name: str) -> str:
-    """Call LLM only; return raw assistant text (may include fences). Raises RuntimeError on failure."""
+async def fetch_pdf_toc_llm_raw(toc_text: str, llm_profile, model_name: str) -> str:
+    """Call LLM only; return raw assistant text (may include fences). Raises RuntimeError on failure.
+
+    Use ``await`` from async routes. For sync call sites, use :func:`analyze_toc` or
+    ``asyncio.run(fetch_pdf_toc_llm_raw(...))`` at a true sync boundary.
+    """
     effective_model_name = model_name or ""
     system_prompt = load_prompt("toc_analyzer", "system")
     user_message = load_prompt("toc_analyzer", "user_pdf", toc_text=toc_text[:6000])
     try:
         t = task_temperature("toc_analysis")
-        raw = asyncio.run(
-            complete_text_once(
-                profile=llm_profile,
-                model_name=effective_model_name,
-                system_prompt=system_prompt,
-                user_prompt=user_message,
-                temperature=t,
-            )
+        raw = await complete_text_once(
+            profile=llm_profile,
+            model_name=effective_model_name,
+            system_prompt=system_prompt,
+            user_prompt=user_message,
+            temperature=t,
         )
         out = strip_code_fence(raw)
         _log.debug(
@@ -150,10 +152,13 @@ def analyze_toc(
 ) -> TocAnalysisResult:
     """Parse TOC text using an LLM and return structured sections.
 
+    Sync API for non-async contexts: runs a single event loop via :func:`asyncio.run`
+    around :func:`fetch_pdf_toc_llm_raw`.
+
     Raises TocNotRecognizedError if the LLM says the input is not a TOC.
     Raises RuntimeError on LLM/parse failures.
     """
-    raw = fetch_pdf_toc_llm_raw(toc_text, llm_profile, model_name)
+    raw = asyncio.run(fetch_pdf_toc_llm_raw(toc_text, llm_profile, model_name))
     return parse_pdf_toc_response(raw)
 
 
@@ -213,16 +218,17 @@ def _inherit_chm_chunk_types(
     ]
 
 
-def iter_assign_chm_section_chunk_types(
+async def iter_assign_chm_section_chunk_types(
     sections: list[TocSection],
     llm_profile,
     model_name: str,
     *,
     max_classify_depth: int = CHM_CLASSIFY_MAX_DEPTH,
-) -> Iterator[tuple[int, int, int, list[TocSection]]]:
+) -> AsyncIterator[tuple[int, int, int, list[TocSection]]]:
     """Yield after each LLM batch: (batch_index_0based, batch_total, batch_row_count, merged_sections).
 
     When there is nothing to label, yields a single (0, 1, 0, sections) with types unchanged.
+    Uses ``await complete_text_once`` (no :func:`asyncio.run` per batch).
     """
     if not sections:
         return
@@ -253,14 +259,12 @@ def iter_assign_chm_section_chunk_types(
             lines=lines,
         )
         try:
-            raw = asyncio.run(
-                complete_text_once(
-                    profile=llm_profile,
-                    model_name=effective_model_name,
-                    system_prompt=system_prompt,
-                    user_prompt=user_message,
-                    temperature=task_temperature("toc_analysis"),
-                )
+            raw = await complete_text_once(
+                profile=llm_profile,
+                model_name=effective_model_name,
+                system_prompt=system_prompt,
+                user_prompt=user_message,
+                temperature=task_temperature("toc_analysis"),
             )
             raw = strip_code_fence(raw)
         except Exception as e:
@@ -313,9 +317,12 @@ def assign_chm_section_chunk_types(
     Large CHMs (thousands of leaves) are handled by classifying only the top
     `max_classify_depth` levels — typically a few hundred calls at most.
     """
-    last: list[TocSection] = list(sections)
-    for *_, merged in iter_assign_chm_section_chunk_types(
-        sections, llm_profile, model_name, max_classify_depth=max_classify_depth
-    ):
-        last = merged
-    return last
+    async def _run() -> list[TocSection]:
+        last = list(sections)
+        async for *_, merged in iter_assign_chm_section_chunk_types(
+            sections, llm_profile, model_name, max_classify_depth=max_classify_depth
+        ):
+            last = merged
+        return last
+
+    return asyncio.run(_run())
