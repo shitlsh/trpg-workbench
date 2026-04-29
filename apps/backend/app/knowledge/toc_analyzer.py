@@ -2,9 +2,8 @@
 
 Takes raw text extracted from PDF TOC pages and asks an LLM to return JSON with:
 
-- ``full_toc`` — **full** directory hierarchy (``rows`` or tree ``nodes``) for
-  UI preview; sub-rows do not carry ``suggested_chunk_type`` (program assigns
-  by inheriting from chapter-level ``sections``).
+- ``full_toc`` — 树形 ``{ "nodes": [ ... ] }``；前序展平为行，供 UI 与类型继承。兼容扁平行 ``{ "rows": [ ... ] }``。
+- 子行无 ``suggested_chunk_type``（由章级 ``sections`` 按页码归属）。
 - ``sections`` — **chapter-skeleton** list (coarse, for ingest) with
   ``suggested_chunk_type`` on each major row — see ``prompts/toc_analyzer/system.txt``.
 
@@ -13,7 +12,7 @@ response must include ``"is_toc": false`` and a ``"reason"`` field — we then
 raise TocNotRecognizedError so the caller can surface this to the user.
 If ``is_toc`` is true but ``full_toc`` is missing or empty, the API still
 succeeds for `sections`; line-level ``preview_expanded`` is only filled when
-``full_toc`` yields rows.
+``full_toc`` yields a non-empty list after flattening ``nodes``/``rows``.
 """
 from __future__ import annotations
 
@@ -69,7 +68,7 @@ class TocSection:
 @dataclass
 class TocAnalysisResult:
     sections: list[TocSection]
-    # Raw `full_toc` from the LLM: ``{ "rows": [...] }`` or ``{ "nodes": [...] }``.
+    # Raw `full_toc` from the LLM: ``{ "nodes": [...] }`` (preferred) or ``{ "rows": [...] }``.
     full_toc: dict[str, Any] | None = None
 
 
@@ -84,13 +83,15 @@ def _norm_title_str(t: str) -> str:
     return re.sub(r"\s+", " ", (t or "").strip()).lower()
 
 
-def _flatten_toc_node(node: Any) -> list[dict[str, Any]]:
+def _flatten_toc_node(node: Any, level: int = 1) -> list[dict[str, Any]]:
+    """前序展平；每行上的嵌套层级由树形深度决定，与节点自填字段无关。"""
     if not isinstance(node, dict) or not str(node.get("title", "")).strip():
         return []
     row = {k: v for k, v in node.items() if k != "children"}
+    row["depth"] = int(level)
     out: list[dict[str, Any]] = [row]
     for c in node.get("children") or []:
-        out.extend(_flatten_toc_node(c))
+        out.extend(_flatten_toc_node(c, level + 1))
     return out
 
 
@@ -101,15 +102,18 @@ def _extract_full_toc_rows(full_toc: Any) -> list[dict[str, Any]]:
         return [x for x in full_toc if isinstance(x, dict) and str(x.get("title", "")).strip()]
     if not isinstance(full_toc, dict):
         return []
-    r = full_toc.get("rows")
-    if isinstance(r, list) and r:
-        return [x for x in r if isinstance(x, dict) and str(x.get("title", "")).strip()]
     n = full_toc.get("nodes")
     if isinstance(n, list) and n:
-        out: list[dict[str, Any]] = []
+        from_nodes: list[dict[str, Any]] = []
         for node in n:
-            out.extend(_flatten_toc_node(node))
-        return out
+            from_nodes.extend(_flatten_toc_node(node))
+        if from_nodes:
+            return from_nodes
+    r = full_toc.get("rows")
+    if isinstance(r, list) and r:
+        from_rows = [x for x in r if isinstance(x, dict) and str(x.get("title", "")).strip()]
+        if from_rows:
+            return from_rows
     return []
 
 
@@ -299,7 +303,7 @@ def parse_pdf_toc_response(raw: str) -> TocAnalysisResult:
             title=str(s.get("title", "")),
             page_from=int(s.get("page_from", 1)),
             page_to=page_to,
-            depth=int(s.get("depth", 1)),
+            depth=1,
             suggested_chunk_type=ctype,
         ))
 

@@ -1,3 +1,3 @@
-以下是从 PDF **目录相关页**抽取的原文（可能很长、含双栏与噪声）。请**只**按 system 要求输出**一段** JSON，不要其它说明。若 `is_toc` 为 true，**必须**同时包含 `full_toc` 与章级 `sections`：按**印本**将目录行写进 `full_toc`（有子节则子节在 `full_toc`、不在 `sections` 逐条重复）；`sections` 为粗块 + 类型。若原书**只有大章、无子节**，`full_toc` 与 `sections` **可以**一一对应，**不要**为凑行数而虚构子节。
+以下是从 PDF **目录相关页**抽取的原文（可能很长、含双栏与噪声）。请**只**按 system 要求输出**一段** JSON，不要其它说明。`full_toc` 使用树形 `nodes`；`sections` 为章级粗块 + `suggested_chunk_type`；子级只在 `full_toc` 的 `children` 中展开，**不要**在 `sections` 里为每条子行重复一条。
 
 {toc_text}
