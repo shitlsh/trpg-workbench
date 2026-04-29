@@ -10,7 +10,7 @@ import { apiFetch, apiPostSSEWithHandlers, apiFetchWithTotalCount, BACKEND_URL, 
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useModelList } from "../hooks/useModelList";
 import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
-import { getAssetTypeIcon, getAssetTypeLabel, getAssetTypeColor } from "../lib/assetTypeVisual";
+import { getAssetTypeIcon, getAssetTypeLabel, getAssetTypeColor, getAssetTypeDescription } from "../lib/assetTypeVisual";
 import { BUILTIN_ASSET_TYPES } from "@trpg-workbench/shared-schema";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import type {
@@ -2882,11 +2882,19 @@ export default function RuleSetPage() {
                   const Icon = getAssetTypeIcon(typeKey);
                   const color = getAssetTypeColor(typeKey);
                   const label = getAssetTypeLabel(typeKey);
+                  const desc = getAssetTypeDescription(typeKey);
                   return (
-                    <div key={typeKey} className={styles.bindingItem} style={{ opacity: 0.75 }}>
-                      <Icon size={14} color={color} />
-                      <span className={styles.bindingName}>{label}</span>
-                      <span className={styles.bindingType} style={{ fontFamily: "monospace", fontSize: 11 }}>{typeKey}</span>
+                    <div key={typeKey} style={{ marginBottom: 4 }}>
+                      <div className={styles.bindingItem} style={{ opacity: 0.75 }}>
+                        <Icon size={14} color={color} />
+                        <span className={styles.bindingName}>{label}</span>
+                        <span className={styles.bindingType} style={{ fontFamily: "monospace", fontSize: 11 }}>{typeKey}</span>
+                      </div>
+                      {desc && (
+                        <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "1px 0 0 22px", lineHeight: 1.4, opacity: 0.85 }}>
+                          {desc}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
