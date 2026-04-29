@@ -15,32 +15,57 @@ from app.prompts import load_prompt
 _BUILTIN_TYPE_KEYS = ["outline", "stage", "npc", "monster", "map", "clue"]
 
 
-def _build_asset_types_section(workspace_context: dict) -> str:
-    """Build the asset type definitions section injected into the Director prompt.
+def _extract_section(text: str, heading: str) -> str:
+    """Extract the body of a Markdown section (from ## heading to the next ## heading)."""
+    lines = text.splitlines()
+    in_section = False
+    result = []
+    for line in lines:
+        if line.strip() == f"## {heading}":
+            in_section = True
+            continue
+        if in_section and line.startswith("## "):
+            break
+        if in_section:
+            result.append(line)
+    return "\n".join(result).strip()
 
-    For built-in types, loads from prompts/asset_types/{type_key}.txt.
-    For custom types, uses the description + template_md fields from workspace_context.
-    Returns an empty string if no type definitions are available.
+
+def _build_asset_types_section(workspace_context: dict) -> str:
+    """Build a compact asset type index injected into every Director prompt turn.
+
+    Only injects: type name + one-line scope summary + required fields before creation.
+    Full Markdown chapter templates are NOT included here — they are available on demand
+    via the `get_asset_type_spec(type_key)` tool, called when Director is about to write
+    content_md for a new asset of that type.
+
+    This keeps per-turn overhead to ~400 tokens instead of ~5,500 tokens.
     """
     lines = [
         "## 可用资产类型",
-        "创建资产时必须从以下列表中选择 `asset_type`，不得使用列表之外的类型。",
+        "创建资产时必须从以下列表选择 `asset_type`。",
+        "**在开始编写 `content_md` 之前，调用 `get_asset_type_spec(type_key)` 获取完整章节模板。**",
         "",
     ]
 
-    # Built-in types
-    for type_key in _BUILTIN_TYPE_KEYS:
-        try:
-            content = load_prompt("asset_types", type_key)
-            lines.append(content.strip())
-            lines.append("")
-            lines.append("---")
-            lines.append("")
-        except Exception:
-            # Gracefully skip if file missing (should not happen in production)
-            pass
+    # Built-in types — scope summary extracted from first paragraph of 「范围与用途」
+    _BUILTIN_SUMMARIES = {
+        "outline": "整体故事框架，含世界背景设定和主要分支结局。必须提供：故事主题 + 主要矛盾。",
+        "stage":   "故事单元（幕），含事件序列和 NPC 出场安排。必须提供：场景名称 + 核心事件。",
+        "npc":     "玩家会直接交互的角色，以动机/关系为核心。必须提供：名字 + 阵营/关系定位 + 至少一个背景元素。",
+        "monster": "玩家的威胁来源，以战斗/恐惧功能为核心。必须提供：战斗角色定位 + 外形风格。",
+        "map":     "地点网络，含各地点感官描述和移动路径。必须提供：地点名称 + 时代/风格背景。",
+        "clue":    "可被玩家发现的关键信息载体，连接场景推动调查。必须提供：关联事件/角色 + 揭示内容方向。",
+    }
 
-    # Custom types registered for this workspace's rule set
+    lines.append("### 内置类型")
+    lines.append("")
+    for type_key in _BUILTIN_TYPE_KEYS:
+        summary = _BUILTIN_SUMMARIES.get(type_key, "")
+        lines.append(f"- **{type_key}**：{summary}")
+    lines.append("")
+
+    # Custom types — inject name + first meaningful line of description (if any)
     custom_types = workspace_context.get("custom_asset_types", [])
     if custom_types:
         lines.append("### 自定义类型（当前规则集注册）")
@@ -50,17 +75,25 @@ def _build_asset_types_section(workspace_context: dict) -> str:
             label = t.get("label", type_key)
             icon = t.get("icon", "")
             description = t.get("description", "").strip()
-            template_md = t.get("template_md", "").strip()
-            lines.append(f"#### {icon} {label}（{type_key}）")
+            # Extract first non-heading, non-empty line from description as one-liner
+            oneliner = ""
             if description:
-                lines.append("")
-                lines.append(description)
-            if template_md:
-                lines.append("")
-                lines.append("**内容模板：**")
-                lines.append("")
-                lines.append(template_md)
-            lines.append("")
+                for ln in description.splitlines():
+                    stripped = ln.strip()
+                    if stripped and not stripped.startswith("#"):
+                        oneliner = stripped[:120]
+                        break
+            required = ""
+            if description:
+                req_body = _extract_section(description, "创建前必须提供")
+                if req_body:
+                    req_lines = [l.strip() for l in req_body.splitlines() if l.strip()]
+                    required = " | ".join(req_lines[:3])
+            entry = f"- **{type_key}**（{icon}{label}）：{oneliner}"
+            if required:
+                entry += f"  必须提供：{required}"
+            lines.append(entry)
+        lines.append("")
 
     return "\n".join(lines)
 

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agents.tooling import tool
+from app.prompts import load_prompt
 
 
 # ─── Context injection ────────────────────────────────────────────────────────
@@ -336,6 +337,52 @@ def read_config() -> str:
         "skills": _workspace_context.get("skills", []),
     }
     return json.dumps(ctx, ensure_ascii=False)
+
+
+@tool
+def get_asset_type_spec(type_key: str) -> str:
+    """获取指定资产类型的完整规范，包含范围说明、创建前必须提供的信息和 Markdown 章节模板。
+    在开始编写 create_asset / create_assets 的 content_md 参数之前必须调用此工具，
+    以确保生成的内容符合该类型的章节结构。
+    内置类型：outline / stage / npc / monster / map / clue。
+    自定义类型：返回注册时填写的 description 和 template_md。"""
+    type_key = (type_key or "").strip().lower()
+    if not type_key:
+        return json.dumps({"error": "type_key 不能为空"}, ensure_ascii=False)
+
+    # Try built-in type spec from prompts/asset_types/{type_key}.txt
+    _BUILTIN = {"outline", "stage", "npc", "monster", "map", "clue"}
+    if type_key in _BUILTIN:
+        try:
+            spec = load_prompt("asset_types", type_key)
+            return json.dumps({"type_key": type_key, "source": "builtin", "spec": spec}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": f"无法加载内置类型规范：{e}"}, ensure_ascii=False)
+
+    # Try custom type from workspace context
+    custom_types = _workspace_context.get("custom_asset_types", [])
+    for t in custom_types:
+        if t.get("type_key") == type_key:
+            description = t.get("description", "").strip()
+            template_md = t.get("template_md", "").strip()
+            if description or template_md:
+                spec = ""
+                if description:
+                    spec += description
+                if template_md:
+                    spec += f"\n\n## 内容模板\n\n{template_md}"
+                return json.dumps({"type_key": type_key, "source": "custom", "spec": spec}, ensure_ascii=False)
+            else:
+                return json.dumps({
+                    "type_key": type_key,
+                    "source": "custom",
+                    "spec": f"自定义类型「{t.get('label', type_key)}」尚未填写范围说明和模板，请根据类型用途自行判断章节结构。",
+                }, ensure_ascii=False)
+
+    return json.dumps({
+        "error": f"类型 '{type_key}' 不存在。可用内置类型：outline/stage/npc/monster/map/clue。"
+                 f"自定义类型可通过 read_config() 查询。"
+    }, ensure_ascii=False)
 
 
 @tool
