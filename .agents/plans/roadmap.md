@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路 **M1–M28 已完成**，**M29 Agent 交互质量提升** 进行中。
+核心功能链路 **M1–M29 已完成**，下一个 milestone 待规划。
 
 ```
 ✅ M1 基础骨架
@@ -34,7 +34,7 @@
                                                                                                                                                                                    ├── ✅ M26 探索子 Agent 与 Prompt 体系统一
                                                                                                                                                                                    └── ✅ M27 资产单步操作与批处理
                                                                                                                                                                                            └── ✅ M28 原生 SDK Agent 运行时替换
-                                                                                                                                                                                                  └── 🔄 M29 Agent 交互质量提升
+                                                                                                                                                                                                  └── ✅ M29 Agent 交互质量提升
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -78,12 +78,13 @@
 | M26 ✅ | 探索子 Agent 与 Prompt 体系统一 | 落地只读 Explore + 会话分流；**统一中文化**（含 **PDF/CHM 两套 TOC prompt**）；P0、死 prompt、`prompts` 规范；聊天摘要等；`knowledge-library-ingest` skill；不恢复旧顺序主链；用量见 plan B1 | [archive/m26-explore-prompt-integrity.md](archive/m26-explore-prompt-integrity.md) |
 | M27 ✅ | 资产单步操作与批处理 | Director 工具补足 **删除/移动**；**批量** create/patch/delete/move；**跨资产** `preview`→`apply` 文本替换；不引入通用 shell；见 [benchmark accepted](../../docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md) | [archive/m27-asset-ops-and-batch.md](archive/m27-asset-ops-and-batch.md) |
 | M28 ✅ | 原生 SDK Agent 运行时替换 | 将聊天与工具编排从 Agno 迁移到 Provider 原生 SDK，保留现有记忆/RAG/LanceDB 能力与 SSE 协议；修复 Anthropic 多工具并发 bug、workspace_mutating 误判、补齐 Gemini 流式 tool-calling | [archive/m28-native-sdk-agent-runtime.md](archive/m28-native-sdk-agent-runtime.md) |
+| M29 ✅ | Agent 交互质量提升 | 重写 ask_user 触发规则（信息量不足型 + 关键分叉型），新增单轮完成回复规范，实现 `<plan>` 标签解析 + 结构化 PlanCard 实时步骤展示；顺带修复 agent_question 在 chat.py 中缺少透传的 bug | [archive/m29-agent-interaction-quality.md](archive/m29-agent-interaction-quality.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M29 🔄 | Agent 交互质量提升 | 修复 ask_user 触发率过低、建立单轮完成感知、引入批量任务计划输出 | [m29-agent-interaction-quality.md](m29-agent-interaction-quality.md) |
+| — | — | 下一个 milestone 待规划 | — |
 
 ---
 

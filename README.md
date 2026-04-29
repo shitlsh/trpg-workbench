@@ -2,7 +2,7 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M1–M28 已完成**（M28：Agent 运行时完全去 Agno，迁移到 Provider 原生 SDK；下一个 milestone 待规划）
+> **当前状态：M1–M29 已完成**（M29：重写 ask_user 触发规则、完成回复规范、结构化 PlanCard；下一个 milestone 待规划）
 
 ---
 
