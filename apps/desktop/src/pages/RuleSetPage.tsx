@@ -32,6 +32,7 @@ import type {
   EmbeddingProfile,
   CustomAssetTypeConfig,
   CreateCustomAssetTypeRequest,
+  UpdateCustomAssetTypeRequest,
 } from "@trpg-workbench/shared-schema";
 import styles from "./RuleSetPage.module.css";
 import { HelpButton } from "../components/HelpButton";
@@ -2242,6 +2243,12 @@ export default function RuleSetPage() {
   const [activeLibId, setActiveLibId] = useState<string | null>(null);
 
   // Custom asset type state (A5 + M30)
+  const [editingType, setEditingType] = useState<CustomAssetTypeConfig | null>(null);
+  const [editTypeLabel, setEditTypeLabel] = useState("");
+  const [editTypeIcon, setEditTypeIcon] = useState("");
+  const [editTypeDescription, setEditTypeDescription] = useState("");
+  const [editTypeTemplateMd, setEditTypeTemplateMd] = useState("");
+  const [editTypeError, setEditTypeError] = useState<string | null>(null);
   const [showNewTypeForm, setShowNewTypeForm] = useState(false);
   const [newTypeFormMode, setNewTypeFormMode] = useState<"manual" | "ai">("manual");
   const [newTypeKey, setNewTypeKey] = useState("");
@@ -2392,6 +2399,21 @@ export default function RuleSetPage() {
       apiFetch(`/rule-sets/${selectedId}/asset-type-configs/${configId}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["custom-asset-types", selectedId] });
+    },
+  });
+
+  const updateTypeMutation = useMutation({
+    mutationFn: ({ configId, body }: { configId: string; body: UpdateCustomAssetTypeRequest }) =>
+      apiFetch<CustomAssetTypeConfig>(`/rule-sets/${selectedId}/asset-type-configs/${configId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["custom-asset-types", selectedId] });
+      setEditingType(null);
+    },
+    onError: (err: unknown) => {
+      setEditTypeError((err as Error).message ?? "保存失败");
     },
   });
 
@@ -2765,6 +2787,20 @@ export default function RuleSetPage() {
                       <button
                         className={styles.btnGhost}
                         onClick={() => {
+                          setEditingType(ct);
+                          setEditTypeLabel(ct.label);
+                          setEditTypeIcon(ct.icon);
+                          setEditTypeDescription(ct.description ?? "");
+                          setEditTypeTemplateMd(ct.template_md ?? "");
+                          setEditTypeError(null);
+                        }}
+                        title="编辑"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        className={styles.btnGhost}
+                        onClick={() => {
                           if (confirm(`确认删除类型「${ct.label}」？已有此类型的资产不受影响。`)) {
                             deleteTypeMutation.mutate(ct.id);
                           }
@@ -3076,6 +3112,101 @@ export default function RuleSetPage() {
                 </div>
               </div>
             )}
+           </div>
+         </div>
+       )}
+
+      {/* Edit asset type modal */}
+      {editingType && (
+        <div className={styles.overlay} onClick={() => { setEditingType(null); setEditTypeError(null); }}>
+          <div className={styles.modal} style={{ width: 520, maxWidth: "92vw" }} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>编辑资产类型</h2>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* type_key is read-only — it's the storage key used in existing assets */}
+              <div style={{ padding: "6px 10px", background: "var(--bg-surface)", borderRadius: 4, fontSize: 12, color: "var(--text-muted)" }}>
+                类型键（只读）：<code style={{ fontFamily: "monospace", color: "var(--text)" }}>{editingType.type_key}</code>
+                <span style={{ marginLeft: 8, opacity: 0.65 }}>· 已有资产不受影响</span>
+              </div>
+
+              {/* Label + icon row */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 64px", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>显示名称</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, textAlign: "center" }}>图标</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 64px", gap: 8 }}>
+                  <input
+                    className={styles.input}
+                    placeholder="如 法术"
+                    value={editTypeLabel}
+                    onChange={(e) => setEditTypeLabel(e.target.value)}
+                    style={{ fontSize: 12 }}
+                    autoFocus
+                  />
+                  <input
+                    className={styles.input}
+                    placeholder="✨"
+                    value={editTypeIcon}
+                    onChange={(e) => setEditTypeIcon(e.target.value)}
+                    style={{ fontSize: 18, textAlign: "center", padding: "4px 6px" }}
+                    maxLength={4}
+                  />
+                </div>
+              </div>
+
+              <label className={styles.label}>
+                范围说明 <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(可选，AI 会参考)</span>
+                <textarea
+                  className={styles.input}
+                  placeholder={"这个类型是什么、什么时候用、和其他类型的区别。\n建议包含「创建前必须提供」段落，AI 会据此判断是否向用户提问。"}
+                  value={editTypeDescription}
+                  onChange={(e) => setEditTypeDescription(e.target.value)}
+                  rows={4}
+                  style={{ fontSize: 12, resize: "vertical", marginTop: 4 }}
+                />
+              </label>
+
+              <label className={styles.label}>
+                Markdown 章节模板 <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(可选，AI 按此结构生成内容)</span>
+                <textarea
+                  className={styles.input}
+                  placeholder={"---\nname: 类型名称\ntype: spell\nsummary: ...\nstatus: draft\n---\n\n# 名称\n\n## 章节1\n...\n\n## 章节2\n..."}
+                  value={editTypeTemplateMd}
+                  onChange={(e) => setEditTypeTemplateMd(e.target.value)}
+                  rows={6}
+                  style={{ fontSize: 11, resize: "vertical", fontFamily: "monospace", marginTop: 4 }}
+                />
+              </label>
+
+              {editTypeError && (
+                <p className={styles.error} style={{ margin: 0 }}>{editTypeError}</p>
+              )}
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+                <button
+                  className={styles.btnSecondary}
+                  style={{ fontSize: 12 }}
+                  onClick={() => { setEditingType(null); setEditTypeError(null); }}
+                >取消</button>
+                <button
+                  className={styles.btnPrimary}
+                  style={{ fontSize: 12 }}
+                  disabled={!editTypeLabel || !editTypeIcon || updateTypeMutation.isPending}
+                  onClick={() => updateTypeMutation.mutate({
+                    configId: editingType.id,
+                    body: {
+                      label: editTypeLabel,
+                      icon: editTypeIcon,
+                      description: editTypeDescription || undefined,
+                      template_md: editTypeTemplateMd || undefined,
+                    },
+                  })}
+                >
+                  {updateTypeMutation.isPending ? "保存中..." : "保存"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
