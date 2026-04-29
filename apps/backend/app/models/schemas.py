@@ -572,6 +572,8 @@ class SearchTestResponse(BaseModel):
 # ─── M16: Custom Asset Type Configs ──────────────────────────────────────────
 
 class CustomAssetTypeConfigSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     rule_set_id: str
     type_key: str
@@ -581,10 +583,8 @@ class CustomAssetTypeConfigSchema(BaseModel):
     # M30: description explains scope/required fields; template_md is the Markdown skeleton
     description: str | None = None
     template_md: str | None = None
-    created_at: str
-    updated_at: str
-
-    model_config = {"from_attributes": True}
+    created_at: datetime
+    updated_at: datetime
 
 
 class CustomAssetTypeConfigCreate(BaseModel):

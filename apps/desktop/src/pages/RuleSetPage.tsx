@@ -2720,161 +2720,7 @@ export default function RuleSetPage() {
                   </button>
                 </div>
 
-                {/* New type form (M30: manual + AI generation modes) */}
-                {showNewTypeForm && (
-                  <div className={styles.promptCard} style={{ marginBottom: 10 }}>
-                    {/* Mode tabs */}
-                    <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-                      {(["manual", "ai"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          onClick={() => { setNewTypeFormMode(mode); setTypeGenError(null); setNewTypeError(null); }}
-                          style={{
-                            fontSize: 12, padding: "3px 10px", borderRadius: 4, border: "1px solid var(--border)",
-                            background: newTypeFormMode === mode ? "var(--accent)" : "transparent",
-                            color: newTypeFormMode === mode ? "#fff" : "var(--text-muted)",
-                            cursor: "pointer",
-                          }}
-                        >
-                          {mode === "manual" ? "手动填写" : <><Sparkles size={11} style={{ verticalAlign: "middle", marginRight: 3 }} />AI 生成</>}
-                        </button>
-                      ))}
-                    </div>
 
-                    {/* AI generation mode */}
-                    {newTypeFormMode === "ai" && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <select
-                            className={styles.select}
-                            value={typeGenLlmId}
-                            onChange={(e) => { setTypeGenLlmId(e.target.value); setTypeGenModelName(""); }}
-                            style={{ flex: 1, fontSize: 12 }}
-                          >
-                            <option value="">选择 LLM 供应商</option>
-                            {llmProfilesForType.map((p) => (
-                              <option key={p.id} value={p.id}>{p.name || p.provider_type}</option>
-                            ))}
-                          </select>
-                          <input
-                            className={styles.input}
-                            placeholder="模型名称（如 gemini-2.0-flash）"
-                            value={typeGenModelName}
-                            onChange={(e) => setTypeGenModelName(e.target.value)}
-                            list="type-gen-models"
-                            style={{ flex: 2, fontSize: 12 }}
-                          />
-                          <datalist id="type-gen-models">
-                            {typeGenProbedModels.map((m) => <option key={m} value={m} />)}
-                          </datalist>
-                        </div>
-                        <textarea
-                          className={styles.input}
-                          placeholder="描述你想要的类型（如：我想要一个记录法术的类型，包括施法条件、效果和代价）"
-                          value={typeGenIntent}
-                          onChange={(e) => setTypeGenIntent(e.target.value)}
-                          rows={2}
-                          style={{ fontSize: 12, resize: "vertical" }}
-                        />
-                        {typeGenPhase && (
-                          <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>{typeGenPhase}</p>
-                        )}
-                        {typeGenError && (
-                          <p className={styles.error} style={{ margin: 0 }}>{typeGenError}</p>
-                        )}
-                        {typeGenPreview && !typeGenDone && (
-                          <pre style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-surface)", borderRadius: 4, padding: 8, maxHeight: 120, overflow: "auto", whiteSpace: "pre-wrap", margin: 0 }}>
-                            {typeGenPreview}
-                          </pre>
-                        )}
-                        {typeGenDone && (
-                          <p style={{ fontSize: 11, color: "var(--accent)", margin: 0 }}>✓ 生成完成，已填入下方表单，请检查并确认</p>
-                        )}
-                        <button
-                          className={styles.btnPrimary}
-                          style={{ fontSize: 12 }}
-                          disabled={typeGenLoading || !typeGenLlmId || !typeGenModelName.trim() || !typeGenIntent.trim()}
-                          onClick={handleGenerateAssetType}
-                        >
-                          {typeGenLoading
-                            ? <><Hourglass className={styles.animatedHourglass} size={13} strokeWidth={1.9} style={{ marginRight: 4 }} />生成中…</>
-                            : <><Sparkles size={12} style={{ marginRight: 4 }} />生成类型定义</>
-                          }
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Manual / review mode */}
-                    {newTypeFormMode === "manual" && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <input
-                            className={styles.input}
-                            placeholder="类型键（英文，如 spell）"
-                            value={newTypeKey}
-                            onChange={(e) => setNewTypeKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                            style={{ flex: 2, fontSize: 12 }}
-                          />
-                          <input
-                            className={styles.input}
-                            placeholder="显示名称（如 法术）"
-                            value={newTypeLabel}
-                            onChange={(e) => setNewTypeLabel(e.target.value)}
-                            style={{ flex: 2, fontSize: 12 }}
-                          />
-                          <input
-                            className={styles.input}
-                            placeholder="图标"
-                            value={newTypeIcon}
-                            onChange={(e) => setNewTypeIcon(e.target.value)}
-                            style={{ flex: 1, textAlign: "center", fontSize: 16 }}
-                            maxLength={4}
-                          />
-                        </div>
-                        <textarea
-                          className={styles.input}
-                          placeholder={"范围说明（可选）：这个类型是什么、什么时候用、和其他类型的区别。\n建议包含「创建前必须提供」段落，AI 会参考它来判断是否需要向用户提问。"}
-                          value={newTypeDescription}
-                          onChange={(e) => setNewTypeDescription(e.target.value)}
-                          rows={4}
-                          style={{ fontSize: 12, resize: "vertical" }}
-                        />
-                        <textarea
-                          className={styles.input}
-                          placeholder={"Markdown 章节模板（可选）：包含 frontmatter + 章节骨架，AI 创建此类型资产时会参考此格式。\n不填时 AI 会自由发挥，建议填写以保证输出质量。"}
-                          value={newTypeTemplateMd}
-                          onChange={(e) => setNewTypeTemplateMd(e.target.value)}
-                          rows={5}
-                          style={{ fontSize: 12, resize: "vertical", fontFamily: "monospace" }}
-                        />
-                        {newTypeError && (
-                          <p className={styles.error} style={{ margin: 0 }}>{newTypeError}</p>
-                        )}
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button
-                            className={styles.btnPrimary}
-                            style={{ flex: 1, fontSize: 12 }}
-                            disabled={!newTypeKey || !newTypeLabel || !newTypeIcon || createTypeMutation.isPending}
-                            onClick={() => createTypeMutation.mutate({
-                              type_key: newTypeKey, label: newTypeLabel, icon: newTypeIcon,
-                              description: newTypeDescription || undefined,
-                              template_md: newTypeTemplateMd || undefined,
-                            })}
-                          >
-                            {createTypeMutation.isPending ? "创建中..." : "创建"}
-                          </button>
-                          <button
-                            className={styles.btnSecondary}
-                            style={{ flex: 1, fontSize: 12 }}
-                            onClick={() => { setShowNewTypeForm(false); setNewTypeError(null); }}
-                          >
-                            取消
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* Builtin types (read-only) */}
                 <p style={{ fontSize: 11, color: "var(--text-subtle, var(--text-muted))", margin: "6px 0 4px", opacity: 0.7 }}>内置类型</p>
@@ -3035,6 +2881,172 @@ export default function RuleSetPage() {
           onClose={() => setShowSetPrompt(false)}
           onSetDefault={(profileId) => setDefaultPromptMutation.mutate(profileId)}
         />
+      )}
+
+      {/* Add asset type modal */}
+      {showNewTypeForm && (
+        <div className={styles.overlay} onClick={() => { setShowNewTypeForm(false); setNewTypeError(null); }}>
+          <div className={styles.modal} style={{ width: 520, maxWidth: "92vw" }} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>添加资产类型</h2>
+
+            {/* Mode tabs */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+              {(["manual", "ai"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => { setNewTypeFormMode(mode); setTypeGenError(null); setNewTypeError(null); }}
+                  style={{
+                    fontSize: 12, padding: "4px 14px", borderRadius: 4, border: "1px solid var(--border)",
+                    background: newTypeFormMode === mode ? "var(--accent)" : "transparent",
+                    color: newTypeFormMode === mode ? "#fff" : "var(--text-muted)",
+                    cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                >
+                  {mode === "manual" ? "手动填写" : <><Sparkles size={11} style={{ verticalAlign: "middle", marginRight: 3 }} />AI 生成</>}
+                </button>
+              ))}
+            </div>
+
+            {/* AI generation mode */}
+            {newTypeFormMode === "ai" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <select
+                    className={styles.select}
+                    value={typeGenLlmId}
+                    onChange={(e) => { setTypeGenLlmId(e.target.value); setTypeGenModelName(""); }}
+                    style={{ flex: 1, fontSize: 12 }}
+                  >
+                    <option value="">选择 LLM 供应商</option>
+                    {llmProfilesForType.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name || p.provider_type}</option>
+                    ))}
+                  </select>
+                  <input
+                    className={styles.input}
+                    placeholder="模型名称（如 gemini-2.0-flash）"
+                    value={typeGenModelName}
+                    onChange={(e) => setTypeGenModelName(e.target.value)}
+                    list="type-gen-models"
+                    style={{ flex: 2, fontSize: 12 }}
+                  />
+                  <datalist id="type-gen-models">
+                    {typeGenProbedModels.map((m) => <option key={m} value={m} />)}
+                  </datalist>
+                </div>
+                <textarea
+                  className={styles.input}
+                  placeholder="描述你想要的类型（如：我想要一个记录法术的类型，包括施法条件、效果和代价）"
+                  value={typeGenIntent}
+                  onChange={(e) => setTypeGenIntent(e.target.value)}
+                  rows={3}
+                  style={{ fontSize: 12, resize: "vertical" }}
+                />
+                {typeGenPhase && (
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>{typeGenPhase}</p>
+                )}
+                {typeGenError && (
+                  <p className={styles.error} style={{ margin: 0 }}>{typeGenError}</p>
+                )}
+                {typeGenPreview && !typeGenDone && (
+                  <pre style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-surface)", borderRadius: 4, padding: 8, maxHeight: 140, overflow: "auto", whiteSpace: "pre-wrap", margin: 0 }}>
+                    {typeGenPreview}
+                  </pre>
+                )}
+                {typeGenDone && (
+                  <p style={{ fontSize: 11, color: "var(--accent)", margin: 0 }}>✓ 生成完成，已切换到手动模式，请检查后创建</p>
+                )}
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button
+                    className={styles.btnSecondary}
+                    style={{ fontSize: 12 }}
+                    onClick={() => { setShowNewTypeForm(false); setNewTypeError(null); }}
+                  >取消</button>
+                  <button
+                    className={styles.btnPrimary}
+                    style={{ fontSize: 12, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}
+                    disabled={typeGenLoading || !typeGenLlmId || !typeGenModelName.trim() || !typeGenIntent.trim()}
+                    onClick={handleGenerateAssetType}
+                  >
+                    {typeGenLoading
+                      ? <><Hourglass className={styles.animatedHourglass} size={13} strokeWidth={1.9} />生成中…</>
+                      : <><Sparkles size={12} />生成类型定义</>
+                    }
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Manual / review mode */}
+            {newTypeFormMode === "manual" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className={styles.input}
+                    placeholder="类型键（英文，如 spell）"
+                    value={newTypeKey}
+                    onChange={(e) => setNewTypeKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                    style={{ flex: 2, fontSize: 12 }}
+                    autoFocus
+                  />
+                  <input
+                    className={styles.input}
+                    placeholder="显示名称（如 法术）"
+                    value={newTypeLabel}
+                    onChange={(e) => setNewTypeLabel(e.target.value)}
+                    style={{ flex: 2, fontSize: 12 }}
+                  />
+                  <input
+                    className={styles.input}
+                    placeholder="图标"
+                    value={newTypeIcon}
+                    onChange={(e) => setNewTypeIcon(e.target.value)}
+                    style={{ flex: 1, textAlign: "center", fontSize: 16 }}
+                    maxLength={4}
+                  />
+                </div>
+                <textarea
+                  className={styles.input}
+                  placeholder={"范围说明（可选）：这个类型是什么、什么时候用、和其他类型的区别。\n建议包含「创建前必须提供」段落，AI 会参考它来判断是否需要向用户提问。"}
+                  value={newTypeDescription}
+                  onChange={(e) => setNewTypeDescription(e.target.value)}
+                  rows={4}
+                  style={{ fontSize: 12, resize: "vertical" }}
+                />
+                <textarea
+                  className={styles.input}
+                  placeholder={"Markdown 章节模板（可选）：包含 frontmatter + 章节骨架，AI 创建此类型资产时会参考此格式。\n不填时 AI 会自由发挥，建议填写以保证输出质量。"}
+                  value={newTypeTemplateMd}
+                  onChange={(e) => setNewTypeTemplateMd(e.target.value)}
+                  rows={5}
+                  style={{ fontSize: 12, resize: "vertical", fontFamily: "monospace" }}
+                />
+                {newTypeError && (
+                  <p className={styles.error} style={{ margin: 0 }}>{newTypeError}</p>
+                )}
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button
+                    className={styles.btnSecondary}
+                    style={{ fontSize: 12 }}
+                    onClick={() => { setShowNewTypeForm(false); setNewTypeError(null); }}
+                  >取消</button>
+                  <button
+                    className={styles.btnPrimary}
+                    style={{ fontSize: 12 }}
+                    disabled={!newTypeKey || !newTypeLabel || !newTypeIcon || createTypeMutation.isPending}
+                    onClick={() => createTypeMutation.mutate({
+                      type_key: newTypeKey, label: newTypeLabel, icon: newTypeIcon,
+                      description: newTypeDescription || undefined,
+                      template_md: newTypeTemplateMd || undefined,
+                    })}
+                  >
+                    {createTypeMutation.isPending ? "创建中..." : "创建"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
