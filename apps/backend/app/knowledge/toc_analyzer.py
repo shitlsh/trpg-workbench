@@ -33,6 +33,7 @@ from app.agents.model_adapter import (
 
 _log = logging.getLogger(__name__)
 from app.prompts import load_prompt
+from app.knowledge.toc_extractor import preprocess_toc_text_for_llm
 from app.services.llm_defaults import task_temperature
 
 # Wall-clock cap for one `complete_text_once` in TOC flows (PDF analyze-toc, each CHM batch).
@@ -183,10 +184,11 @@ async def fetch_pdf_toc_llm_raw(toc_text: str, llm_profile, model_name: str) -> 
     """
     effective_model_name = model_name or ""
     system_prompt = load_prompt("toc_analyzer", "system")
+    prepped = preprocess_toc_text_for_llm(toc_text or "")
     user_message = load_prompt(
         "toc_analyzer",
         "user_pdf",
-        toc_text=(toc_text or "")[:PDF_TOC_LLM_MAX_INPUT_CHARS],
+        toc_text=prepped[:PDF_TOC_LLM_MAX_INPUT_CHARS],
     )
     try:
         t = task_temperature("toc_analysis")
@@ -203,8 +205,9 @@ async def fetch_pdf_toc_llm_raw(toc_text: str, llm_profile, model_name: str) -> 
         raw = await complete_text_once(**call_kw)
         out = strip_code_fence(raw)
         _log.debug(
-            "toc_analyzer operation=fetch_pdf_toc_llm_raw toc_chars=%s response_chars=%s",
+            "toc_analyzer operation=fetch_pdf_toc_llm_raw toc_chars=%s prepped_chars=%s response_chars=%s",
             len(toc_text or ""),
+            len(prepped or ""),
             len(out or ""),
         )
         return out

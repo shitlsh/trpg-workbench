@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import re
+import statistics
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -98,6 +99,344 @@ def _bridge_toc_page_scores(
     return s
 
 
+# ─── Per-page text: geometry (words / chars) then bbox split fallback ───────
+# 目录只抽若干页，词块数量级小，排序与聚类开销可忽略。
+
+_TOC_LINE_Y_TOL: float = 3.5
+_TOC_COL_MARGIN_FRAC: float = 0.015
+# 双栏：以左右块 x 中位数差判断（避免行数 3:1 时误判为单栏，从而用 z 序把两栏行交错错读）
+_TOC_BIMODAL_X_SPREAD_FRAC: float = 0.10
+
+
+def _line_text_from_word_boxes(ordered_words: list[dict]) -> str:
+    """Join already x-sorted word boxes. Space between two ASCII tokens; no space CJK/ASCII boundary."""
+    parts = [w.get("text", "") for w in ordered_words if w.get("text")]
+    if not parts:
+        return ""
+    out: list[str] = [parts[0]]
+    for p in parts[1:]:
+        if not p:
+            continue
+        last = out[-1]
+        if not last:
+            out.append(p)
+            continue
+        a = last[-1]
+        b0 = p[0]
+        if a.isascii() and a.isalnum() and b0.isascii() and b0.isalnum() and a.isalpha() and b0.isalpha():
+            out.append(" " + p)
+        else:
+            out.append(p)
+    return "".join(out)
+
+
+def _line_center_x_from_word_boxes(line_words: list[dict]) -> float:
+    xs: list[float] = []
+    for w in line_words:
+        x0, x1 = w.get("x0", 0.0), w.get("x1", 0.0)
+        xs.append((x0 + x1) * 0.5)
+    return sum(xs) / max(len(xs), 1)
+
+
+def _line_top_from_word_boxes(line_words: list[dict]) -> float:
+    tops = [float(w.get("doctop", w.get("top", 0.0))) for w in line_words]
+    return min(tops) if tops else 0.0
+
+
+def _group_word_boxes_by_y(
+    word_boxes: list[dict], *, y_tol: float
+) -> list[list[dict]]:
+    """Group words on the same horizontal line (y within tolerance)."""
+    if not word_boxes:
+        return []
+
+    def top_of(w: dict) -> float:
+        return float(w.get("doctop", w.get("top", 0.0)))
+
+    sorted_w = sorted(word_boxes, key=top_of)
+    out: list[list[dict]] = []
+    current: list[dict] = []
+    anchor: float | None = None
+    for w in sorted_w:
+        t = top_of(w)
+        if anchor is None:
+            current = [w]
+            anchor = t
+        elif abs(t - anchor) <= y_tol:
+            current.append(w)
+        else:
+            out.append(current)
+            current = [w]
+            anchor = t
+    if current:
+        out.append(current)
+    return out
+
+
+def _extract_toc_text_from_chars(
+    page, chars: list[dict]
+) -> str:
+    y_tol = _TOC_LINE_Y_TOL
+    c_sorted = sorted(
+        chars,
+        key=lambda c: float(c.get("doctop", c.get("top", 0.0))),
+    )
+    line_chars: list[list[dict]] = []
+    current: list[dict] = []
+    anchor: float | None = None
+    for c in c_sorted:
+        t = float(c.get("doctop", c.get("top", 0.0)))
+        if anchor is None:
+            current = [c]
+            anchor = t
+        elif abs(t - anchor) <= y_tol:
+            current.append(c)
+        else:
+            line_chars.append(current)
+            current = [c]
+            anchor = t
+    if current:
+        line_chars.append(current)
+    if not line_chars:
+        return ""
+
+    rows: list[tuple[float, float, str]] = []  # top, center_x, text
+    for chs in line_chars:
+        o = sorted(chs, key=lambda c: float(c.get("x0", 0.0)))
+        text = "".join(c.get("text", "") for c in o)
+        mxc = sum(
+            (float(c.get("x0", 0.0)) + float(c.get("x1", 0.0))) * 0.5 for c in o
+        ) / max(len(o), 1)
+        ty = min(
+            float(c.get("doctop", c.get("top", 0.0))) for c in o
+        )
+        if text.strip():
+            rows.append((ty, mxc, text))
+    if not rows:
+        return ""
+    return _order_line_rows(page.bbox, rows)
+
+
+def _order_line_rows(
+    bbox: tuple,
+    row_triples: list[tuple[float, float, str]],  # (top, center_x, line_text)
+) -> str:
+    if not row_triples:
+        return ""
+    x0, _y0, x1, _y1 = bbox
+    w = (x1 - x0) or 1.0
+    mid = (x0 + x1) * 0.5
+    margin = _TOC_COL_MARGIN_FRAC * w
+
+    left: list[tuple[float, str]] = []
+    right: list[tuple[float, str]] = []
+    mxc_l: list[float] = []
+    mxc_r: list[float] = []
+    for ty, mxc, txt in row_triples:
+        if mxc < mid - margin:
+            left.append((ty, txt))
+            mxc_l.append(mxc)
+        elif mxc > mid + margin:
+            right.append((ty, txt))
+            mxc_r.append(mxc)
+        else:
+            if mxc < mid:
+                left.append((ty, txt))
+                mxc_l.append(mxc)
+            else:
+                right.append((ty, txt))
+                mxc_r.append(mxc)
+    n_l, n_r = len(left), len(right)
+    two_up = False
+    if mxc_l and mxc_r:
+        m_l = statistics.median(mxc_l)
+        m_r = statistics.median(mxc_r)
+        spread = m_r - m_l
+        two_up = bool(spread >= w * _TOC_BIMODAL_X_SPREAD_FRAC and n_l + n_r >= 2)
+    if two_up:
+        sl = sorted(left, key=lambda t: t[0])
+        sr = sorted(right, key=lambda t: t[0])
+        parts = [t[1] for t in sl] + [t[1] for t in sr]
+    else:
+        sall = sorted(row_triples, key=lambda r: (r[0], r[1]))
+        parts = [r[2] for r in sall]
+    return "\n".join(parts).strip()
+
+
+def _extract_toc_text_from_word_boxes(
+    page, word_boxes: list[dict]
+) -> str:
+    y_tol = _TOC_LINE_Y_TOL
+    lines_w = _group_word_boxes_by_y(word_boxes, y_tol=y_tol)
+    rows: list[tuple[float, float, str]] = []
+    for lw in lines_w:
+        ordered = sorted(lw, key=lambda w: float(w.get("x0", 0.0)))
+        txt = _line_text_from_word_boxes(ordered)
+        mxc = _line_center_x_from_word_boxes(ordered)
+        ty = _line_top_from_word_boxes(ordered)
+        if txt and txt.strip():
+            rows.append((ty, mxc, txt))
+    if not rows:
+        return ""
+    return _order_line_rows(page.bbox, rows)
+
+
+def _geometry_extract_page_text(page) -> str:
+    """Words → lines by y; 2-up → left column top–bottom, then right; else single y→x order."""
+    word_boxes: list[dict] = []
+    try:
+        word_boxes = list(
+            page.extract_words(keep_blank_chars=False, x_tolerance=2, y_tolerance=2)
+        )
+    except (TypeError, Exception):
+        try:
+            word_boxes = list(page.extract_words(keep_blank_chars=False))
+        except Exception:
+            word_boxes = []
+    if word_boxes:
+        t = _extract_toc_text_from_word_boxes(page, word_boxes)
+        if t and len(t.strip()) >= 4:
+            return t
+    ch = list(getattr(page, "chars", None) or [])
+    if ch:
+        t2 = _extract_toc_text_from_chars(page, ch)
+        if t2 and len(t2.strip()) >= 4:
+            return t2
+    return ""
+
+
+def _bbox_2up_fallback(page) -> str:
+    """Heuristic half-width crop: left then right. Used when geometry yields little."""
+    try:
+        full = (page.extract_text() or "").strip()
+    except Exception:
+        return ""
+    try:
+        x0, _y0, x1, y1 = page.bbox
+        w = (x1 - x0) or 1.0
+        if w < 2:
+            return full
+        mid = (x0 + x1) * 0.5
+        left = page.crop((x0, _y0, mid, y1))
+        right = page.crop((mid, _y0, x1, y1))
+        lt = (left.extract_text() or "").strip()
+        rt = (right.extract_text() or "").strip()
+    except Exception:
+        return full
+    a, b = len(lt), len(rt)
+    if a < 4 and b < 4:
+        return full
+    if a == 0 or b == 0:
+        return full
+    ratio = min(a, b) / max(a, b, 1)
+    if ratio >= 0.08 and a >= 12 and b >= 12:
+        return f"{lt}\n{rt}"
+    return full
+
+
+def _extract_page_toc_text_adaptive(page) -> str:
+    """Layout-aware word/line ordering (geometry) first; then 2-crop, then full ``extract_text``."""
+    geo = _geometry_extract_page_text(page)
+    if geo:
+        return geo
+    fb = _bbox_2up_fallback(page)
+    if fb:
+        return fb
+    try:
+        return (page.extract_text() or "").strip()
+    except Exception:
+        return ""
+
+
+# ─── Text cleanup before LLM (noise from OCR, watermarks, vertical type) ─────
+
+
+def _line_looks_like_toc_entry(line: str) -> bool:
+    s = line.strip()
+    if _is_toc_like_line(s):
+        return True
+    if _loose_toc_line_ends_with_page(s):
+        return True
+    # 常见章/幕/节标题
+    if re.search(r"第[一二三四五六七八九十百千万0-9]+[章节部幕]|\A附录|^[0-9]{1,2}\s*\.\s*[\S\u4e00-\u9fff]", s):
+        if len(s) >= 3:
+            return True
+    return False
+
+
+def _line_looks_like_noise_only(line: str) -> bool:
+    """OCR/水印：竖条字、单字母碎片、纯数字/符号行等。保守：有 TOC 像则保留，由前一条规则先过。"""
+    t = line.strip()
+    if not t:
+        return True
+    if re.match(r"^---\s*Page\s+\d+\s*---\s*$", t, re.I):
+        return False
+    # 极短、几乎无字母/汉字
+    if len(t) <= 2 and not re.search(r"[\u4e00-\u9fff]", t):
+        return re.fullmatch(r"[\W\dA-Za-z]{1,2}", t) is not None
+    # 碎片：R P T 馆 这种单字空格串（≥4 个 token 且多数字符为单格）
+    parts = t.split()
+    if len(parts) >= 4:
+        if sum(1 for p in parts if len(p) == 1) >= max(3, len(parts) * 0.5):
+            if not re.search(r"[\u4e00-\u9fff]{2,}", t):
+                return len(t) < 100
+    # 大量孤立拉丁字母 + 少量 CJK
+    cjk = sum(1 for c in t if "\u4e00" <= c <= "\u9fff")
+    if cjk < 2 and len(t) < 80:
+        alnum_blocks = re.findall(r"[A-Za-z]", t)
+        if len(set(alnum_blocks)) >= 6 and len(t.split()) >= 4:
+            return True
+    # 版权/ URL 整行
+    if "http" in t.lower() or "www." in t.lower() or t.startswith("©"):
+        if len(t) < 200:
+            return not _line_looks_like_toc_entry(t)
+    return False
+
+
+def preprocess_toc_text_for_llm(text: str) -> str:
+    """Normalize and drop obvious noise before sending raw TOC to the LLM. Idempotent on Page markers.
+
+    - Unicode NFKC (full/half width)
+    - Strip ZW / BOM / soft-hyphen that often break line boundaries in OCR
+    - Drop lines that look like vertical-OCR or watermark fragments (layout extraction is
+      :func:`_extract_page_toc_text_adaptive`: word/char geometry, then bbox split, then ``extract_text``)
+    - Collapse long runs of blank lines
+    """
+    if not (text and text.strip()):
+        return (text or "").strip()
+    try:
+        import unicodedata
+
+        t = unicodedata.normalize("NFKC", text)
+    except Exception:
+        t = text
+    t = re.sub(r"[\u200b\ufeff\u00ad\u2060]+", "", t)
+    t = re.sub(r"[\t\f\v]+", " ", t)
+    out: list[str] = []
+    for line in t.splitlines():
+        s = line.strip()
+        if re.match(r"^---\s*Page\s+\d+\s*---\s*$", s, re.I):
+            out.append(s)
+            continue
+        if not s:
+            continue
+        if _line_looks_like_toc_entry(s) or not _line_looks_like_noise_only(s):
+            out.append(s)
+    # Adjacent exact duplicates (OCR/双栏重抽) — 保留 Page 分隔行
+    dedup: list[str] = []
+    for s in out:
+        if (
+            dedup
+            and dedup[-1] == s
+            and not re.match(r"^---\s*Page\s+\d+\s*---\s*$", s, re.I)
+        ):
+            continue
+        dedup.append(s)
+    t2 = "\n".join(dedup)
+    t2 = re.sub(r"\n{4,}", "\n\n\n", t2)
+    return t2.strip()
+
+
 def detect_toc_pages_sync(
     pdf_path: Path,
     scan_first_n: int = TOC_DETECT_DEFAULT_SCAN_FIRST_N,
@@ -120,7 +459,7 @@ def detect_toc_pages_sync(
 
         page_texts: list[tuple[int, str]] = []  # (1-indexed page, text)
         for i in range(pages_to_scan):
-            text = pdf.pages[i].extract_text() or ""
+            text = _extract_page_toc_text_adaptive(pdf.pages[i])
             page_texts.append((i + 1, text))
 
     raw_sc = [_score_toc_page(txt) for _, txt in page_texts]
@@ -166,7 +505,7 @@ def detect_toc_pages_sync(
     toc_parts = []
     with pdfplumber.open(str(pdf_path)) as pdf:
         for pn in range(best_start, best_end + 1):
-            txt = pdf.pages[pn - 1].extract_text() or ""
+            txt = _extract_page_toc_text_adaptive(pdf.pages[pn - 1])
             toc_parts.append(f"--- Page {pn} ---\n{txt}")
     toc_text = "\n\n".join(toc_parts)
 
@@ -184,7 +523,7 @@ def extract_pages_text_sync(pdf_path: Path, page_start: int, page_end: int) -> s
     with pdfplumber.open(str(pdf_path)) as pdf:
         total = len(pdf.pages)
         for pn in range(page_start, min(page_end, total) + 1):
-            txt = pdf.pages[pn - 1].extract_text() or ""
+            txt = _extract_page_toc_text_adaptive(pdf.pages[pn - 1])
             parts.append(f"--- Page {pn} ---\n{txt}")
     return "\n\n".join(parts)
 
