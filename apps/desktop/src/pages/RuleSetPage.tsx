@@ -1600,7 +1600,7 @@ function LibraryDetailPanel({
                 <>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
                     {isChm
-                      ? "用 LLM 为 CHM 内嵌目录的章节建议内容类型（不改章节结构）。"
+                      ? "为目录最外层大节建议内容类型，子项继承同类型；不改编目结构。"
                       : "用 LLM 将目录解析为章节结构。"}
                   </div>
                   <div style={{ marginBottom: 12 }}>

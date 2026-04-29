@@ -1,6 +1,6 @@
 ---
 name: knowledge-library-ingest
-description: 约束 trpg-workbench 中**知识库文档**（印刷型 PDF 与 CHM 帮助包）的导入、解析、目录分析、切块、向量化、本地索引与检索规范。当实现或讨论知识库上传、ingest、TOC、chunk、embedding、search_knowledge、引用展示，或 KnowledgeDocument/KnowledgeChunk 相关设计时必须加载本 skill。
+description: 约束 trpg-workbench 中知识库文档（PDF/CHM）的导入、TOC 与 ingest 预览、切块、向量化、索引与检索。实现或讨论 Knowledge Library、ingest、TOC、`knowledge_documents` 相关 API 时必须加载本 skill。
 ---
 
 # Skill: knowledge-library-ingest
@@ -29,7 +29,7 @@ description: 约束 trpg-workbench 中**知识库文档**（印刷型 PDF 与 CH
 
 ## 主链路原则
 
-默认 ingest **不以 vision/LLM 参与正文提取**；**LLM 仅用于**可选的 **TOC / 章节类型** 分析（见下节「目录与 LLM」），与 8 步落盘管道分离（先预览确认映射，再带 `toc_mapping` 执行 ingest）。
+默认 ingest **不以 vision/LLM 参与正文提取**；**LLM 仅用于**可选的 **TOC / 章节类型** 分析（见下节「目录（TOC）两轨」），与 8 步落盘管道分离（先预览确认映射，再带 `toc_mapping` 执行 ingest）。
 
 以下顺序在两种格式上**结构一致**（实现上分别为 `run_ingest` in `pdf_ingest.py` / `chm_ingest.py`）：
 
@@ -56,27 +56,21 @@ description: 约束 trpg-workbench 中**知识库文档**（印刷型 PDF 与 CH
 
 ---
 
-## 目录（TOC）与提示词：PDF 与 CHM 两轨
+## 目录（TOC）两轨
 
-二者**不是重复维护同一功能**，输入结构不同，故分文件、分函数：
+`app/api/knowledge_documents.py`：临时上传得 `file_id`；`ingest-confirmed` 时提交 `toc_mapping`。
 
-### 印刷型 PDF：目录页文本 → 章节树 + `suggested_chunk_type`
+| 顺序 | 端点 |
+|------|------|
+| 1 | `POST /knowledge/documents/upload-preview` |
+| 2 | `POST /knowledge/documents/preview/{file_id}/detect-toc` |
+| 3a | `POST /knowledge/documents/preview/{file_id}/analyze-toc`（PDF，SSE） |
+| 3b | `POST /knowledge/documents/preview/{file_id}/classify-chm-sections`（CHM，SSE，须 `llm_model_name` 非空） |
+| 4 | `POST /knowledge/libraries/{library_id}/documents/ingest-confirmed` |
 
-- **System**：`app/prompts/toc_analyzer/system.txt`
-- **User**：`app/prompts/toc_analyzer/user_pdf.txt`（`toc_text` 等变量由 `load_prompt` 注入）
-- **代码**：`toc_analyzer.analyze_toc(toc_text, ...)`；输出 JSON 需含 `is_toc`、`sections[]`，章节含 `page_from`、可选 `suggested_chunk_type`（`rule` / `example` / `lore` / `table` / `procedure` / `flavor` 等，与解析器白名单一致）
+**PDF**：`detect-toc` 用 `toc_extractor.detect_toc_pages_sync` 或手选 `toc_page_start`/`end` 时 `extract_pages_text_sync` → 返回 `toc_text`、`page_start`/`end`（1-based）、`is_structural: false`、无 `sections`。`analyze-toc`：`fetch_pdf_toc_llm_raw` → `parse_pdf_toc_response`；`toc_text` 入模截断 `PDF_TOC_LLM_MAX_INPUT_CHARS`（**12000**）；`system.txt`、`user_pdf.txt`；`toc_analysis` 温度 **0.2**；单次 LLM 墙钟 `TOC_LLM_MAX_WAIT_SECONDS`（**900**）；`is_toc: false` → `TocNotRecognizedError`。
 
-### CHM：HHC 扁平结构 → 浅层打类型、深层继承
-
-- **从包内读树**：`toc_extractor.extract_chm_toc_sync` → `chm_structure_to_sections`（每节点 `page_from` = 顺序下标，**非纸面页码**）
-- **System**：`app/prompts/toc_analyzer/chm_classify_system.txt`
-- **User**：`app/prompts/toc_analyzer/user_chm_batch.txt`（批处理多行标题，`assign_chm_section_chunk_types` 内分段调用）
-- **代码**：`assign_chm_section_chunk_types`：仅对**浅层**节点请求 LLM，深层沿树继承父级类型
-
-预览 API 行为摘要（以代码为准）：
-
-- PDF：`detect_toc` 走目录页抽文本 + 可选 LLM
-- CHM：同一路由返回 `is_structural: true` 与扁平 `sections`，**不**走「把目录页当 PDF 文本喂给 `analyze_toc`」；需要类型时调 `classify-chm-sections`（SSE）
+**CHM**：`detect-toc`：`extract_chm_toc_sync` → `chm_structure_to_sections`；`page_from` 为话题序 **1…N**；`is_structural: true`；`toc_text` 空。`classify-chm-sections`：每批 `user_chm_batch` + 行表；`CHM_CLASSIFY_MAX_DEPTH` 默认 **1**（最外大节，与 PDF 章级粗粒度一致；`body.max_classify_depth=2` 可标到 HHC 第二层）；深行 `_inherit_chm_chunk_types`；`CHM_CLASSIFY_BATCH` **120**；温度 **0.2**；每批/总墙钟见 `TOC_LLM_MAX_WAIT_SECONDS` 与 `knowledge_documents`。
 
 ---
 

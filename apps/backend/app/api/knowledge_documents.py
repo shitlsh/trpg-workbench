@@ -8,7 +8,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from app.knowledge.toc_analyzer import TocSection
+from app.knowledge.toc_analyzer import (
+    TocSection,
+    TOC_LLM_MAX_WAIT_SECONDS,
+    CHM_CLASSIFY_BATCH,
+)
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -693,9 +697,7 @@ async def detect_toc(file_id: str, body: DetectTocRequest = Body(default=DetectT
     }
 
 
-# PDF `analyze-toc`：整本书目录的 JSON 输出可能让模型跑满数分钟，Wall-clock 等待上限要大于单次 HTTP/用户感知。
-# 原先用「仅统计 10s 超时间隔」在边界上与墙上时间一致，现改为 `perf_counter` 与下面常量统一，避免误杀。
-ANALYZE_TOC_LLM_MAX_WAIT_SECONDS = 900.0
+# PDF `analyze-toc` 与 CHM 每批 `complete_text_once` 的单次墙钟上限见 `toc_analyzer.TOC_LLM_MAX_WAIT_SECONDS`。
 
 # ── 3. Analyze TOC with LLM ───────────────────────────────────────────────────
 
@@ -776,7 +778,7 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
             raw = ""
             llm_ms = 0.0
             while True:
-                if (time.perf_counter() - t_llm_start) >= ANALYZE_TOC_LLM_MAX_WAIT_SECONDS:
+                if (time.perf_counter() - t_llm_start) >= TOC_LLM_MAX_WAIT_SECONDS:
                     w = int(time.perf_counter() - t_llm_start)
                     _log.warning(
                         "knowledge_sse operation=analyze_toc phase=llm_wait_exceeded file_id=%s correlation_id=%s "
@@ -791,13 +793,13 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
                         "error",
                         {
                             "message": (
-                                f"目录分析超时：等待模型返回已超过 {int(ANALYZE_TOC_LLM_MAX_WAIT_SECONDS)} 秒。"
+                                f"目录分析超时：等待模型返回已超过 {int(TOC_LLM_MAX_WAIT_SECONDS)} 秒。"
                                 " 整本目录的 JSON 输出可能较慢，请稍后重试、换更快模型，或只选取较短目录页范围。"
                             ),
                         },
                     )
                     return
-                remaining = ANALYZE_TOC_LLM_MAX_WAIT_SECONDS - (time.perf_counter() - t_llm_start)
+                remaining = TOC_LLM_MAX_WAIT_SECONDS - (time.perf_counter() - t_llm_start)
                 try:
                     item = await asyncio.wait_for(q.get(), timeout=min(10.0, max(0.1, remaining)))
                 except asyncio.TimeoutError:
@@ -923,7 +925,7 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
 class ClassifyChmRequest(BaseModel):
     llm_profile_id: str
     llm_model_name: str = ""
-    max_classify_depth: int = 2  # only LLM-label depth ≤ this; deeper rows inherit in tree order
+    max_classify_depth: int = 1  # LLM 只标 depth ≤ 此值（默认 1=最外大节，子树继承；要标到第 2 层可传 2）
 
 
 @router3.post("/preview/{file_id}/classify-chm-sections")
@@ -960,6 +962,13 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
 
     model_label = body.llm_model_name.strip()
     sections_in = len(sections_orm)
+    _mcd = body.max_classify_depth
+    _n_label = sum(1 for s in sections_orm if s.depth <= _mcd)
+    _n_b = (_n_label + CHM_CLASSIFY_BATCH - 1) // CHM_CLASSIFY_BATCH if _n_label else 0
+    chm_classify_stream_max_s = min(
+        8 * 3600.0,
+        float(max(1, _n_b)) * TOC_LLM_MAX_WAIT_SECONDS + 120.0,
+    )
 
     async def _stream():
         correlation_id = uuid.uuid4().hex[:16]
@@ -1020,20 +1029,20 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
                 "detail": {**detail_base, "wait_seconds": 0},
             },
         )
-        deadline = 600
-        elapsed = 0
-        while elapsed < deadline:
+        t_stream_start = time.perf_counter()
+        while (time.perf_counter() - t_stream_start) < chm_classify_stream_max_s:
             try:
-                item = await asyncio.wait_for(tq.get(), timeout=10.0)
+                _rem = chm_classify_stream_max_s - (time.perf_counter() - t_stream_start)
+                item = await asyncio.wait_for(tq.get(), timeout=min(10.0, max(0.1, _rem)))
             except asyncio.TimeoutError:
                 yield ": keepalive\n\n"
-                elapsed += 10
+                wall = int(time.perf_counter() - t_stream_start)
                 yield _doc_sse(
                     "progress",
                     {
                         "phase": "llm_wait",
-                        "message": f"等待模型响应当中（已约 {elapsed} 秒）",
-                        "detail": {**detail_base, "wait_seconds": elapsed},
+                        "message": f"等待模型响应当中（已约 {wall} 秒）",
+                        "detail": {**detail_base, "wait_seconds": wall},
                     },
                 )
                 continue
@@ -1081,7 +1090,21 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
                 yield _doc_sse("error", {"message": item[1]})
                 return
 
-        yield _doc_sse("error", {"message": "CHM classification timed out (600s). Try a faster model or lower max_classify_depth."})
+        _log.warning(
+            "knowledge_sse operation=classify_chm phase=stream_exceeded file_id=%s max_wall_s=%s n_batches=%s",
+            file_id,
+            int(chm_classify_stream_max_s),
+            _n_b,
+        )
+        yield _doc_sse(
+            "error",
+            {
+                "message": (
+                    f"CHM 分类等待超时：本次连接墙钟上限约 {int(chm_classify_stream_max_s)} 秒（与批次数相关）。"
+                    " 可换更快模型、减小目录或调低 max_classify_depth。"
+                ),
+            },
+        )
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
 

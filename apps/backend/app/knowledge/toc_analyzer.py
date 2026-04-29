@@ -24,6 +24,22 @@ _log = logging.getLogger(__name__)
 from app.prompts import load_prompt
 from app.services.llm_defaults import task_temperature
 
+# Wall-clock cap for one `complete_text_once` in TOC flows (PDF analyze-toc, each CHM batch).
+TOC_LLM_MAX_WAIT_SECONDS: float = 900.0
+# PDF: raw TOC text sent to the model (output is already chapter-skeleton; allow longer multi-page TOCs).
+PDF_TOC_LLM_MAX_INPUT_CHARS: int = 12000
+# CHM: only ask the LLM for rows with depth <= this; deeper rows inherit (default 1 = top-level part/book, like PDF big chapters).
+CHM_CLASSIFY_MAX_DEPTH: int = 1
+# CHM batch line: index + depth + tab + title; long HHC titles are truncated for prompt size.
+CHM_CLASSIFY_LINE_TITLE_MAX_CHARS: int = 500
+
+
+def _chm_title_for_classify_prompt(title: str) -> str:
+    t = (title or "").replace("\n", " ").replace("\t", " ").strip()
+    if len(t) <= CHM_CLASSIFY_LINE_TITLE_MAX_CHARS:
+        return t
+    return t[: CHM_CLASSIFY_LINE_TITLE_MAX_CHARS - 1] + "…"
+
 
 # ─── Result types ─────────────────────────────────────────────────────────────
 
@@ -58,7 +74,11 @@ async def fetch_pdf_toc_llm_raw(toc_text: str, llm_profile, model_name: str) -> 
     """
     effective_model_name = model_name or ""
     system_prompt = load_prompt("toc_analyzer", "system")
-    user_message = load_prompt("toc_analyzer", "user_pdf", toc_text=toc_text[:6000])
+    user_message = load_prompt(
+        "toc_analyzer",
+        "user_pdf",
+        toc_text=(toc_text or "")[:PDF_TOC_LLM_MAX_INPUT_CHARS],
+    )
     try:
         t = task_temperature("toc_analysis")
         raw = await complete_text_once(
@@ -185,9 +205,7 @@ def chm_structure_to_sections(raw_items: list[dict]) -> list[TocSection]:
 
 # ─── CHM: LLM chunk_type for shallow rows + tree inherit for deep rows ───────
 
-CHM_CLASSIFY_MAX_DEPTH = 2
-# Larger batch significantly reduces request round-trips for CHM catalogs.
-# For common depth<=2 catalogs, 120 usually fits in one or two calls.
+# Larger batch reduces round-trips; with default depth=1, batches are usually small.
 CHM_CLASSIFY_BATCH = 120
 
 
@@ -250,7 +268,7 @@ async def iter_assign_chm_section_chunk_types(
     for batch_start in range(0, len(to_label_idx), CHM_CLASSIFY_BATCH):
         batch_rows = to_label_idx[batch_start : batch_start + CHM_CLASSIFY_BATCH]
         lines = "\n".join(
-            f"{i + 1}.\tdepth={sections[i].depth}\t{sections[i].title}"
+            f"{i + 1}.\tdepth={sections[i].depth}\t{_chm_title_for_classify_prompt(sections[i].title)}"
             for i in batch_rows
         )
         user_message = load_prompt(
@@ -260,15 +278,28 @@ async def iter_assign_chm_section_chunk_types(
             batch_size=len(batch_rows),
             lines=lines,
         )
+        _log.debug(
+            "toc_analyzer operation=chm_classify_batch batch_index=%s batch_rows=%s user_chars=%s",
+            batch_num,
+            len(batch_rows),
+            len(user_message),
+        )
         try:
-            raw = await complete_text_once(
-                profile=llm_profile,
-                model_name=effective_model_name,
-                system_prompt=system_prompt,
-                user_prompt=user_message,
-                temperature=task_temperature("toc_analysis"),
+            raw = await asyncio.wait_for(
+                complete_text_once(
+                    profile=llm_profile,
+                    model_name=effective_model_name,
+                    system_prompt=system_prompt,
+                    user_prompt=user_message,
+                    temperature=task_temperature("toc_analysis"),
+                ),
+                timeout=TOC_LLM_MAX_WAIT_SECONDS,
             )
             raw = strip_code_fence(raw)
+        except asyncio.TimeoutError as e:
+            raise RuntimeError(
+                f"CHM 目录分类单批等待模型超过 {int(TOC_LLM_MAX_WAIT_SECONDS)} 秒"
+            ) from e
         except Exception as e:
             raise RuntimeError(f"LLM call for CHM chunk classification failed: {e}") from e
         raw = raw.strip()
@@ -316,8 +347,8 @@ def assign_chm_section_chunk_types(
     """Label CHM sections with `suggested_chunk_type` using LLM on shallow nodes (depth ≤ max);
     deeper nodes inherit from parent chain in the flat HHC order.
 
-    Large CHMs (thousands of leaves) are handled by classifying only the top
-    `max_classify_depth` levels — typically a few hundred calls at most.
+    Only rows with ``depth <= max_classify_depth`` are sent to the LLM; the rest
+    inherit along the flat tree (default depth 1 aligns with PDF-style big parts).
     """
     async def _run() -> list[TocSection]:
         last = list(sections)
