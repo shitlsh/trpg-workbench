@@ -411,6 +411,22 @@ export interface UpdateCustomAssetTypeRequest {
   template_md?: string;
 }
 
+/** M30: AI-assisted generation of a custom asset type definition */
+export interface GenerateAssetTypeRequest {
+  rule_set_id: string;
+  llm_profile_id: string;
+  model_name: string;
+  type_intent: string;
+}
+
+export interface GenerateAssetTypeResult {
+  type_key: string;
+  label: string;
+  icon: string;
+  description: string;
+  template_md: string;
+}
+
 export type AssetStatus = "draft" | "review" | "final" | "deleted";
 
 export interface Asset {

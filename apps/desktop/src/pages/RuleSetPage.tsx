@@ -2241,12 +2241,24 @@ export default function RuleSetPage() {
   // Library detail drill-down
   const [activeLibId, setActiveLibId] = useState<string | null>(null);
 
-  // Custom asset type state (A5)
+  // Custom asset type state (A5 + M30)
   const [showNewTypeForm, setShowNewTypeForm] = useState(false);
+  const [newTypeFormMode, setNewTypeFormMode] = useState<"manual" | "ai">("manual");
   const [newTypeKey, setNewTypeKey] = useState("");
   const [newTypeLabel, setNewTypeLabel] = useState("");
   const [newTypeIcon, setNewTypeIcon] = useState("");
+  const [newTypeDescription, setNewTypeDescription] = useState("");
+  const [newTypeTemplateMd, setNewTypeTemplateMd] = useState("");
   const [newTypeError, setNewTypeError] = useState<string | null>(null);
+  // AI generation state for custom type
+  const [typeGenLlmId, setTypeGenLlmId] = useState("");
+  const [typeGenModelName, setTypeGenModelName] = useState("");
+  const [typeGenIntent, setTypeGenIntent] = useState("");
+  const [typeGenPhase, setTypeGenPhase] = useState("");
+  const [typeGenPreview, setTypeGenPreview] = useState("");
+  const [typeGenLoading, setTypeGenLoading] = useState(false);
+  const [typeGenError, setTypeGenError] = useState<string | null>(null);
+  const [typeGenDone, setTypeGenDone] = useState(false);
 
   const { data: ruleSets = [], isLoading } = useQuery({
     queryKey: ["rule-sets"],
@@ -2366,7 +2378,9 @@ export default function RuleSetPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["custom-asset-types", selectedId] });
       setShowNewTypeForm(false);
-      setNewTypeKey(""); setNewTypeLabel(""); setNewTypeIcon(""); setNewTypeError(null);
+      setNewTypeKey(""); setNewTypeLabel(""); setNewTypeIcon("");
+      setNewTypeDescription(""); setNewTypeTemplateMd(""); setNewTypeError(null);
+      setTypeGenIntent(""); setTypeGenPreview(""); setTypeGenDone(false); setTypeGenPhase("");
     },
     onError: (err: unknown) => {
       setNewTypeError((err as Error).message ?? "创建失败");
@@ -2380,6 +2394,52 @@ export default function RuleSetPage() {
       queryClient.invalidateQueries({ queryKey: ["custom-asset-types", selectedId] });
     },
   });
+
+  // LLM profiles for AI type generation
+  const { data: llmProfilesForType = [] } = useQuery({
+    queryKey: ["llm-profiles-for-type-gen"],
+    queryFn: () => apiFetch<LLMProfile[]>("/settings/llm-profiles"),
+  });
+  const { models: typeGenProbedModels } = useModelList(typeGenLlmId || null);
+
+  async function handleGenerateAssetType() {
+    if (!typeGenLlmId || !typeGenModelName.trim() || !typeGenIntent.trim()) {
+      setTypeGenError("请选择模型并填写类型描述");
+      return;
+    }
+    setTypeGenLoading(true);
+    setTypeGenError(null);
+    setTypeGenPhase("");
+    setTypeGenPreview("");
+    setTypeGenDone(false);
+    try {
+      const res = await apiPostSSEWithHandlers<{
+        type_key: string; label: string; icon: string; description: string; template_md: string;
+      }>(
+        `/rule-sets/${selectedId}/asset-type-configs/generate`,
+        { rule_set_id: selectedId, llm_profile_id: typeGenLlmId, model_name: typeGenModelName.trim(), type_intent: typeGenIntent.trim() },
+        {
+          onProgress: (p) => setTypeGenPhase(p.message || p.phase),
+          onPartial: (data) => {
+            const t = (data as { text?: string }).text;
+            if (typeof t === "string") setTypeGenPreview(t);
+          },
+        },
+      );
+      setNewTypeKey(res.type_key || "");
+      setNewTypeLabel(res.label || "");
+      setNewTypeIcon(res.icon || "");
+      setNewTypeDescription(res.description || "");
+      setNewTypeTemplateMd(res.template_md || "");
+      setTypeGenDone(true);
+      setNewTypeFormMode("manual"); // switch to manual for review/edit
+    } catch (e) {
+      setTypeGenError((e as Error).message);
+    } finally {
+      setTypeGenLoading(false);
+      setTypeGenPhase("");
+    }
+  }
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -2660,55 +2720,159 @@ export default function RuleSetPage() {
                   </button>
                 </div>
 
-                {/* New type form */}
+                {/* New type form (M30: manual + AI generation modes) */}
                 {showNewTypeForm && (
                   <div className={styles.promptCard} style={{ marginBottom: 10 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <input
+                    {/* Mode tabs */}
+                    <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                      {(["manual", "ai"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => { setNewTypeFormMode(mode); setTypeGenError(null); setNewTypeError(null); }}
+                          style={{
+                            fontSize: 12, padding: "3px 10px", borderRadius: 4, border: "1px solid var(--border)",
+                            background: newTypeFormMode === mode ? "var(--accent)" : "transparent",
+                            color: newTypeFormMode === mode ? "#fff" : "var(--text-muted)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {mode === "manual" ? "手动填写" : <><Sparkles size={11} style={{ verticalAlign: "middle", marginRight: 3 }} />AI 生成</>}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* AI generation mode */}
+                    {newTypeFormMode === "ai" && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <select
+                            className={styles.select}
+                            value={typeGenLlmId}
+                            onChange={(e) => { setTypeGenLlmId(e.target.value); setTypeGenModelName(""); }}
+                            style={{ flex: 1, fontSize: 12 }}
+                          >
+                            <option value="">选择 LLM 供应商</option>
+                            {llmProfilesForType.map((p) => (
+                              <option key={p.id} value={p.id}>{p.name || p.provider_type}</option>
+                            ))}
+                          </select>
+                          <input
+                            className={styles.input}
+                            placeholder="模型名称（如 gemini-2.0-flash）"
+                            value={typeGenModelName}
+                            onChange={(e) => setTypeGenModelName(e.target.value)}
+                            list="type-gen-models"
+                            style={{ flex: 2, fontSize: 12 }}
+                          />
+                          <datalist id="type-gen-models">
+                            {typeGenProbedModels.map((m) => <option key={m} value={m} />)}
+                          </datalist>
+                        </div>
+                        <textarea
                           className={styles.input}
-                          placeholder="类型键（英文，如 spell）"
-                          value={newTypeKey}
-                          onChange={(e) => setNewTypeKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                          style={{ flex: 2 }}
+                          placeholder="描述你想要的类型（如：我想要一个记录法术的类型，包括施法条件、效果和代价）"
+                          value={typeGenIntent}
+                          onChange={(e) => setTypeGenIntent(e.target.value)}
+                          rows={2}
+                          style={{ fontSize: 12, resize: "vertical" }}
                         />
-                        <input
-                          className={styles.input}
-                          placeholder="显示名称（如 法术）"
-                          value={newTypeLabel}
-                          onChange={(e) => setNewTypeLabel(e.target.value)}
-                          style={{ flex: 2 }}
-                        />
-                        <input
-                          className={styles.input}
-                          placeholder="图标（emoji）"
-                          value={newTypeIcon}
-                          onChange={(e) => setNewTypeIcon(e.target.value)}
-                          style={{ flex: 1, textAlign: "center", fontSize: 16 }}
-                          maxLength={4}
-                        />
-                      </div>
-                      {newTypeError && (
-                        <p className={styles.error} style={{ margin: 0 }}>{newTypeError}</p>
-                      )}
-                      <div style={{ display: "flex", gap: 6 }}>
+                        {typeGenPhase && (
+                          <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>{typeGenPhase}</p>
+                        )}
+                        {typeGenError && (
+                          <p className={styles.error} style={{ margin: 0 }}>{typeGenError}</p>
+                        )}
+                        {typeGenPreview && !typeGenDone && (
+                          <pre style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--bg-surface)", borderRadius: 4, padding: 8, maxHeight: 120, overflow: "auto", whiteSpace: "pre-wrap", margin: 0 }}>
+                            {typeGenPreview}
+                          </pre>
+                        )}
+                        {typeGenDone && (
+                          <p style={{ fontSize: 11, color: "var(--accent)", margin: 0 }}>✓ 生成完成，已填入下方表单，请检查并确认</p>
+                        )}
                         <button
                           className={styles.btnPrimary}
-                          style={{ flex: 1, fontSize: 12 }}
-                          disabled={!newTypeKey || !newTypeLabel || !newTypeIcon || createTypeMutation.isPending}
-                          onClick={() => createTypeMutation.mutate({ type_key: newTypeKey, label: newTypeLabel, icon: newTypeIcon })}
+                          style={{ fontSize: 12 }}
+                          disabled={typeGenLoading || !typeGenLlmId || !typeGenModelName.trim() || !typeGenIntent.trim()}
+                          onClick={handleGenerateAssetType}
                         >
-                          {createTypeMutation.isPending ? "创建中..." : "创建"}
-                        </button>
-                        <button
-                          className={styles.btnSecondary}
-                          style={{ flex: 1, fontSize: 12 }}
-                          onClick={() => { setShowNewTypeForm(false); setNewTypeError(null); }}
-                        >
-                          取消
+                          {typeGenLoading
+                            ? <><Hourglass className={styles.animatedHourglass} size={13} strokeWidth={1.9} style={{ marginRight: 4 }} />生成中…</>
+                            : <><Sparkles size={12} style={{ marginRight: 4 }} />生成类型定义</>
+                          }
                         </button>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Manual / review mode */}
+                    {newTypeFormMode === "manual" && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input
+                            className={styles.input}
+                            placeholder="类型键（英文，如 spell）"
+                            value={newTypeKey}
+                            onChange={(e) => setNewTypeKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                            style={{ flex: 2, fontSize: 12 }}
+                          />
+                          <input
+                            className={styles.input}
+                            placeholder="显示名称（如 法术）"
+                            value={newTypeLabel}
+                            onChange={(e) => setNewTypeLabel(e.target.value)}
+                            style={{ flex: 2, fontSize: 12 }}
+                          />
+                          <input
+                            className={styles.input}
+                            placeholder="图标"
+                            value={newTypeIcon}
+                            onChange={(e) => setNewTypeIcon(e.target.value)}
+                            style={{ flex: 1, textAlign: "center", fontSize: 16 }}
+                            maxLength={4}
+                          />
+                        </div>
+                        <textarea
+                          className={styles.input}
+                          placeholder={"范围说明（可选）：这个类型是什么、什么时候用、和其他类型的区别。\n建议包含「创建前必须提供」段落，AI 会参考它来判断是否需要向用户提问。"}
+                          value={newTypeDescription}
+                          onChange={(e) => setNewTypeDescription(e.target.value)}
+                          rows={4}
+                          style={{ fontSize: 12, resize: "vertical" }}
+                        />
+                        <textarea
+                          className={styles.input}
+                          placeholder={"Markdown 章节模板（可选）：包含 frontmatter + 章节骨架，AI 创建此类型资产时会参考此格式。\n不填时 AI 会自由发挥，建议填写以保证输出质量。"}
+                          value={newTypeTemplateMd}
+                          onChange={(e) => setNewTypeTemplateMd(e.target.value)}
+                          rows={5}
+                          style={{ fontSize: 12, resize: "vertical", fontFamily: "monospace" }}
+                        />
+                        {newTypeError && (
+                          <p className={styles.error} style={{ margin: 0 }}>{newTypeError}</p>
+                        )}
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            className={styles.btnPrimary}
+                            style={{ flex: 1, fontSize: 12 }}
+                            disabled={!newTypeKey || !newTypeLabel || !newTypeIcon || createTypeMutation.isPending}
+                            onClick={() => createTypeMutation.mutate({
+                              type_key: newTypeKey, label: newTypeLabel, icon: newTypeIcon,
+                              description: newTypeDescription || undefined,
+                              template_md: newTypeTemplateMd || undefined,
+                            })}
+                          >
+                            {createTypeMutation.isPending ? "创建中..." : "创建"}
+                          </button>
+                          <button
+                            className={styles.btnSecondary}
+                            style={{ flex: 1, fontSize: 12 }}
+                            onClick={() => { setShowNewTypeForm(false); setNewTypeError(null); }}
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2737,7 +2901,8 @@ export default function RuleSetPage() {
                   </p>
                 )}
                 {customAssetTypes.map((ct) => (
-                    <div key={ct.id} className={styles.bindingItem}>
+                  <div key={ct.id} style={{ marginBottom: 4 }}>
+                    <div className={styles.bindingItem}>
                       <span style={{ fontSize: 16 }}>{ct.icon}</span>
                       <span className={styles.bindingName}>{ct.label}</span>
                       <span className={styles.bindingType} style={{ fontFamily: "monospace", fontSize: 11 }}>
@@ -2755,7 +2920,14 @@ export default function RuleSetPage() {
                         <Trash2 size={13} />
                       </button>
                     </div>
-                  ))}
+                    {ct.description && (
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "1px 0 0 22px", lineHeight: 1.4 }}>
+                        {ct.description.split("\n").find((l) => l.trim() && !l.startsWith("#"))?.slice(0, 60) ?? ""}
+                        {(ct.description.split("\n").find((l) => l.trim() && !l.startsWith("#"))?.length ?? 0) > 60 ? "…" : ""}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             </>
           )}

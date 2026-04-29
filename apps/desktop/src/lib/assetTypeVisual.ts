@@ -66,6 +66,18 @@ const ASSET_TYPE_LABELS: Partial<Record<string, string>> = {
   timeline:  "时间线（旧）",
 };
 
+// ─── Per-type short descriptions (shown in tooltips / type selector) ─────────
+// These are short versions of the full descriptions in prompts/asset_types/*.txt
+
+const ASSET_TYPE_DESCRIPTIONS: Partial<Record<string, string>> = {
+  outline: "整体故事框架：故事概述、世界背景设定、主要分支结局。通常每个模组只有一份。",
+  stage:   "故事单元（幕）：具体发生的事件序列、NPC 出场、玩家目标和时间线。",
+  npc:     "玩家会直接交互的角色：含动机、秘密、人际关系。以交互/关系为核心价值。",
+  monster: "玩家的威胁来源：战斗对抗、心理恐惧或环境危险。以威胁/战斗为核心功能。",
+  map:     "地点网络：有哪些地点、连接方式、移动路径，含各地点的感官描述和隐藏信息。",
+  clue:    "可被玩家发现的关键信息载体：物品、文件、事件目击，连接场景、推动调查。",
+};
+
 // ─── Public helpers ───────────────────────────────────────────────────────────
 
 /** Returns the Lucide icon for a type. For custom types (emoji-based), returns Folder as fallback. */
@@ -102,6 +114,24 @@ export function getAssetTypeLabel(
   if (ASSET_TYPE_LABELS[type]) return ASSET_TYPE_LABELS[type]!;
   const config = customConfigs?.find((c) => c.type_key === type);
   return config?.label ?? type;
+}
+
+/**
+ * Returns a short description for a type (used in tooltips).
+ * Built-in types have static descriptions; custom types use config.description (first line).
+ */
+export function getAssetTypeDescription(
+  type: string,
+  customConfigs?: CustomAssetTypeConfig[],
+): string {
+  if (ASSET_TYPE_DESCRIPTIONS[type]) return ASSET_TYPE_DESCRIPTIONS[type]!;
+  const config = customConfigs?.find((c) => c.type_key === type);
+  if (config?.description) {
+    // Return first non-empty, non-heading line
+    const firstLine = config.description.split("\n").find((l) => l.trim() && !l.startsWith("#"));
+    return firstLine?.slice(0, 80) ?? "";
+  }
+  return "";
 }
 
 export const ALL_ASSET_TYPES: string[] = [...BUILTIN_ASSET_TYPES];

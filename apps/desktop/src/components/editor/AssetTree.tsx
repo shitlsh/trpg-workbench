@@ -11,6 +11,7 @@ import {
   getCustomTypeEmoji,
   getAssetTypeColor,
   getAssetTypeLabel,
+  getAssetTypeDescription,
   ALL_ASSET_TYPES,
 } from "@/lib/assetTypeVisual";
 
@@ -104,18 +105,26 @@ function NewAssetForm({ workspaceId, customConfigs, presetType, onClose }: NewAs
         )}
       </select>
 
-      {/* Type preview */}
+      {/* Type preview + description */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 6,
         margin: "6px 0", padding: "4px 6px",
-        background: "var(--bg-surface)", borderRadius: 4, fontSize: 12,
-        color: getAssetTypeColor(type),
+        background: "var(--bg-surface)", borderRadius: 4,
       }}>
-        {emoji
-          ? <span style={{ fontSize: 13 }}>{emoji}</span>
-          : <TypeIcon size={13} />
-        }
-        <span>{getAssetTypeLabel(type, customConfigs)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: getAssetTypeColor(type) }}>
+          {emoji
+            ? <span style={{ fontSize: 13 }}>{emoji}</span>
+            : <TypeIcon size={13} />
+          }
+          <span>{getAssetTypeLabel(type, customConfigs)}</span>
+        </div>
+        {(() => {
+          const desc = getAssetTypeDescription(type, customConfigs);
+          return desc ? (
+            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "3px 0 0", lineHeight: 1.4 }}>
+              {desc}
+            </p>
+          ) : null;
+        })()}
       </div>
 
       <input
