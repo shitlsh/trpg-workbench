@@ -6,7 +6,7 @@ import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
   Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check, RotateCcw,
 } from "lucide-react";
-import { apiFetch, apiPostSSEWithHandlers, apiFetchWithTotalCount, BACKEND_URL } from "../lib/api";
+import { apiFetch, apiPostSSEWithHandlers, apiFetchWithTotalCount, BACKEND_URL, type SSEProgressPayload } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useModelList } from "../hooks/useModelList";
 import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
@@ -1005,12 +1005,34 @@ function LibraryDetailPanel({
     | { step: "select_llm"; fileId: string; filename: string; fileExt: string;
         tocText: string; llmProfileId: string; llmModelName: string }
     | { step: "analyzing_toc"; fileId: string; filename: string; fileExt: string;
-        tocText: string; analyzeProgressLines?: string[]; partialSections?: TocSectionState[] }
+        tocText: string;
+        /** 等模型首包 / 长耗时期间由 SSE `llm_wait` 更新，用于展示「已等待 N 秒」 */
+        analyzeLlmWaitSeconds?: number;
+        analyzeProgressLines?: string[]; partialSections?: TocSectionState[] }
     | { step: "section_confirm"; fileId: string; filename: string; fileExt: string;
         sections: TocSectionState[]; pageOffset: number; analyzeError: string }
     | { step: "ingesting" };
 
   const [wizard, setWizard] = useState<WizardState>({ step: "idle" });
+
+  const onTocWizardProgress = (p: SSEProgressPayload) => {
+    setWizard((prev) => {
+      if (prev.step !== "analyzing_toc") return prev;
+      if (p.phase === "llm_wait") {
+        const sec = (p.detail as { wait_seconds?: number } | undefined)?.wait_seconds;
+        if (typeof sec === "number") {
+          return { ...prev, analyzeLlmWaitSeconds: sec };
+        }
+        return prev;
+      }
+      const line = p.message || p.phase;
+      return {
+        ...prev,
+        analyzeLlmWaitSeconds: undefined,
+        analyzeProgressLines: [...(prev.analyzeProgressLines ?? []), line].slice(-16),
+      };
+    });
+  };
 
   const { data: embeddingProfiles = [] } = useQuery({
     queryKey: ["embedding-profiles"],
@@ -1198,21 +1220,17 @@ function LibraryDetailPanel({
   }
 
   async function analyzeToc(fileId: string, filename: string, fileExt: string, tocText: string, llmProfileId: string, llmModelName: string) {
-    setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText, analyzeProgressLines: [] });
+    setWizard({
+      step: "analyzing_toc",
+      fileId, filename, fileExt, tocText,
+      analyzeLlmWaitSeconds: undefined,
+      analyzeProgressLines: [],
+    });
     try {
       const res = await apiPostSSEWithHandlers<{ sections: TocSectionState[] }>(
         `/knowledge/documents/preview/${fileId}/analyze-toc`,
         { toc_text: tocText, llm_profile_id: llmProfileId, llm_model_name: llmModelName || undefined },
-        {
-          onProgress: (p) => {
-            const line = p.message || p.phase;
-            setWizard((prev) => {
-              if (prev.step !== "analyzing_toc") return prev;
-              const lines = [...(prev.analyzeProgressLines ?? []), line].slice(-16);
-              return { ...prev, analyzeProgressLines: lines };
-            });
-          },
-        },
+        { onProgress: onTocWizardProgress },
       );
       setWizard({
         step: "section_confirm",
@@ -1239,20 +1257,19 @@ function LibraryDetailPanel({
     llmProfileId: string,
     llmModelName: string,
   ) {
-    setWizard({ step: "analyzing_toc", fileId, filename, fileExt, tocText: "", analyzeProgressLines: [], partialSections: [] });
+    setWizard({
+      step: "analyzing_toc",
+      fileId, filename, fileExt, tocText: "",
+      analyzeLlmWaitSeconds: undefined,
+      analyzeProgressLines: [],
+      partialSections: [],
+    });
     try {
       const res = await apiPostSSEWithHandlers<{ sections: TocSectionState[] }>(
         `/knowledge/documents/preview/${fileId}/classify-chm-sections`,
         { llm_profile_id: llmProfileId, llm_model_name: llmModelName.trim() },
         {
-          onProgress: (p) => {
-            const line = p.message || p.phase;
-            setWizard((prev) => {
-              if (prev.step !== "analyzing_toc") return prev;
-              const lines = [...(prev.analyzeProgressLines ?? []), line].slice(-16);
-              return { ...prev, analyzeProgressLines: lines };
-            });
-          },
+          onProgress: onTocWizardProgress,
           onPartial: (data) => {
             const rows = (data as { sections?: unknown[] }).sections;
             if (!Array.isArray(rows)) return;
@@ -1445,12 +1462,20 @@ function LibraryDetailPanel({
             {/* uploading / detecting_toc / analyzing_toc: spinner */}
             {(wizard.step === "uploading" || wizard.step === "detecting_toc" || wizard.step === "analyzing_toc") && (
               <div style={{ padding: "24px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                <div style={{ marginBottom: 10, fontSize: 20 }}>⏳</div>
+                <div className={wizard.step === "analyzing_toc" ? styles.tocAnalyzeEmoji : undefined} style={{ marginBottom: 10, fontSize: 20 }}>⏳</div>
                 {wizard.step === "uploading" && "正在上传文件..."}
                 {wizard.step === "detecting_toc" && "正在自动检测目录页..."}
                 {wizard.step === "analyzing_toc" && (
                   <>
                     <div style={{ marginBottom: 8 }}>AI 正在解析目录结构，请稍候…</div>
+                    {"analyzeLlmWaitSeconds" in wizard && wizard.analyzeLlmWaitSeconds != null && (
+                      <div className={styles.tocWaitBar} title="后台每约 10 秒更新等待时间；秒数在增加即表示连接仍活跃、程序未卡死">
+                        <span className={styles.tocWaitDot} />
+                        {wizard.analyzeLlmWaitSeconds === 0
+                          ? "已连接，正在等待模型…"
+                          : `已等待 ${wizard.analyzeLlmWaitSeconds} 秒 — 连接正常，正在等模型返回…`}
+                      </div>
+                    )}
                     {"analyzeProgressLines" in wizard && (wizard.analyzeProgressLines?.length ?? 0) > 0 && (
                       <ul
                         style={{

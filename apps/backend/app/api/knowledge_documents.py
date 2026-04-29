@@ -747,6 +747,14 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
             "progress",
             {"phase": "llm_request", "message": "正在请求模型解析目录…", "detail": detail_base},
         )
+        yield _doc_sse(
+            "progress",
+            {
+                "phase": "llm_wait",
+                "message": "已发送请求，等待模型首次响应…",
+                "detail": {**detail_base, "wait_seconds": 0},
+            },
+        )
         try:
             q: asyncio.Queue = asyncio.Queue()
 
@@ -774,6 +782,15 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
                     elapsed += 10
+                    # Client-visible progress (raw ``: keepalive`` is ignored by the desktop helper)
+                    yield _doc_sse(
+                        "progress",
+                        {
+                            "phase": "llm_wait",
+                            "message": f"等待模型响应当中（已约 {elapsed} 秒）",
+                            "detail": {**detail_base, "wait_seconds": elapsed},
+                        },
+                    )
             else:
                 yield _doc_sse("error", {"message": "TOC analysis timed out (300s). Try a faster model."})
                 return
@@ -973,6 +990,14 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
             "progress",
             {"phase": "queued", "message": "已开始 CHM 目录类型分析", "detail": detail_base},
         )
+        yield _doc_sse(
+            "progress",
+            {
+                "phase": "llm_wait",
+                "message": "已排队，准备调用模型…",
+                "detail": {**detail_base, "wait_seconds": 0},
+            },
+        )
         deadline = 600
         elapsed = 0
         while elapsed < deadline:
@@ -981,6 +1006,14 @@ async def classify_chm_sections(file_id: str, body: ClassifyChmRequest, db: Sess
             except asyncio.TimeoutError:
                 yield ": keepalive\n\n"
                 elapsed += 10
+                yield _doc_sse(
+                    "progress",
+                    {
+                        "phase": "llm_wait",
+                        "message": f"等待模型响应当中（已约 {elapsed} 秒）",
+                        "detail": {**detail_base, "wait_seconds": elapsed},
+                    },
+                )
                 continue
             if item[0] == "batch":
                 _, prog, partial_body = item
