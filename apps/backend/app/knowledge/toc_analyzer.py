@@ -1,7 +1,9 @@
 """LLM-based TOC analyzer.
 
 Takes raw text extracted from PDF TOC pages and asks an LLM to return a
-structured section list with suggested chunk_type tags.
+**chapter-skeleton** section list (main chapters / appendix blocks, not every
+line of long two-column or index-style lists) with `suggested_chunk_type` on
+each major row — see ``prompts/toc_analyzer/system.txt``.
 
 The LLM is expected to output JSON only; if the input is not a valid TOC the
 response must include ``"is_toc": false`` and a ``"reason"`` field — we then
