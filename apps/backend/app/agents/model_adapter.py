@@ -10,9 +10,10 @@ from openai import AsyncOpenAI
 from app.core.settings import LLM_REQUEST_TIMEOUT_SECONDS
 
 # Anthropic Messages API *requires* ``max_tokens``; the SDK will not let you omit it. This is
-# only a default when the caller does not pass ``max_tokens=``; the model may still cap lower.
-# (Current project default 32768 — align with your deployment’s Claude max output when you add
-# per-model profile config.)
+# the fallback when the caller does not pass ``max_tokens=``; the model may still cap lower.
+# **Product direction:** do not expose this as a user setting — when model-list / catalog
+# discovery is improved, thread ``max_output_tokens`` (or equivalent) from that metadata into
+# call sites and retire this single global default where possible.
 # OpenAI / OpenRouter / ``openai_compatible`` / **Google Gemini** do *not* set a default here:
 # the request omits max output and uses each provider’s own defaults.
 DEFAULT_MAX_TOKENS_ANTHROPIC: int = 32768
@@ -108,12 +109,12 @@ async def complete_text_once(
 ) -> str:
     """Simple single-turn completion for utility endpoints (non tool-calling).
 
-    **max_tokens** (optional):
+    **max_tokens** (optional, internal — not planned as end-user config):
     - If **omitted** for OpenAI-compatible providers: **we do not send** ``max_tokens`` so the
       **server / model** chooses (Gemini: same—see Google branch, no max output set).
     - **Anthropic**: the API **requires** a value; if you omit the argument, we use
-      :data:`DEFAULT_MAX_TOKENS_ANTHROPIC`. Pass ``max_tokens`` explicitly to raise the ceiling
-      (subject to the model’s hard cap).
+      :data:`DEFAULT_MAX_TOKENS_ANTHROPIC`. Callers may pass ``max_tokens`` explicitly (e.g. once
+      model catalog supplies per-model limits).
     """
     provider = (profile.provider_type or "").strip().lower()
     if provider in {"openai", "openrouter", "openai_compatible"}:

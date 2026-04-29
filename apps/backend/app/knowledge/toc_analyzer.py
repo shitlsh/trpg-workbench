@@ -39,8 +39,8 @@ from app.services.llm_defaults import task_temperature
 TOC_LLM_MAX_WAIT_SECONDS: float = 900.0
 # PDF: raw TOC text sent to the model (output is already chapter-skeleton; allow longer multi-page TOCs).
 PDF_TOC_LLM_MAX_INPUT_CHARS: int = 12000
-# Anthropic TOC/CHM: use ``DEFAULT_MAX_TOKENS_ANTHROPIC`` (see ``model_adapter``). OpenAI /
-# OpenRouter / ``openai_compatible`` / **Google** do not pass max output — provider defaults.
+# Anthropic TOC/CHM: use ``DEFAULT_MAX_TOKENS_ANTHROPIC`` until catalog-driven limits exist;
+# OpenAI / OpenRouter / ``openai_compatible`` / **Google** do not pass max output — provider defaults.
 # CHM: only ask the LLM for rows with depth <= this; deeper rows inherit (default 1 = top-level part/book, like PDF big chapters).
 CHM_CLASSIFY_MAX_DEPTH: int = 1
 # CHM batch line: index + depth + tab + title; long HHC titles are truncated for prompt size.
