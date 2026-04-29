@@ -138,7 +138,7 @@ export const useEditorStore = create<EditorState>()(
     }));
   },
 
-  setLeftWidth: (w) => set({ leftWidth: Math.max(280, Math.min(480, w)) }),
+  setLeftWidth: (w) => set({ leftWidth: Math.max(280, Math.min(680, w)) }),
   setLeftCollapsed: (v) => set({ leftCollapsed: v }),
   setRightWidth: (w) => set({ rightWidth: Math.max(180, Math.min(480, w)) }),
   setRightCollapsed: (v) => set({ rightCollapsed: v }),

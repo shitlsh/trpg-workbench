@@ -163,7 +163,8 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
 type StreamEvent =
   | { kind: "text_chunk"; text: string }
   | { kind: "tool_call"; toolCall: ToolCall }
-  | { kind: "question_interrupt"; question: AgentQuestion };
+  | { kind: "question_interrupt"; question: AgentQuestion }
+  | { kind: "thinking_chunk"; text: string; done: boolean };
 
 // ─── ThinkingBlock ────────────────────────────────────────────────────────────
 
@@ -258,29 +259,14 @@ function ThinkingBlock({
 }
 
 function StreamingBubble({
-  events, thinking, isStreaming, onQuestionSubmit,
+  events, isStreaming, onQuestionSubmit,
 }: {
   events: StreamEvent[];
-  thinking: string;
   isStreaming: boolean;
   onQuestionSubmit: (answers: Record<string, string[]>) => void;
 }) {
   const lastTextIdx = events.reduce((last, e, i) => e.kind === "text_chunk" ? i : last, -1);
-
-  // Track thinking duration (Top 5)
-  const thinkingStartRef = useRef<number | null>(null);
-  const [thinkingDuration, setThinkingDuration] = useState<number | null>(null);
-  useEffect(() => {
-    if (thinking && thinkingStartRef.current === null) {
-      thinkingStartRef.current = Date.now();
-    }
-  }, [thinking]);
-  useEffect(() => {
-    if (!isStreaming && thinkingStartRef.current !== null) {
-      setThinkingDuration(Math.round((Date.now() - thinkingStartRef.current) / 1000));
-      thinkingStartRef.current = null;
-    }
-  }, [isStreaming]);
+  const hasContent = events.length > 0;
 
   return (
     <div style={{
@@ -294,14 +280,7 @@ function StreamingBubble({
         fontSize: 13,
         lineHeight: 1.6,
       }}>
-        {thinking && (
-          <ThinkingBlock
-            content={thinking}
-            streaming={isStreaming}
-            duration={thinkingDuration}
-          />
-        )}
-        {events.length === 0 && !thinking && (
+        {!hasContent && isStreaming && (
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
             思考中
             <span style={{ display: "inline-flex", gap: 3, marginLeft: 3 }}>
@@ -319,6 +298,15 @@ function StreamingBubble({
           </span>
         )}
         {events.map((e, i) => {
+          if (e.kind === "thinking_chunk") {
+            return (
+              <ThinkingBlock
+                key={`think_${i}`}
+                content={e.text}
+                streaming={isStreaming && !e.done}
+              />
+            );
+          }
           if (e.kind === "tool_call") {
             if (e.toolCall.status === "running") {
               return (
@@ -477,7 +465,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
   // SSE streaming state
   const [streamingEvents, setStreamingEvents] = useState<StreamEvent[]>([]);
-  const [streamingThinking, setStreamingThinking] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
 
   // Queue for messages sent while a stream is in progress
@@ -536,7 +523,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isStreaming, streamingEvents, streamingThinking]);
+  }, [messages, isStreaming, streamingEvents]);
 
   // Switch to a session and load its messages
   const switchToSession = useCallback(async (s: ChatSession) => {
@@ -628,7 +615,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
     setIsStreaming(true);
     setStreamingEvents([]);
-    setStreamingThinking("");
     setTyping(true);
 
     const ctrl = new AbortController();
@@ -663,7 +649,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       let accEvents: StreamEvent[] = [];
       let accToolCallsById: Record<string, ToolCall> = {};
       let traceStartAtById: Record<string, number> = {};
-      let accThinking = "";
       let currentEvent = "";
       let streamDone = false;
       let lastUiFlush = 0;
@@ -672,8 +657,24 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         const now = Date.now();
         if (!force && now - lastUiFlush < 33) return;
         setStreamingEvents([...accEvents]);
-        setStreamingThinking(accThinking);
         lastUiFlush = now;
+      };
+      const appendThinking = (chunk: string) => {
+        if (!chunk) return;
+        const last = accEvents[accEvents.length - 1];
+        // If the last event is an active (not-done) thinking chunk, append to it
+        if (last && last.kind === "thinking_chunk" && !last.done) {
+          accEvents = [
+            ...accEvents.slice(0, -1),
+            { kind: "thinking_chunk", text: last.text + chunk, done: false },
+          ];
+        } else {
+          // New thinking phase: mark previous thinking_chunk as done, start a new one
+          accEvents = accEvents.map((e) =>
+            e.kind === "thinking_chunk" ? { ...e, done: true } : e
+          );
+          accEvents = [...accEvents, { kind: "thinking_chunk", text: chunk, done: false }];
+        }
       };
       const appendText = (part: string) => {
         if (!part) return;
@@ -731,7 +732,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
             } else if (currentEvent === "thinking_delta") {
               const chunk = (data.content as string) ?? "";
-              accThinking += chunk;
+              appendThinking(chunk);
               flushUi();
 
             } else if (currentEvent === "tool_call_start") {
@@ -825,12 +826,21 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
               // Build content with {{tool:id}} placeholders to preserve ordering.
               // Text segments and tool-call markers are interleaved in accEvents order.
+              // Mark all thinking_chunks as done before finalizing.
+              accEvents = accEvents.map((e) =>
+                e.kind === "thinking_chunk" ? { ...e, done: true } : e
+              );
               let contentWithPlaceholders = "";
+              let accThinking = "";
               for (const ev of accEvents) {
                 if (ev.kind === "text_chunk") {
                   contentWithPlaceholders += ev.text;
                 } else if (ev.kind === "tool_call") {
                   contentWithPlaceholders += `\n{{tool:${ev.toolCall.id}}}\n`;
+                } else if (ev.kind === "thinking_chunk") {
+                  // Concatenate all thinking chunks for storage
+                  if (accThinking) accThinking += "\n\n---\n\n";
+                  accThinking += ev.text;
                 }
                 // question_interrupt: skip (user reply becomes a separate user message)
               }
@@ -857,7 +867,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               addMessage(assistantMsg);
               setIsStreaming(false);
               setStreamingEvents([]);
-              setStreamingThinking("");
               setTyping(false);
               streamDone = true;
               flushQueue();
@@ -885,7 +894,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               addMessage(errMsg);
               setIsStreaming(false);
               setStreamingEvents([]);
-              setStreamingThinking("");
               setTyping(false);
               streamDone = true;
               flushQueue();
@@ -896,7 +904,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       // Guard: if stream closed without a `done` SSE event, clear streaming state
       setIsStreaming(false);
       setStreamingEvents([]);
-      setStreamingThinking("");
       setTyping(false);
       flushQueue();
     } catch (e) {
@@ -914,7 +921,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       }
       setIsStreaming(false);
       setStreamingEvents([]);
-      setStreamingThinking("");
       setTyping(false);
       // Don't flush on abort — user intentionally stopped; discard queue too
       if ((e as Error).name === "AbortError") {
@@ -929,19 +935,10 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     abortRef.current?.abort();
     setIsStreaming(false);
     setStreamingEvents([]);
-    setStreamingThinking("");
     syncQueue([]);
     createNewSession(null);
   };
 
-  const handleNewExploreSession = () => {
-    abortRef.current?.abort();
-    setIsStreaming(false);
-    setStreamingEvents([]);
-    setStreamingThinking("");
-    syncQueue([]);
-    createNewSession("explore");
-  };
 
   // Called after every stream ends (done / error / abort) to drain the queue
   const flushQueue = () => {
@@ -981,7 +978,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         >
           <MessageSquare size={13} />
         </button>
-        <span>AI 助手（本轮：{turnScope === "explore" ? "只读" : "可写"}）</span>
+        <span>AI 助手</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
           <button
             onClick={handleReset}
@@ -1001,7 +998,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             activeSessionId={session?.id ?? null}
             onSelect={(s) => switchToSession(s)}
             onNewDirector={handleReset}
-            onNewExplore={handleNewExploreSession}
           />
         )}
 
@@ -1012,18 +1008,10 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
           {messages.length === 0 && !isStreaming && (
             <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 24 }}>
-              {session?.agent_scope === "explore" ? (
-                <>
-                  当前可按下方“本轮模式”切换只读/可写。<br />
-                  例如：「列出所有地点」「用 grep 找某某 NPC 的提到」<br />
-                  想执行改动时，切到“执行（可写）”即可。
-                </>
+              {turnScope === "explore" ? (
+                <>在下方输入探索请求，例如：<br />「列出所有地点」「查找某 NPC 的相关内容」</>
               ) : (
-                <>
-                  在下方输入创作请求，例如：<br />
-                  "帮我创建一个 COC 乡村调查模组"<br />
-                  "把第一幕改得更压抑一点"
-                </>
+                <>在下方输入创作请求，例如：<br />「帮我创建一个 COC 乡村调查模组」</>
               )}
             </div>
           )}
@@ -1035,7 +1023,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           {isStreaming && (
             <StreamingBubble
               events={streamingEvents}
-              thinking={streamingThinking}
               isStreaming={isStreaming}
               onQuestionSubmit={(answers) => {
                 // Format answers as a structured reply and send
@@ -1119,7 +1106,23 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       }}>
         {/* Bottom bar: model selector + hints */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <select
+              value={turnScope}
+              onChange={(e) => setTurnScope(e.target.value as "explore" | "director")}
+              style={{
+                fontSize: 11,
+                color: "var(--text)",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                padding: "2px 6px",
+                cursor: "pointer",
+              }}
+            >
+              <option value="director">创作</option>
+              <option value="explore">探索</option>
+            </select>
             <select
               value={sessionModel}
               onChange={(e) => setSessionModel(e.target.value)}
@@ -1132,7 +1135,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 borderRadius: 4,
                 padding: "2px 6px",
                 cursor: "pointer",
-                maxWidth: 220,
+                maxWidth: 200,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
               }}
@@ -1145,40 +1148,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 : null
               }
             </select>
-            <div style={{ display: "inline-flex", border: "1px solid var(--border)", borderRadius: 5, overflow: "hidden" }}>
-              <button
-                onClick={() => setTurnScope("explore")}
-                title="只读讨论与检索，不执行写入工具"
-                style={{
-                  fontSize: 10,
-                  padding: "2px 8px",
-                  border: "none",
-                  borderRight: "1px solid var(--border)",
-                  background: turnScope === "explore" ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "var(--bg)",
-                  color: turnScope === "explore" ? "var(--accent)" : "var(--text-muted)",
-                  cursor: "pointer",
-                }}
-              >
-                讨论（只读）
-              </button>
-              <button
-                onClick={() => setTurnScope("director")}
-                title="可执行创作与修改"
-                style={{
-                  fontSize: 10,
-                  padding: "2px 8px",
-                  border: "none",
-                  background: turnScope === "director" ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "var(--bg)",
-                  color: turnScope === "director" ? "var(--accent)" : "var(--text-muted)",
-                  cursor: "pointer",
-                }}
-              >
-                执行（可写）
-              </button>
-            </div>
-            <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>
-              {turnScope === "explore" ? "当前仅讨论/检索，不会执行写入" : "当前允许执行修改类工具"}
-            </span>
           </div>
           <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
             Enter 发送 · Shift+Enter 换行 · @ 引用资产

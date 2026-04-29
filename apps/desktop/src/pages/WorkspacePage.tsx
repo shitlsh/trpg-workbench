@@ -8,7 +8,7 @@ import { ThreePanelLayout } from "@/components/editor/ThreePanelLayout";
 import { AssetTree } from "@/components/editor/AssetTree";
 import { EditorCenter } from "@/components/editor/EditorCenter";
 import { AgentPanel } from "@/components/agent/AgentPanel";
-import { ArrowLeft, Settings, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Settings, AlertTriangle, PanelRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 export function WorkspacePage() {
@@ -101,6 +101,18 @@ export function WorkspacePage() {
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{config.description}</span>
         )}
         <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setRightCollapsed(!rightCollapsed)}
+          style={{
+            background: rightCollapsed ? "none" : "color-mix(in srgb, var(--accent) 12%, transparent)",
+            color: rightCollapsed ? "var(--text-muted)" : "var(--accent)",
+            display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer",
+            border: "none", borderRadius: 4, padding: "2px 6px",
+          }}
+          title={rightCollapsed ? "展开资产面板" : "折叠资产面板"}
+        >
+          <PanelRight size={15} />
+        </button>
         <button
           onClick={() => navigate(`/workspace/${id}/settings`)}
           style={{ background: "none", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer" }}
