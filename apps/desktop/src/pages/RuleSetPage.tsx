@@ -2990,40 +2990,42 @@ export default function RuleSetPage() {
             {/* Manual / review mode */}
             {newTypeFormMode === "manual" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {/* Basic info row: key + label + icon */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 64px", gap: 8 }}>
-                  <label className={styles.label}>
-                    类型键 <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(英文)</span>
+                {/* Basic info: labels row + inputs row, always aligned */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {/* Label row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 64px", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
+                      类型键 <span style={{ fontWeight: 400, opacity: 0.75 }}>(英文)</span>
+                    </span>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>显示名称</span>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, textAlign: "center" }}>图标</span>
+                  </div>
+                  {/* Input row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 64px", gap: 8 }}>
                     <input
                       className={styles.input}
                       placeholder="如 spell"
                       value={newTypeKey}
                       onChange={(e) => setNewTypeKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                      style={{ marginTop: 4, fontSize: 12 }}
+                      style={{ fontSize: 12 }}
                       autoFocus
                     />
-                  </label>
-                  <label className={styles.label}>
-                    显示名称
                     <input
                       className={styles.input}
                       placeholder="如 法术"
                       value={newTypeLabel}
                       onChange={(e) => setNewTypeLabel(e.target.value)}
-                      style={{ marginTop: 4, fontSize: 12 }}
+                      style={{ fontSize: 12 }}
                     />
-                  </label>
-                  <label className={styles.label} style={{ textAlign: "center" }}>
-                    图标
                     <input
                       className={styles.input}
                       placeholder="✨"
                       value={newTypeIcon}
                       onChange={(e) => setNewTypeIcon(e.target.value)}
-                      style={{ marginTop: 4, fontSize: 18, textAlign: "center", padding: "4px 6px" }}
+                      style={{ fontSize: 18, textAlign: "center", padding: "4px 6px" }}
                       maxLength={4}
                     />
-                  </label>
+                  </div>
                 </div>
 
                 <label className={styles.label}>
