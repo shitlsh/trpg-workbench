@@ -247,9 +247,19 @@ export interface TocSection {
   suggested_chunk_type: ChunkType | null;
 }
 
+/** PDF：模型额外给出的完整目录层（扁平行或树形），子行不含 chunk 类型，由客户端/程序与章级 `sections` 对齐。 */
+export type PdfFullToc =
+  | { rows: Array<{ title: string; page_from: number; depth: number; page_to?: number }> }
+  | { nodes: unknown[] }
+  | Record<string, unknown>;
+
 /** LLM analysis result for a TOC. */
 export interface TocAnalysisResult {
   sections: TocSection[];
+  /** PDF analyze-toc：完整目录结构，与章级 `sections` 同时返回。 */
+  full_toc?: PdfFullToc | null;
+  /** 行级预览（由 `full_toc` 展开），供 UI 核对。 */
+  preview_expanded?: unknown[];
 }
 
 /** Confirmed section→chunk_type mapping sent when starting real ingest. */

@@ -997,7 +997,10 @@ function LibraryDetailPanel({
   type TocSectionState = {
     title: string; page_from: number; page_to: number;
     depth: number; chunk_type: ChunkType | "";
+    /** 子行等：类型由章级行继承，导入仍以章级表为准；仅影响展示/核对 */
+    inherited?: boolean;
   };
+  const TOC_FOLD_DEFAULT_VISIBLE = 12;
   type WizardState =
     | { step: "idle" }
     | { step: "uploading" }
@@ -1014,10 +1017,21 @@ function LibraryDetailPanel({
         analyzeLlmWaitSeconds?: number;
         analyzeProgressLines?: string[]; partialSections?: TocSectionState[] }
     | { step: "section_confirm"; fileId: string; filename: string; fileExt: string;
-        sections: TocSectionState[]; pageOffset: number; analyzeError: string }
+        sections: TocSectionState[]; pageOffset: number; analyzeError: string;
+        /** PDF：目录行级展开预览（子行 program 继承），可选 */
+        sectionRowsFull?: TocSectionState[] }
     | { step: "ingesting" };
 
   const [wizard, setWizard] = useState<WizardState>({ step: "idle" });
+  /** 章节表过长时默认折叠；PDF 的「行级全表」是否展开 */
+  const [tocListExpanded, setTocListExpanded] = useState(false);
+  const [pdfLinePreviewOpen, setPdfLinePreviewOpen] = useState(false);
+
+  useEffect(() => {
+    if (wizard.step !== "section_confirm") return;
+    setTocListExpanded(false);
+    setPdfLinePreviewOpen(false);
+  }, [wizard.step, wizard.step === "section_confirm" ? wizard.fileId : ""]);
 
   const onTocWizardProgress = (p: SSEProgressPayload) => {
     setWizard((prev) => {
@@ -1219,6 +1233,7 @@ function LibraryDetailPanel({
         page_to: Number(r.page_to ?? 0),
         depth: Number(r.depth ?? 1),
         chunk_type: ct,
+        inherited: r.inherited === true,
       };
     });
   }
@@ -1231,15 +1246,21 @@ function LibraryDetailPanel({
       analyzeProgressLines: [],
     });
     try {
-      const res = await apiPostSSEWithHandlers<{ sections: TocSectionState[] }>(
+      const res = await apiPostSSEWithHandlers<{
+        sections?: unknown[];
+        preview_expanded?: unknown[];
+        full_toc?: unknown;
+      }>(
         `/knowledge/documents/preview/${fileId}/analyze-toc`,
         { toc_text: tocText, llm_profile_id: llmProfileId, llm_model_name: llmModelName || undefined },
         { onProgress: onTocWizardProgress },
       );
+      const pex = res.preview_expanded;
       setWizard({
         step: "section_confirm",
         fileId, filename, fileExt,
-        sections: mapRawSectionsToState((res as { sections?: unknown[] }).sections ?? []),
+        sections: mapRawSectionsToState(res.sections ?? []),
+        sectionRowsFull: Array.isArray(pex) && pex.length > 0 ? mapRawSectionsToState(pex) : undefined,
         pageOffset: 0,
         analyzeError: "",
       });
@@ -1248,6 +1269,7 @@ function LibraryDetailPanel({
         step: "section_confirm",
         fileId, filename, fileExt,
         sections: [],
+        sectionRowsFull: undefined,
         pageOffset: 0,
         analyzeError: e instanceof Error ? e.message : String(e),
       });
@@ -1291,6 +1313,7 @@ function LibraryDetailPanel({
         filename,
         fileExt,
         sections: mapRawSectionsToState(rows),
+        sectionRowsFull: undefined,
         pageOffset: 0,
         analyzeError: "",
       });
@@ -1301,6 +1324,7 @@ function LibraryDetailPanel({
         filename,
         fileExt,
         sections: [],
+        sectionRowsFull: undefined,
         pageOffset: 0,
         analyzeError: e instanceof Error ? e.message : String(e),
       });
@@ -1689,20 +1713,30 @@ function LibraryDetailPanel({
                   {w.sections.length === 0 && !w.analyzeError && (
                     <div style={{ marginBottom: 10, color: "var(--text-muted)", fontSize: 13 }}>未检测到章节，将按默认方式切块。</div>
                   )}
-                  {w.sections.length > 0 && (
+                  {w.sections.length > 0 && (() => {
+                    const nAll = w.sections.length;
+                    const chmFolded = !isPdf && nAll > TOC_FOLD_DEFAULT_VISIBLE && !tocListExpanded;
+                    const rowSlice = isPdf
+                      ? w.sections
+                      : chmFolded
+                        ? w.sections.slice(0, TOC_FOLD_DEFAULT_VISIBLE)
+                        : w.sections;
+                    return (
                     <div style={{ marginBottom: 12 }}>
-                      <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>章节列表（共 {w.sections.length} 个）：</label>
+                      <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
+                        {isPdf ? "章级结构（用于导入）" : "目录行"}（共 {nAll} 条{isPdf ? "，下表为模型归纳的章/附录" : "，大节下子项类型由继承得到"}）：
+                      </label>
                       <div style={{ maxHeight: 280, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5 }}>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                           <thead>
                             <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                              <th style={{ padding: "5px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>章节标题</th>
+                              <th style={{ padding: "5px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>标题</th>
                               <th style={{ padding: "5px 8px", textAlign: "center", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>页码</th>
                               <th style={{ padding: "5px 8px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>内容类型</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {w.sections.map((s, i) => (
+                            {rowSlice.map((s, i) => (
                               <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
                                 <td style={{ padding: "5px 8px", paddingLeft: `${8 + (s.depth ?? 0) * 12}px` }}>{s.title}</td>
                                 <td style={{ padding: "5px 8px", textAlign: "center", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
@@ -1729,6 +1763,67 @@ function LibraryDetailPanel({
                           </tbody>
                         </table>
                       </div>
+                      {!isPdf && nAll > TOC_FOLD_DEFAULT_VISIBLE && (
+                        <div style={{ marginTop: 8 }}>
+                          <button
+                            type="button"
+                            className={styles.btnSecondary}
+                            style={{ fontSize: 12, padding: "4px 10px" }}
+                            onClick={() => setTocListExpanded((e) => !e)}
+                          >
+                            {tocListExpanded ? "收起" : "展开全部"}（{nAll} 行）
+                            {!tocListExpanded ? <ChevronRight size={14} style={{ verticalAlign: "middle", marginLeft: 4 }} /> : <ChevronDown size={14} style={{ verticalAlign: "middle", marginLeft: 4 }} />}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })()}
+                  {w.sections.length > 0 && isPdf && w.sectionRowsFull && w.sectionRowsFull.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <button
+                        type="button"
+                        onClick={() => setPdfLinePreviewOpen((o) => !o)}
+                        className={styles.btnSecondary}
+                        style={{ fontSize: 12, padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 8 }}
+                      >
+                        {pdfLinePreviewOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        完整目录行（{w.sectionRowsFull.length} 行，子行类型由章继承，仅供核对，默认折叠）
+                      </button>
+                      {pdfLinePreviewOpen && (
+                        <div style={{ maxHeight: 360, overflow: "auto", border: "1px solid var(--border)", borderRadius: 5, fontSize: 12 }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead>
+                              <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                                <th style={{ padding: "5px 8px", textAlign: "left" }}>原文行</th>
+                                <th style={{ padding: "5px 8px", textAlign: "center", whiteSpace: "nowrap" }}>页</th>
+                                <th style={{ padding: "5px 8px" }}>类型</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {w.sectionRowsFull.map((s, i) => {
+                                const ctLabel = s.chunk_type ? (CHUNK_TYPES.find((c) => c.value === s.chunk_type)?.label ?? s.chunk_type) : "— 混合";
+                                return (
+                                  <tr key={i} style={{ borderBottom: "1px solid var(--border)", opacity: s.inherited ? 0.9 : 1 }}>
+                                    <td style={{ padding: "4px 8px", paddingLeft: `${6 + (s.depth ?? 0) * 10}px`, wordBreak: "break-word" }}>{s.title}</td>
+                                    <td style={{ padding: "4px 8px", textAlign: "center", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{s.page_from}</td>
+                                    <td style={{ padding: "4px 8px" }}>
+                                      {s.inherited
+                                        ? (
+                                          <span style={{ color: "var(--text-muted)" }}>
+                                            {ctLabel} <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.85 }}>继承</span>
+                                          </span>
+                                        ) : (
+                                          <span style={{ color: "var(--text)" }}>{ctLabel}</span>
+                                        )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   )}
                   {isPdf && (

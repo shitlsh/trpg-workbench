@@ -1,13 +1,19 @@
 """LLM-based TOC analyzer.
 
-Takes raw text extracted from PDF TOC pages and asks an LLM to return a
-**chapter-skeleton** section list (main chapters / appendix blocks, not every
-line of long two-column or index-style lists) with `suggested_chunk_type` on
-each major row — see ``prompts/toc_analyzer/system.txt``.
+Takes raw text extracted from PDF TOC pages and asks an LLM to return JSON with:
+
+- ``full_toc`` — **full** directory hierarchy (``rows`` or tree ``nodes``) for
+  UI preview; sub-rows do not carry ``suggested_chunk_type`` (program assigns
+  by inheriting from chapter-level ``sections``).
+- ``sections`` — **chapter-skeleton** list (coarse, for ingest) with
+  ``suggested_chunk_type`` on each major row — see ``prompts/toc_analyzer/system.txt``.
 
 The LLM is expected to output JSON only; if the input is not a valid TOC the
 response must include ``"is_toc": false`` and a ``"reason"`` field — we then
 raise TocNotRecognizedError so the caller can surface this to the user.
+If ``is_toc`` is true but ``full_toc`` is missing or empty, the API still
+succeeds for `sections`; line-level ``preview_expanded`` is only filled when
+``full_toc`` yields rows.
 """
 from __future__ import annotations
 
@@ -17,6 +23,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from typing import Any
 
 from app.agents.model_adapter import strip_code_fence, complete_text_once
 
@@ -55,6 +62,8 @@ class TocSection:
 @dataclass
 class TocAnalysisResult:
     sections: list[TocSection]
+    # Raw `full_toc` from the LLM: ``{ "rows": [...] }`` or ``{ "nodes": [...] }``.
+    full_toc: dict[str, Any] | None = None
 
 
 class TocNotRecognizedError(ValueError):
@@ -62,6 +71,100 @@ class TocNotRecognizedError(ValueError):
     def __init__(self, reason: str):
         self.reason = reason
         super().__init__(f"Input not recognized as a TOC: {reason}")
+
+
+def _norm_title_str(t: str) -> str:
+    return re.sub(r"\s+", " ", (t or "").strip()).lower()
+
+
+def _flatten_toc_node(node: Any) -> list[dict[str, Any]]:
+    if not isinstance(node, dict) or not str(node.get("title", "")).strip():
+        return []
+    row = {k: v for k, v in node.items() if k != "children"}
+    out: list[dict[str, Any]] = [row]
+    for c in node.get("children") or []:
+        out.extend(_flatten_toc_node(c))
+    return out
+
+
+def _extract_full_toc_rows(full_toc: Any) -> list[dict[str, Any]]:
+    if full_toc is None:
+        return []
+    if isinstance(full_toc, list):
+        return [x for x in full_toc if isinstance(x, dict) and str(x.get("title", "")).strip()]
+    if not isinstance(full_toc, dict):
+        return []
+    r = full_toc.get("rows")
+    if isinstance(r, list) and r:
+        return [x for x in r if isinstance(x, dict) and str(x.get("title", "")).strip()]
+    n = full_toc.get("nodes")
+    if isinstance(n, list) and n:
+        out: list[dict[str, Any]] = []
+        for node in n:
+            out.extend(_flatten_toc_node(node))
+        return out
+    return []
+
+
+def full_toc_rows_to_preview(
+    sections: list[TocSection],
+    full_toc: Any,
+    *,
+    max_rows: int = 5000,
+) -> list[dict[str, Any]]:
+    """将模型输出的 ``full_toc`` 行表展平为行级预览；子行 ``suggested_chunk_type`` 由章级 ``sections`` 按页码归属。"""
+    rows_in = _extract_full_toc_rows(full_toc)
+    if not rows_in or not sections:
+        return []
+    cap = max_rows if max_rows and max_rows > 0 else 0
+    if cap == 0:
+        return []
+    sk = sorted(sections, key=lambda x: (x.page_from, _norm_title_str(x.title)))
+    n = len(sk)
+
+    def owner_idx(p: int) -> int:
+        best = 0
+        for i in range(n):
+            if sk[i].page_from <= p:
+                best = i
+        return best
+
+    out: list[dict[str, Any]] = []
+    for r in rows_in[:cap]:
+        if not isinstance(r, dict):
+            continue
+        title = str(r.get("title", "")).strip()
+        if not title:
+            continue
+        try:
+            page_from = int(r.get("page_from", 1))
+        except (TypeError, ValueError):
+            page_from = 1
+        raw_d = r.get("depth", 1)
+        try:
+            depth = int(raw_d) if isinstance(raw_d, (int, float, str)) else 1
+        except (TypeError, ValueError):
+            depth = 1
+        oi = owner_idx(page_from)
+        sec = sk[oi]
+        ct = sec.suggested_chunk_type
+        pt = r.get("page_to", page_from)
+        try:
+            page_to = int(pt) if pt is not None and str(pt).strip() != "" else page_from
+        except (TypeError, ValueError):
+            page_to = page_from
+        inherited = _norm_title_str(title) != _norm_title_str(sec.title)
+        out.append(
+            {
+                "title": title,
+                "page_from": page_from,
+                "page_to": page_to,
+                "depth": depth,
+                "suggested_chunk_type": ct,
+                "inherited": inherited,
+            }
+        )
+    return out
 
 
 # ─── Main function ────────────────────────────────────────────────────────────
@@ -164,7 +267,25 @@ def parse_pdf_toc_response(raw: str) -> TocAnalysisResult:
             suggested_chunk_type=sections[-1].suggested_chunk_type,
         )
 
-    return TocAnalysisResult(sections=sections)
+    ftraw = data.get("full_toc")
+    if isinstance(ftraw, list):
+        full_toc = {"rows": ftraw}
+    elif isinstance(ftraw, dict) and ftraw:
+        full_toc = ftraw
+    else:
+        full_toc = None
+    if full_toc is not None and not _extract_full_toc_rows(full_toc):
+        _log.info(
+            "toc_analyzer operation=parse_pdf_toc_response full_toc_present_but_no_rows response_chars=%s",
+            len(raw or ""),
+        )
+    elif not full_toc and data.get("is_toc", True):
+        _log.info(
+            "toc_analyzer operation=parse_pdf_toc_response full_toc_missing (no line-level preview) response_chars=%s",
+            len(raw or ""),
+        )
+
+    return TocAnalysisResult(sections=sections, full_toc=full_toc)
 
 
 def analyze_toc(

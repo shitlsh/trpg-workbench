@@ -719,6 +719,7 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
     from app.knowledge.toc_analyzer import (
         fetch_pdf_toc_llm_raw,
         parse_pdf_toc_response,
+        full_toc_rows_to_preview,
         TocNotRecognizedError,
     )
 
@@ -881,6 +882,15 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
             parse_ms = round((time.perf_counter() - t_parse) * 1000.0, 2)
             total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
             rows = _toc_sections_payload(result.sections)
+            result_body: dict[str, Any] = {"sections": rows}
+            if result.full_toc is not None:
+                result_body["full_toc"] = result.full_toc
+            try:
+                pe = full_toc_rows_to_preview(result.sections, result.full_toc)
+                if pe:
+                    result_body["preview_expanded"] = pe
+            except Exception as e:
+                _log.debug("analyze_toc preview_expanded skipped: %s", e, exc_info=True)
             _log.info(
                 "knowledge_sse operation=analyze_toc phase=complete file_id=%s correlation_id=%s total_ms=%s "
                 "llm_ms=%s parse_ms=%s toc_chars=%s response_chars=%s sections_out=%s parse_ok=true",
@@ -906,7 +916,7 @@ async def analyze_toc(file_id: str, body: AnalyzeTocRequest, db: Session = Depen
                     },
                 },
             )
-            yield _doc_sse("result", {"sections": rows})
+            yield _doc_sse("result", result_body)
         except Exception as exc:
             total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
             _log.exception(
