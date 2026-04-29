@@ -76,7 +76,14 @@ def get_workspace_context(db: Session, workspace_id: str) -> dict:
     custom_asset_types = []
     if rule_set_id:
         custom_asset_types = [
-            {"type_key": c.type_key, "label": c.label, "icon": c.icon}
+            {
+                "type_key": c.type_key,
+                "label": c.label,
+                "icon": c.icon,
+                # M30: description and template_md injected into Director prompt
+                "description": c.description or "",
+                "template_md": c.template_md or "",
+            }
             for c in (
                 db.query(CustomAssetTypeConfigORM)
                 .filter_by(rule_set_id=rule_set_id)

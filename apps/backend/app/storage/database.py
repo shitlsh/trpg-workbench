@@ -51,6 +51,9 @@ def _run_migrations(engine) -> None:
     migrations = [
         "ALTER TABLE rule_sets ADD COLUMN default_prompt_profile_id TEXT",
         "ALTER TABLE llm_profiles ADD COLUMN strict_compatible BOOLEAN DEFAULT 0",
+        # M30: add description and template_md to custom asset type configs
+        "ALTER TABLE custom_asset_type_configs ADD COLUMN description TEXT",
+        "ALTER TABLE custom_asset_type_configs ADD COLUMN template_md TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:

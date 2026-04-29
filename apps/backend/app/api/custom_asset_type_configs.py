@@ -57,6 +57,8 @@ def create_config(rule_set_id: str, body: CustomAssetTypeConfigCreate, db: Sessi
         label=body.label,
         icon=body.icon,
         sort_order=body.sort_order,
+        description=body.description,
+        template_md=body.template_md,
     )
     db.add(config)
     try:

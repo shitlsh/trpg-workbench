@@ -578,6 +578,9 @@ class CustomAssetTypeConfigSchema(BaseModel):
     label: str
     icon: str
     sort_order: int
+    # M30: description explains scope/required fields; template_md is the Markdown skeleton
+    description: str | None = None
+    template_md: str | None = None
     created_at: str
     updated_at: str
 
@@ -589,10 +592,14 @@ class CustomAssetTypeConfigCreate(BaseModel):
     label: str
     icon: str
     sort_order: int = 0
+    description: str | None = None
+    template_md: str | None = None
 
 
 class CustomAssetTypeConfigUpdate(BaseModel):
     label: str | None = None
     icon: str | None = None
     sort_order: int | None = None
+    description: str | None = None
+    template_md: str | None = None
     error: str | None = None

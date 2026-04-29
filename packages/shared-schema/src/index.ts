@@ -386,6 +386,10 @@ export interface CustomAssetTypeConfig {
   label: string;
   icon: string;
   sort_order: number;
+  /** M30: scope description + required fields for AI, used in Director prompt injection */
+  description?: string;
+  /** M30: Markdown chapter skeleton used by Director when creating assets of this type */
+  template_md?: string;
   created_at: string;
   updated_at: string;
 }
@@ -395,12 +399,16 @@ export interface CreateCustomAssetTypeRequest {
   label: string;
   icon: string;
   sort_order?: number;
+  description?: string;
+  template_md?: string;
 }
 
 export interface UpdateCustomAssetTypeRequest {
   label?: string;
   icon?: string;
   sort_order?: number;
+  description?: string;
+  template_md?: string;
 }
 
 export type AssetStatus = "draft" | "review" | "final" | "deleted";

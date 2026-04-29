@@ -307,6 +307,10 @@ class CustomAssetTypeConfigORM(Base):
     label: Mapped[str] = mapped_column(String(200), nullable=False)
     icon: Mapped[str] = mapped_column(String(100), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # M30: description explains the type's scope and required fields for AI;
+    #       template_md provides the Markdown chapter skeleton for content generation.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_md: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
