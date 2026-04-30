@@ -117,17 +117,20 @@ function ConsistencyReportView({ report }: { report: ConsistencyReport }) {
 function KnowledgeResultView({ raw }: { raw: string; args: Record<string, unknown> }) {
   let results: Array<{ content?: string; document_name?: string; page_from?: number; page_to?: number }> = [];
   let message = "";
+  let warning = "";
   try {
     const data = JSON.parse(raw);
     results = data.results ?? [];
-    message = data.message ?? "";
+    message = data.message as string ?? "";
+    warning = data.warning as string ?? "";
   } catch {}
 
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={sectionHeaderStyle}>输出</div>
       {message && <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", marginBottom: 4 }}>{message}</div>}
-      {results.length === 0 && !message && (
+      {warning && <div style={{ fontSize: 10, color: "var(--color-type-clue)", marginBottom: 4 }}>{warning}</div>}
+      {results.length === 0 && !message && !warning && (
         <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>无匹配结果</div>
       )}
       {results.map((r, i) => (
@@ -140,7 +143,7 @@ function KnowledgeResultView({ raw }: { raw: string; args: Record<string, unknow
           <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>
             {r.document_name} · p{r.page_from}{r.page_to && r.page_to !== r.page_from ? `–${r.page_to}` : ""}
           </div>
-          <div style={{ color: "var(--text)", lineHeight: 1.4 }}>{(r.content ?? "").slice(0, 150)}{(r.content?.length ?? 0) > 150 ? "…" : ""}</div>
+          <div style={{ color: "var(--text)", lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 120, overflowY: "auto" }}>{r.content ?? ""}</div>
         </div>
       ))}
     </div>
@@ -280,13 +283,12 @@ function ToolInputView({ name, args }: { name: string; args: Record<string, unkn
 
   switch (name) {
     case "search_knowledge":
+      add("查询", args.query as string | undefined);
+      if (args.chunk_types) add("类型过滤", args.chunk_types as string | undefined);
+      break;
     case "web_search":
     case "search_assets":
       add("查询", args.query as string | undefined);
-      if (name === "search_knowledge") add("知识库", args.library_name as string | undefined);
-      break;
-    case "consult_rules":
-      add("问题", (args.question ?? args.query) as string | undefined);
       break;
     case "read_asset":
     case "read_asset_section":
@@ -444,8 +446,8 @@ function AssetsList({ items, message, error }: {
                   <span style={{ color: "var(--text)", fontWeight: 500 }}>{item.name || item.slug}</span>
                 </div>
                 {item.summary && (
-                  <div style={{ color: "var(--text-muted)", marginTop: 1, lineHeight: 1.3 }}>
-                    {item.summary.slice(0, 80)}{item.summary.length > 80 ? "…" : ""}
+                  <div style={{ color: "var(--text-muted)", marginTop: 1, lineHeight: 1.3, maxHeight: 60, overflowY: "auto" }}>
+                    {item.summary}
                   </div>
                 )}
               </div>
@@ -481,8 +483,8 @@ function GrepResultView({ raw }: { raw: string }) {
                 background: "var(--bg)", border: "1px solid var(--border)", fontSize: 10,
               }}>
                 <span style={{ color: "var(--text-subtle)", marginRight: 4, fontFamily: "var(--font-mono)" }}>L{m.line}</span>
-                <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-                  {m.context.slice(0, 200)}{m.context.length > 200 ? "…" : ""}
+                <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 60, overflowY: "auto" }}>
+                  {m.context}
                 </span>
               </div>
             ))}
@@ -519,7 +521,7 @@ function WebSearchResultView({ raw }: { raw: string }) {
           {results.map((r, i) => (
             <div key={i} style={{ fontSize: 10 }}>
               <div style={{ color: "var(--accent)", fontWeight: 500 }}>{r.title || "无标题"}</div>
-              {r.snippet && <div style={{ color: "var(--text-muted)", marginTop: 1 }}>{r.snippet.slice(0, 150)}{r.snippet.length > 150 ? "…" : ""}</div>}
+              {r.snippet && <div style={{ color: "var(--text-muted)", marginTop: 1, maxHeight: 80, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{r.snippet}</div>}
               {r.url && <div style={{ color: "var(--text-subtle)", fontSize: 9, wordBreak: "break-all" }}>{r.url}</div>}
             </div>
           ))}
@@ -542,26 +544,27 @@ function ConsultRulesView({ raw }: { raw: string }) {
     <div style={{ marginBottom: 6 }}>
       <div style={sectionHeaderStyle}>输出</div>
       {summary && (
-        <div style={{ fontSize: 11, color: "var(--text)", marginBottom: 4, fontWeight: 500 }}>{summary}</div>
+        <div style={{ fontSize: 11, color: "var(--text)", marginBottom: 6, fontWeight: 500, lineHeight: 1.5 }}>{summary}</div>
       )}
-      {suggestions.length === 0 ? (
-        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>无建议</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {suggestions.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 300, overflowY: "auto" }}>
           {suggestions.map((s, i) => (
             <div key={i} style={{
-              padding: "5px 7px", borderRadius: 3,
+              padding: "6px 8px", borderRadius: 3,
               background: "var(--bg)", border: "1px solid var(--border)", fontSize: 10,
             }}>
-              <div style={{ color: "var(--text)", lineHeight: 1.4 }}>{s.text}</div>
+              <div style={{ color: "var(--text-subtle)", fontSize: 9, marginBottom: 2 }}>建议 {i + 1}</div>
+              <div style={{ color: "var(--text)", lineHeight: 1.5 }}>{s.text}</div>
               {s.has_citation && s.citation && (
-                <div style={{ color: "var(--text-muted)", fontSize: 9, marginTop: 2 }}>
+                <div style={{ color: "var(--text-muted)", fontSize: 9, marginTop: 3 }}>
                   引用：{s.citation.document}{s.citation.page_from != null ? ` · p${s.citation.page_from}` : ""}
                 </div>
               )}
             </div>
           ))}
         </div>
+      ) : (
+        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>无建议</div>
       )}
     </div>
   );
@@ -581,7 +584,7 @@ function ReadAssetResultView({ raw }: { raw: string }) {
         whiteSpace: "pre-wrap", wordBreak: "break-word",
         maxHeight: 200, overflowY: "auto",
       }}>
-        {raw.slice(0, 500)}{raw.length > 500 ? "…" : ""}
+        {raw}
       </div>
     </div>
   );
@@ -629,7 +632,7 @@ function GenericResultView({ resultSummary }: { resultSummary: string | null }) 
         padding: "6px 8px", borderRadius: 3,
         background: "var(--bg)", border: "1px solid var(--border)",
       }}>
-        {text.length > 300 ? `${text.slice(0, 300)}…` : text}
+        {text}
       </div>
     </div>
   );
@@ -671,12 +674,12 @@ function SpecConfigResultView({ raw }: { raw: string }) {
           maxHeight: 200, overflowY: "auto",
           fontFamily: "var(--font-mono, monospace)",
         }}>
-          {template.slice(0, 400)}{template.length > 400 ? "…" : ""}
+          {template}
         </div>
       )}
       {!description && !rules && skills.length === 0 && !template && (
-        <div style={{ fontSize: 10, color: "var(--text)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-          {raw.length > 300 ? `${raw.slice(0, 300)}…` : raw}
+        <div style={{ fontSize: 10, color: "var(--text)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 200, overflowY: "auto" }}>
+          {raw}
         </div>
       )}
     </div>

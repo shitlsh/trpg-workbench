@@ -344,7 +344,7 @@ async def _chat_openai_like(
                     yield {"event": "tool_trace", "data": {"id": tc_id, "delta": line}}
             yield {
                 "event": "tool_call_result",
-                "data": {"id": tc_id, "success": success, "summary": result[:500]},
+                "data": {"id": tc_id, "success": success, "summary": result},
             }
 
 
@@ -503,7 +503,7 @@ async def _chat_anthropic(req: RuntimeRequest):
                     yield {"event": "tool_trace", "data": {"id": tu.id or "", "delta": line}}
             yield {
                 "event": "tool_call_result",
-                "data": {"id": tu.id or "", "success": success, "summary": result[:500]},
+                "data": {"id": tu.id or "", "success": success, "summary": result},
             }
 
 
@@ -700,7 +700,7 @@ async def _chat_google(req: RuntimeRequest):
             )
             yield {
                 "event": "tool_call_result",
-                "data": {"id": name, "success": success, "summary": result[:500]},
+                "data": {"id": name, "success": success, "summary": result},
             }
 
         # All tool results go into a single user Content (Gemini requirement)
