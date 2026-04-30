@@ -282,9 +282,9 @@ export function MentionInput({ workspaceId, disabled = false, isStreaming = fals
             alignItems: "center",
             justifyContent: "center",
             background: isStreaming
-              ? "rgba(239, 68, 68, 0.15)"
-              : "var(--accent, rgba(74,144,217,0.15))",
-            color: isStreaming ? "#ef4444" : "var(--accent-text, #4a90d9)",
+              ? "color-mix(in srgb, var(--danger) 15%, transparent)"
+              : "color-mix(in srgb, var(--accent) 15%, transparent)",
+            color: isStreaming ? "var(--danger)" : "var(--accent)",
             transition: "background 0.15s, color 0.15s",
             flexShrink: 0,
           }}
@@ -319,9 +319,9 @@ export function MentionInput({ workspaceId, disabled = false, isStreaming = fals
       <style>{`
         .mention {
           display: inline-block;
-          background: rgba(74, 144, 217, 0.15);
-          border: 1px solid rgba(74, 144, 217, 0.4);
-          color: #4a90d9;
+          background: color-mix(in srgb, var(--accent) 15%, transparent);
+          border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+          color: var(--accent);
           border-radius: 4px;
           padding: 0 4px;
           font-size: 12px;

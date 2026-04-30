@@ -117,7 +117,7 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
           background: "var(--accent)",
           fontSize: 13,
           lineHeight: 1.6,
-          color: "var(--text)",
+          color: "#fff",
         }}>
           <div>{msg.content}</div>
         </div>
@@ -486,6 +486,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   };
 
   const abortRef = useRef<AbortController | null>(null);
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
   // Workspace config to check model
   const { data: configResp } = useQuery({
@@ -645,6 +646,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       }
 
       const reader = resp.body.getReader();
+      readerRef.current = reader;
       const decoder = new TextDecoder();
       let buf = "";
 
@@ -930,11 +932,13 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
         }
       }
       // Guard: if stream closed without a `done` SSE event, clear streaming state
+      readerRef.current = null;
       setIsStreaming(false);
       setStreamingEvents([]);
       setTyping(false);
       flushQueue();
     } catch (e) {
+      readerRef.current = null;
       if ((e as Error).name !== "AbortError") {
         addMessage({
           id: `error_${Date.now()}`,
@@ -961,6 +965,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
   const handleReset = () => {
     abortRef.current?.abort();
+    readerRef.current?.cancel();
+    readerRef.current = null;
     setIsStreaming(false);
     setStreamingEvents([]);
     syncQueue([]);
@@ -1115,7 +1121,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
       {/* Session error */}
       {sessionError && (
-        <div style={{ padding: "6px 12px", background: "#2a0a0a", color: "#e05252", fontSize: 12 }}>
+        <div style={{ padding: "6px 12px", background: "color-mix(in srgb, var(--danger) 12%, var(--bg))", color: "var(--danger)", fontSize: 12 }}>
           {sessionError}
         </div>
       )}
@@ -1179,7 +1185,10 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           isStreaming={isStreaming}
           queueLength={pendingQueue.length}
           onSubmit={handleSend}
-          onStop={() => abortRef.current?.abort()}
+          onStop={() => {
+            abortRef.current?.abort();
+            readerRef.current?.cancel();
+          }}
         />
       </div>
       </div>{/* end chat column */}

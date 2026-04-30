@@ -15,7 +15,7 @@ function statusIcon(status: PlanStepStatus): React.ReactNode {
           width: 16,
           height: 16,
           borderRadius: "50%",
-          background: "var(--accent, #4ade80)",
+          background: "var(--accent)",
           color: "#fff",
           fontSize: 10,
           fontWeight: 700,
@@ -31,7 +31,7 @@ function statusIcon(status: PlanStepStatus): React.ReactNode {
           width: 16,
           height: 16,
           borderRadius: "50%",
-          border: "2px solid var(--accent, #4ade80)",
+          border: "2px solid var(--accent)",
           flexShrink: 0,
           animation: "plan-spin 1s linear infinite",
         }}>
@@ -39,7 +39,7 @@ function statusIcon(status: PlanStepStatus): React.ReactNode {
             width: 6,
             height: 6,
             borderRadius: "50%",
-            background: "var(--accent, #4ade80)",
+            background: "var(--accent)",
           }} />
         </span>
       );
@@ -52,7 +52,7 @@ function statusIcon(status: PlanStepStatus): React.ReactNode {
           width: 16,
           height: 16,
           borderRadius: "50%",
-          background: "var(--error, #f87171)",
+          background: "var(--danger)",
           color: "#fff",
           fontSize: 10,
           fontWeight: 700,
@@ -68,7 +68,7 @@ function statusIcon(status: PlanStepStatus): React.ReactNode {
           width: 16,
           height: 16,
           borderRadius: "50%",
-          border: "1.5px solid var(--text-muted, #9ca3af)",
+          border: "1.5px solid var(--text-muted)",
           flexShrink: 0,
         }} />
       );
@@ -77,10 +77,10 @@ function statusIcon(status: PlanStepStatus): React.ReactNode {
 
 function stepTextColor(status: PlanStepStatus): string {
   switch (status) {
-    case "done": return "var(--text-subtle, #6b7280)";
-    case "running": return "var(--text, #e5e7eb)";
-    case "error": return "var(--error, #f87171)";
-    default: return "var(--text-muted, #9ca3af)";
+    case "done": return "var(--text-subtle)";
+    case "running": return "var(--text)";
+    case "error": return "var(--danger)";
+    default: return "var(--text-muted)";
   }
 }
 
@@ -121,8 +121,8 @@ export function PlanCard({ plan }: PlanCardProps) {
       marginBottom: 10,
       padding: "10px 12px",
       borderRadius: 8,
-      border: "1px solid color-mix(in srgb, var(--border, #374151) 80%, transparent)",
-      background: "color-mix(in srgb, var(--surface, #1f2937) 60%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
+      background: "color-mix(in srgb, var(--bg-surface) 60%, transparent)",
     }}>
       {/* Header */}
       <div style={{
@@ -135,14 +135,14 @@ export function PlanCard({ plan }: PlanCardProps) {
           width: 6,
           height: 6,
           borderRadius: "50%",
-          background: allDone ? "var(--accent, #4ade80)" : "var(--accent-warm, #facc15)",
+          background: allDone ? "var(--accent)" : "color-mix(in srgb, var(--accent) 50%, var(--color-type-clue))",
           flexShrink: 0,
           transition: "background 0.3s",
         }} />
         <span style={{
           fontSize: 11,
           fontWeight: 600,
-          color: "var(--text-subtle, #6b7280)",
+          color: "var(--text-subtle)",
           letterSpacing: "0.03em",
           textTransform: "uppercase",
         }}>
