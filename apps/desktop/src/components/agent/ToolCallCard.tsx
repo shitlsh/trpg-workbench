@@ -10,6 +10,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_assets: "搜索资产",
   read_config: "读取配置",
   search_knowledge: "检索知识库",
+  get_asset_type_spec: "获取资产类型规范",
   create_asset: "新建资产",
   patch_asset: "局部修改资产",
   update_asset: "全量更新资产",
@@ -189,6 +190,12 @@ function argsSummary(name: string, args: Record<string, unknown>): string | null
     const t = String(args.user_intent);
     return t.length > 48 ? `${t.slice(0, 48)}…` : t;
   }
+  if (name === "get_asset_type_spec" && args.type_key) {
+    return String(args.type_key);
+  }
+  if (name === "read_config" && args.key) {
+    return String(args.key);
+  }
   if (name === "check_consistency" && args.focus) {
     return String(args.focus).slice(0, 40);
   }
@@ -333,6 +340,9 @@ function ToolInputView({ name, args }: { name: string; args: Record<string, unkn
       break;
     case "read_config":
       add("配置项", args.key as string | undefined);
+      break;
+    case "get_asset_type_spec":
+      add("资产类型", args.type_key as string | undefined);
       break;
     case "ask_user":
       if (Array.isArray(args.questions)) add("问题数量", `${args.questions.length} 道`);
@@ -625,6 +635,54 @@ function GenericResultView({ resultSummary }: { resultSummary: string | null }) 
   );
 }
 
+function SpecConfigResultView({ raw }: { raw: string }) {
+  let description = "";
+  let template = "";
+  let skills: Array<{ name?: string; description?: string }> = [];
+  let rules = "";
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    description = data.description as string ?? "";
+    template = data.template_md as string ?? "";
+    if (Array.isArray(data.skills)) skills = data.skills as typeof skills;
+    rules = data.rules_set as string ?? "";
+  } catch {}
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {description && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{description}</div>
+      )}
+      {rules && (
+        <div style={{ fontSize: 10, color: "var(--text)", marginBottom: 4, fontWeight: 500 }}>规则集：{rules}</div>
+      )}
+      {skills.length > 0 && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+          Skill 列表（{skills.length}）：{skills.map((s) => s.name).join("、")}
+        </div>
+      )}
+      {template && (
+        <div style={{
+          marginTop: 4, padding: "6px 8px", borderRadius: 3,
+          background: "var(--bg)", border: "1px solid var(--border)",
+          fontSize: 10, lineHeight: 1.4, color: "var(--text)",
+          whiteSpace: "pre-wrap", wordBreak: "break-word",
+          maxHeight: 200, overflowY: "auto",
+          fontFamily: "var(--font-mono, monospace)",
+        }}>
+          {template.slice(0, 400)}{template.length > 400 ? "…" : ""}
+        </div>
+      )}
+      {!description && !rules && skills.length === 0 && !template && (
+        <div style={{ fontSize: 10, color: "var(--text)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {raw.length > 300 ? `${raw.slice(0, 300)}…` : raw}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ToolOutputView({ name, resultSummary, args, consistencyReport }: {
   name: string;
   resultSummary: string | null;
@@ -650,6 +708,9 @@ function ToolOutputView({ name, resultSummary, args, consistencyReport }: {
     case "read_asset":
     case "read_asset_section":
       return <ReadAssetResultView raw={resultSummary} />;
+    case "read_config":
+    case "get_asset_type_spec":
+      return <SpecConfigResultView raw={resultSummary} />;
     case "create_asset":
     case "patch_asset":
     case "update_asset":
