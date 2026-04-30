@@ -416,7 +416,7 @@ export default function WorkspaceSettingsPage() {
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate(`/workspace/${id}`)}>← 返回</button>
         <h1 className={styles.title}>工作空间设置</h1>
-        <HelpButton doc="getting-started" />
+        <HelpButton doc="start-creating" />
       </header>
       <main className={styles.main}>
         <form onSubmit={handleSave} className={styles.form}>

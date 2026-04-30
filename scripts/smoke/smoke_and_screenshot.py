@@ -310,7 +310,8 @@ HELP_IMAGE_PAGES = [
 
 def _click_wizard_skip(page, button_text: str, step_name: str):
     """Click a wizard skip/next button and wait for transition."""
-    btn = page.get_by_text(button_text, exact=True)
+    # Use .first to avoid strict-mode error when multiple matches exist
+    btn = page.get_by_text(button_text, exact=True).first
     btn.wait_for(state="visible", timeout=5000)
     btn.click()
     page.wait_for_timeout(800)
@@ -354,7 +355,7 @@ def generate_help_images(frontend_url: str, backend_url: str):
 
     Handles the Setup Wizard: if the app redirects to /setup on first visit,
     captures the wizard step-1 page, then clicks through all skip buttons
-    (稍后配置 → 稍后配置 → 跳过此步骤 → 稍后创建 → 开始使用 →)
+    (稍后配置 → 稍后配置 → 稍后创建 → 稍后创建 → 开始使用 →)
     to reach the real home page.
     """
     from playwright.sync_api import sync_playwright
@@ -386,13 +387,13 @@ def generate_help_images(frontend_url: str, backend_url: str):
                 # Click through all wizard steps to reach real home page
                 # Step 1: LLM config  → "稍后配置"
                 # Step 2: Embedding   → "稍后配置"
-                # Step 3: Rerank      → "跳过此步骤"
+                # Step 3: Rule set    → "跳过此步骤"
                 # Step 4: Workspace   → "稍后创建"
                 # Summary             → "开始使用 →"
                 wizard_steps = [
                     ("稍后配置",   "Step 1 LLM"),
                     ("稍后配置",   "Step 2 Embedding"),
-                    ("跳过此步骤", "Step 3 Rerank"),
+                    ("稍后创建",   "Step 3 Rule set"),
                     ("稍后创建",   "Step 4 Workspace"),
                     ("开始使用 →", "Summary → Home"),
                 ]

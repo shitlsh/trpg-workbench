@@ -99,11 +99,9 @@ cargo tauri dev
 
 ### 首次配置
 
-1. 应用启动后进入主界面，点击「新建工作空间」
-2. 进入「模型配置」→ LLM 配置，新增 LLM Profile（如 OpenAI gpt-4o）
-3. 进入「模型配置」→ Embedding 配置，新增 Embedding Profile（如 text-embedding-3-small）
-4. 进入工作空间设置，在「模型路由」区域绑定默认 LLM 和 Embedding 模型
-5. 可在「模型配置」→「模型发现」Tab 查看静态 catalog 及动态拉取最新模型列表
+1. 应用首次启动会进入**配置向导**（4 步）：LLM 模型 → Embedding 模型 → 规则集 → 工作空间；各步均可跳过后补
+2. 如需手动配置，进入「模型配置」分别添加 LLM Profile 和 Embedding Profile
+3. 进入工作空间设置，在「模型路由」区域绑定默认 LLM 和 Embedding 模型
 
 ---
 
