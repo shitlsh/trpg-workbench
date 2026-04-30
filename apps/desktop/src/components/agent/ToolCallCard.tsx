@@ -11,16 +11,10 @@ const TOOL_LABELS: Record<string, string> = {
   read_config: "读取配置",
   search_knowledge: "检索知识库",
   create_asset: "新建资产",
-  create_assets: "批量新建资产",
   patch_asset: "局部修改资产",
-  patch_assets: "批量局部修改",
   update_asset: "全量更新资产",
   delete_asset: "删除资产",
   move_asset: "移动/重命名资产",
-  delete_assets: "批量删除资产",
-  move_assets: "批量移动资产",
-  preview_bulk_text_replace: "预检跨资产替换",
-  apply_bulk_text_replace: "应用跨资产替换",
   check_consistency: "一致性检查",
   consult_rules: "规则咨询",
   create_skill: "新建 Skill",
@@ -152,16 +146,6 @@ function KnowledgeResultView({ raw }: { raw: string; args: Record<string, unknow
   );
 }
 
-function _jsonArrayLength(param: unknown): number | null {
-  if (typeof param !== "string" || !param) return null;
-  try {
-    const v = JSON.parse(param) as unknown;
-    return Array.isArray(v) ? v.length : null;
-  } catch {
-    return null;
-  }
-}
-
 // Build a short inline description of args for display in the card header
 function argsSummary(name: string, args: Record<string, unknown>): string | null {
   if (name === "search_knowledge" || name === "web_search") {
@@ -217,18 +201,6 @@ function argsSummary(name: string, args: Record<string, unknown>): string | null
   }
   if (name === "ask_user" && Array.isArray(args.questions)) {
     return `${(args.questions as unknown[]).length} 问`;
-  }
-  if (name === "create_assets" || name === "patch_assets" || name === "delete_assets" || name === "move_assets") {
-    const n = _jsonArrayLength(args.items_json);
-    if (n != null) return `${n} 项`;
-  }
-  if (name === "preview_bulk_text_replace" && args.old_str) {
-    const t = String(args.old_str);
-    return t.length > 36 ? `${t.slice(0, 36)}…` : t;
-  }
-  if (name === "apply_bulk_text_replace") {
-    const n = _jsonArrayLength(args.slugs_json);
-    if (n != null) return `${n} 个 slug`;
   }
   return null;
 }
@@ -362,21 +334,9 @@ function ToolInputView({ name, args }: { name: string; args: Record<string, unkn
     case "read_config":
       add("配置项", args.key as string | undefined);
       break;
-    case "preview_bulk_text_replace": {
-      const oldStr = args.old_str as string | undefined;
-      const newStr = args.new_str as string | undefined;
-      if (oldStr) add("查找文本", oldStr.length > 60 ? `${oldStr.slice(0, 60)}…` : oldStr, true);
-      if (newStr) add("替换为", newStr.length > 60 ? `${newStr.slice(0, 60)}…` : newStr);
-      break;
-    }
     case "ask_user":
       if (Array.isArray(args.questions)) add("问题数量", `${args.questions.length} 道`);
       break;
-    case "create_assets": case "patch_assets": case "delete_assets": case "move_assets": case "apply_bulk_text_replace": {
-      const n = _jsonArrayLength(args.items_json ?? args.slugs_json);
-      if (n != null) add("批量操作", `${n} 项`);
-      break;
-    }
     default:
       // Generic: show known args keys (non-empty strings)
       for (const [k, v] of Object.entries(args)) {
@@ -691,16 +651,11 @@ function ToolOutputView({ name, resultSummary, args, consistencyReport }: {
     case "read_asset_section":
       return <ReadAssetResultView raw={resultSummary} />;
     case "create_asset":
-    case "create_assets":
     case "patch_asset":
-    case "patch_assets":
     case "update_asset":
     case "delete_asset":
-    case "delete_assets":
     case "move_asset":
-    case "move_assets":
-    case "create_skill":
-    case "apply_bulk_text_replace": {
+    case "create_skill": {
       try {
         const data = JSON.parse(resultSummary) as Record<string, unknown>;
         return <WriteResultView data={data} />;
@@ -712,22 +667,6 @@ function ToolOutputView({ name, resultSummary, args, consistencyReport }: {
       return null; // handled by consistencyReport above
     case "ask_user":
       return null; // handled by QuestionCard
-    case "preview_bulk_text_replace": {
-      try {
-        const data = JSON.parse(resultSummary) as Record<string, unknown>;
-        const count = data.match_count ?? data.count;
-        return (
-          <div style={{ marginBottom: 6 }}>
-            <div style={sectionHeaderStyle}>输出</div>
-            <div style={{ fontSize: 11, color: "var(--text)" }}>
-              {count != null ? `找到 ${count} 处匹配` : data.message as string ?? "预览完成"}
-            </div>
-          </div>
-        );
-      } catch {
-        return <GenericResultView resultSummary={resultSummary} />;
-      }
-    }
     default:
       return <GenericResultView resultSummary={resultSummary} />;
   }
