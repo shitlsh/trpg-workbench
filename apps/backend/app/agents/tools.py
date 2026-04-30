@@ -1287,6 +1287,8 @@ ALL_TOOLS = [
     read_asset_section,
     search_assets,
     search_knowledge,
+    get_asset_type_spec,
+    read_config,
     create_asset,
     patch_asset,
     update_asset,
@@ -1307,6 +1309,8 @@ EXPLORE_TOOLS = [
     read_asset_section,
     search_assets,
     search_knowledge,
+    get_asset_type_spec,
+    read_config,
     web_search,
     consult_rules,
 ]
