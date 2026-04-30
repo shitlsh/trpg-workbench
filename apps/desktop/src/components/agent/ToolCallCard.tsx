@@ -119,7 +119,7 @@ function ConsistencyReportView({ report }: { report: ConsistencyReport }) {
   );
 }
 
-function KnowledgeResultView({ raw, args }: { raw: string; args: Record<string, unknown> }) {
+function KnowledgeResultView({ raw }: { raw: string; args: Record<string, unknown> }) {
   let results: Array<{ content?: string; document_name?: string; page_from?: number; page_to?: number }> = [];
   let message = "";
   try {
@@ -129,13 +129,9 @@ function KnowledgeResultView({ raw, args }: { raw: string; args: Record<string, 
   } catch {}
 
   return (
-    <div>
-      {args.query !== undefined && (
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
-          <span style={{ fontWeight: 600 }}>查询：</span>{String(args.query)}
-        </div>
-      )}
-      {message && <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>{message}</div>}
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {message && <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", marginBottom: 4 }}>{message}</div>}
       {results.length === 0 && !message && (
         <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>无匹配结果</div>
       )}
@@ -273,6 +269,471 @@ function humanizeResultSummary(toolCall: ToolCall): string | null {
   }
   return raw.length > 140 ? `${raw.slice(0, 140)}...` : raw;
 }
+
+// ─── Input / Output sections ──────────────────────────────────────────────────
+
+const sectionHeaderStyle: React.CSSProperties = {
+  fontSize: 10, fontWeight: 600, color: "var(--text-subtle)",
+  letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 4,
+};
+
+function InputRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div style={{ display: "flex", gap: 6, fontSize: 11, marginBottom: 3, alignItems: "flex-start" }}>
+      <span style={{ color: "var(--text-subtle)", flexShrink: 0, minWidth: 48 }}>{label}</span>
+      <span style={{
+        color: "var(--text)", wordBreak: "break-all",
+        fontFamily: mono ? "var(--font-mono, monospace)" : undefined,
+      }}>{value}</span>
+    </div>
+  );
+}
+
+function ToolInputView({ name, args }: { name: string; args: Record<string, unknown> }) {
+  const show = (label: string, value: string | null | undefined, mono?: boolean) =>
+    value ? <InputRow key={label} label={label} value={value} mono={mono} /> : null;
+
+  const items: React.ReactNode[] = [];
+  const add = (label: string, value: string | null | undefined, mono?: boolean) => {
+    const el = show(label, value, mono);
+    if (el) items.push(el);
+  };
+
+  switch (name) {
+    case "search_knowledge":
+    case "web_search":
+    case "search_assets":
+      add("查询", args.query as string | undefined);
+      if (name === "search_knowledge") add("知识库", args.library_name as string | undefined);
+      break;
+    case "consult_rules":
+      add("问题", (args.question ?? args.query) as string | undefined);
+      break;
+    case "read_asset":
+    case "read_asset_section":
+      add("资产", (args.asset_slug ?? args.slug) as string | undefined, true);
+      if (name === "read_asset_section") add("章节", args.heading as string | undefined);
+      break;
+    case "grep_asset":
+      add("资产", (args.asset_slug ?? args.slug) as string | undefined, true);
+      add("搜索", args.pattern as string | undefined, true);
+      break;
+    case "list_assets":
+      add("类型", args.asset_type as string | undefined);
+      add("名称包含", args.name_contains as string | undefined);
+      add("状态", args.status as string | undefined);
+      if (args.limit != null) add("上限", String(args.limit));
+      break;
+    case "create_asset": {
+      add("类型", args.asset_type as string | undefined);
+      add("名称", (args.name ?? args.slug ?? args.asset_name) as string | undefined);
+      const content = args.content_md ?? args.content;
+      if (typeof content === "string") add("内容预览", content.slice(0, 80) + (content.length > 80 ? "…" : ""));
+      break;
+    }
+    case "update_asset":
+      add("资产", (args.asset_slug ?? args.slug) as string | undefined, true);
+      if (typeof args.content_md === "string") add("内容预览", (args.content_md as string).slice(0, 80) + ((args.content_md as string).length > 80 ? "…" : ""));
+      break;
+    case "patch_asset":
+      add("资产", (args.asset_slug ?? args.slug) as string | undefined, true);
+      if (typeof args.old_str === "string" && args.old_str) {
+        const t = String(args.old_str);
+        add("替换前", t.length > 60 ? `${t.slice(0, 60)}…` : t, true);
+      }
+      if (typeof args.new_str === "string" && args.new_str) {
+        const t = String(args.new_str);
+        add("替换后", t.length > 60 ? `${t.slice(0, 60)}…` : t);
+      }
+      break;
+    case "delete_asset":
+      add("资产", (args.asset_slug ?? args.slug ?? args.asset_id) as string | undefined, true);
+      break;
+    case "move_asset":
+      add("从", args.from_slug as string | undefined, true);
+      add("到", args.to_slug as string | undefined, true);
+      break;
+    case "create_skill":
+      add("意图", args.user_intent as string | undefined);
+      break;
+    case "check_consistency":
+      add("检查范围", args.focus as string | undefined);
+      break;
+    case "read_config":
+      add("配置项", args.key as string | undefined);
+      break;
+    case "preview_bulk_text_replace": {
+      const oldStr = args.old_str as string | undefined;
+      const newStr = args.new_str as string | undefined;
+      if (oldStr) add("查找文本", oldStr.length > 60 ? `${oldStr.slice(0, 60)}…` : oldStr, true);
+      if (newStr) add("替换为", newStr.length > 60 ? `${newStr.slice(0, 60)}…` : newStr);
+      break;
+    }
+    case "ask_user":
+      if (Array.isArray(args.questions)) add("问题数量", `${args.questions.length} 道`);
+      break;
+    case "create_assets": case "patch_assets": case "delete_assets": case "move_assets": case "apply_bulk_text_replace": {
+      const n = _jsonArrayLength(args.items_json ?? args.slugs_json);
+      if (n != null) add("批量操作", `${n} 项`);
+      break;
+    }
+    default:
+      // Generic: show known args keys (non-empty strings)
+      for (const [k, v] of Object.entries(args)) {
+        if (typeof v === "string" && v) {
+          add(k, v.length > 60 ? `${v.slice(0, 60)}…` : v);
+        }
+      }
+  }
+
+  if (items.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输入</div>
+      {items}
+    </div>
+  );
+}
+
+function WriteResultView({ data }: { data: Record<string, unknown> }) {
+  const success = data.success === true;
+  const actionLabel = (data.action as string) === "created" ? "已创建" : "已更新";
+  const slug = data.slug as string | undefined;
+  const error = data.error as string | undefined;
+  const changeSummary = data.change_summary as string | undefined;
+  const assetName = data.asset_name as string | undefined;
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {success ? (
+        <div style={{ fontSize: 11 }}>
+          <span style={{ color: "var(--success)", fontWeight: 600 }}>✅ {actionLabel}</span>
+          {(slug || assetName) && (
+            <span style={{ color: "var(--text-muted)", marginLeft: 6, fontFamily: "var(--font-mono, monospace)", fontSize: 10 }}>
+              {slug || assetName}
+            </span>
+          )}
+          {changeSummary && (
+            <div style={{ color: "var(--text-muted)", fontSize: 10, marginTop: 2 }}>{changeSummary}</div>
+          )}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: "var(--danger)" }}>
+          ❌ {error || "执行失败"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchAssetsListView({ raw }: { raw: string }) {
+  let items: Array<{ type?: string; name?: string; slug?: string; summary?: string }> = [];
+  let message = "";
+  let error = "";
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    if (Array.isArray(data)) {
+      items = data as typeof items;
+    } else {
+      items = (data.results ?? data.items) as typeof items ?? [];
+      message = data.message as string ?? "";
+      error = data.error as string ?? "";
+    }
+  } catch {}
+  return <AssetsList items={items} message={message} error={error} />;
+}
+
+function AssetsList({ items, message, error }: {
+  items: Array<{ type?: string; name?: string; slug?: string; summary?: string }>;
+  message?: string;
+  error?: string;
+}) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {error ? (
+        <div style={{ fontSize: 11, color: "var(--danger)" }}>{error}</div>
+      ) : items.length === 0 ? (
+        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{message || "无结果"}</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{items.length} 项结果</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 200, overflowY: "auto" }}>
+            {items.map((item, i) => (
+              <div key={i} style={{
+                padding: "3px 6px", borderRadius: 3,
+                background: "var(--bg)", border: "1px solid var(--border)", fontSize: 10,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  {item.type && (
+                    <span style={{ fontSize: 9, color: "var(--text-subtle)", background: "var(--bg-hover)", padding: "0 3px", borderRadius: 2 }}>
+                      {item.type}
+                    </span>
+                  )}
+                  <span style={{ color: "var(--text)", fontWeight: 500 }}>{item.name || item.slug}</span>
+                </div>
+                {item.summary && (
+                  <div style={{ color: "var(--text-muted)", marginTop: 1, lineHeight: 1.3 }}>
+                    {item.summary.slice(0, 80)}{item.summary.length > 80 ? "…" : ""}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function GrepResultView({ raw }: { raw: string }) {
+  let data: { asset_slug?: string; pattern?: string; matches?: Array<{ line: number; context: string }>; message?: string; error?: string } = {};
+  try { data = JSON.parse(raw) as typeof data; } catch {}
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {data.error ? (
+        <div style={{ fontSize: 11, color: "var(--danger)" }}>{data.error}</div>
+      ) : !data.matches || data.matches.length === 0 ? (
+        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{data.message || "未找到匹配"}</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+            {data.matches.length} 处匹配
+            {data.pattern && <span> · <code style={{ fontSize: 10, fontFamily: "var(--font-mono)" }}>{data.pattern}</code></span>}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" }}>
+            {data.matches.slice(0, 10).map((m, i) => (
+              <div key={i} style={{
+                padding: "4px 6px", borderRadius: 3,
+                background: "var(--bg)", border: "1px solid var(--border)", fontSize: 10,
+              }}>
+                <span style={{ color: "var(--text-subtle)", marginRight: 4, fontFamily: "var(--font-mono)" }}>L{m.line}</span>
+                <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                  {m.context.slice(0, 200)}{m.context.length > 200 ? "…" : ""}
+                </span>
+              </div>
+            ))}
+            {data.matches.length > 10 && (
+              <div style={{ fontSize: 9, color: "var(--text-subtle)" }}>… 还有 {data.matches.length - 10} 处匹配</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function WebSearchResultView({ raw }: { raw: string }) {
+  let results: Array<{ title?: string; url?: string; snippet?: string }> = [];
+  let note = "";
+  let error = "";
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    results = (data.results ?? []) as typeof results;
+    note = data.note as string ?? "";
+    error = data.error as string ?? "";
+  } catch {}
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {error ? (
+        <div style={{ fontSize: 11, color: "var(--danger)" }}>{error}</div>
+      ) : results.length === 0 ? (
+        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{note || "无搜索结果"}</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {results.map((r, i) => (
+            <div key={i} style={{ fontSize: 10 }}>
+              <div style={{ color: "var(--accent)", fontWeight: 500 }}>{r.title || "无标题"}</div>
+              {r.snippet && <div style={{ color: "var(--text-muted)", marginTop: 1 }}>{r.snippet.slice(0, 150)}{r.snippet.length > 150 ? "…" : ""}</div>}
+              {r.url && <div style={{ color: "var(--text-subtle)", fontSize: 9, wordBreak: "break-all" }}>{r.url}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConsultRulesView({ raw }: { raw: string }) {
+  let suggestions: Array<{ text?: string; citation?: { document?: string; page_from?: number; page_to?: number }; has_citation?: boolean }> = [];
+  let summary = "";
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    suggestions = (data.suggestions ?? []) as typeof suggestions;
+    summary = data.summary as string ?? "";
+  } catch {}
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {summary && (
+        <div style={{ fontSize: 11, color: "var(--text)", marginBottom: 4, fontWeight: 500 }}>{summary}</div>
+      )}
+      {suggestions.length === 0 ? (
+        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>无建议</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {suggestions.map((s, i) => (
+            <div key={i} style={{
+              padding: "5px 7px", borderRadius: 3,
+              background: "var(--bg)", border: "1px solid var(--border)", fontSize: 10,
+            }}>
+              <div style={{ color: "var(--text)", lineHeight: 1.4 }}>{s.text}</div>
+              {s.has_citation && s.citation && (
+                <div style={{ color: "var(--text-muted)", fontSize: 9, marginTop: 2 }}>
+                  引用：{s.citation.document}{s.citation.page_from != null ? ` · p${s.citation.page_from}` : ""}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReadAssetResultView({ raw }: { raw: string }) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
+        内容长度：{raw.length} 字
+      </div>
+      <div style={{
+        padding: "6px 8px", borderRadius: 3,
+        background: "var(--bg)", border: "1px solid var(--border)",
+        fontSize: 11, lineHeight: 1.5, color: "var(--text)",
+        whiteSpace: "pre-wrap", wordBreak: "break-word",
+        maxHeight: 200, overflowY: "auto",
+      }}>
+        {raw.slice(0, 500)}{raw.length > 500 ? "…" : ""}
+      </div>
+    </div>
+  );
+}
+
+function GenericResultView({ resultSummary }: { resultSummary: string | null }) {
+  if (!resultSummary) return null;
+  let text = resultSummary;
+  try {
+    const data = JSON.parse(resultSummary) as Record<string, unknown>;
+    if (data.error && typeof data.error === "string") {
+      return (
+        <div style={{ marginBottom: 6 }}>
+          <div style={sectionHeaderStyle}>输出</div>
+          <div style={{ fontSize: 11, color: "var(--danger)" }}>❌ {data.error}</div>
+        </div>
+      );
+    }
+    if (data.message && typeof data.message === "string") {
+      return (
+        <div style={{ marginBottom: 6 }}>
+          <div style={sectionHeaderStyle}>输出</div>
+          <div style={{ fontSize: 11, color: "var(--text)" }}>{data.message}</div>
+        </div>
+      );
+    }
+    if (data.summary && typeof data.summary === "string") {
+      return (
+        <div style={{ marginBottom: 6 }}>
+          <div style={sectionHeaderStyle}>输出</div>
+          <div style={{ fontSize: 11, color: "var(--text)" }}>{data.summary}</div>
+        </div>
+      );
+    }
+  } catch {
+    // Not JSON — show raw text (likely read_asset markdown)
+    return <ReadAssetResultView raw={text} />;
+  }
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      <div style={{
+        fontSize: 10, color: "var(--text)", whiteSpace: "pre-wrap", wordBreak: "break-word",
+        maxHeight: 200, overflowY: "auto",
+        padding: "6px 8px", borderRadius: 3,
+        background: "var(--bg)", border: "1px solid var(--border)",
+      }}>
+        {text.length > 300 ? `${text.slice(0, 300)}…` : text}
+      </div>
+    </div>
+  );
+}
+
+function ToolOutputView({ name, resultSummary, args, consistencyReport }: {
+  name: string;
+  resultSummary: string | null;
+  args: Record<string, unknown>;
+  consistencyReport: ConsistencyReport | null;
+}) {
+  if (!resultSummary) return null;
+  if (consistencyReport) return <ConsistencyReportView report={consistencyReport} />;
+
+  // Per-tool type specialized output
+  switch (name) {
+    case "search_knowledge":
+      return <KnowledgeResultView raw={resultSummary} args={args} />;
+    case "list_assets":
+    case "search_assets":
+      return <SearchAssetsListView raw={resultSummary} />;
+    case "grep_asset":
+      return <GrepResultView raw={resultSummary} />;
+    case "web_search":
+      return <WebSearchResultView raw={resultSummary} />;
+    case "consult_rules":
+      return <ConsultRulesView raw={resultSummary} />;
+    case "read_asset":
+    case "read_asset_section":
+      return <ReadAssetResultView raw={resultSummary} />;
+    case "create_asset":
+    case "create_assets":
+    case "patch_asset":
+    case "patch_assets":
+    case "update_asset":
+    case "delete_asset":
+    case "delete_assets":
+    case "move_asset":
+    case "move_assets":
+    case "create_skill":
+    case "apply_bulk_text_replace": {
+      try {
+        const data = JSON.parse(resultSummary) as Record<string, unknown>;
+        return <WriteResultView data={data} />;
+      } catch {
+        return <GenericResultView resultSummary={resultSummary} />;
+      }
+    }
+    case "check_consistency":
+      return null; // handled by consistencyReport above
+    case "ask_user":
+      return null; // handled by QuestionCard
+    case "preview_bulk_text_replace": {
+      try {
+        const data = JSON.parse(resultSummary) as Record<string, unknown>;
+        const count = data.match_count ?? data.count;
+        return (
+          <div style={{ marginBottom: 6 }}>
+            <div style={sectionHeaderStyle}>输出</div>
+            <div style={{ fontSize: 11, color: "var(--text)" }}>
+              {count != null ? `找到 ${count} 处匹配` : data.message as string ?? "预览完成"}
+            </div>
+          </div>
+        );
+      } catch {
+        return <GenericResultView resultSummary={resultSummary} />;
+      }
+    }
+    default:
+      return <GenericResultView resultSummary={resultSummary} />;
+  }
+}
+
+// ─── Trace log helpers ───────────────────────────────────────────────────────
 
 function parseTimedTrace(line: string): { elapsedMs: number | null; text: string } {
   const m = line.match(/^\[\+(\d+)ms\]\s*(.*)$/);
@@ -445,106 +906,97 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
       </button>
       {expanded && (
         <div style={{ padding: "6px 8px", background: "var(--bg-surface)", borderTop: "1px solid var(--border)" }}>
-          {consistencyReport ? (
-            <ConsistencyReportView report={consistencyReport} />
-          ) : knowledgeSummary && toolCall.result_summary ? (
-            <KnowledgeResultView raw={toolCall.result_summary} args={args} />
-          ) : (
-            <>
-              {inlineArgsSummary && (
-                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                  目标：{inlineArgsSummary}
-                </div>
-              )}
-              {genericSummary && (
-                <div style={{ marginTop: 4, fontSize: 10, color: "var(--text)" }}>
-                  结果：{genericSummary}
-                </div>
-              )}
-              {toolCall.status === "error" && toolCall.result_summary && (
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    try { await navigator.clipboard.writeText(toolCall.result_summary || ""); } catch {}
-                  }}
-                  style={{
-                    marginTop: 6,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 10,
-                    background: "none",
-                    border: "1px solid var(--border)",
-                    borderRadius: 4,
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: "2px 6px",
-                  }}
-                >
-                  <Copy size={10} />
-                  复制错误详情
-                </button>
-              )}
-              {toolCall.trace_logs && toolCall.trace_logs.length > 0 && (
-                <div style={{ marginTop: 6, borderTop: "1px solid var(--border)", paddingTop: 6 }}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setTraceExpanded(!traceExpanded); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 4,
-                      fontSize: 10, background: "none", border: "none", cursor: "pointer",
-                      color: "var(--text-muted)", padding: 0,
-                    }}
-                  >
-                    {traceExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                    执行过程（{toolCall.trace_logs.length}）
-                  </button>
-                  {traceExpanded && (
-                    <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 6 }}>
-                      {Object.entries(traceGroups).map(([group, lines]) => (
-                        <div key={group}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setGroupExpanded((prev) => ({ ...prev, [group]: !prev[group] }));
-                            }}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              border: "none",
-                              background: "none",
-                              color: "var(--text-subtle)",
-                              cursor: "pointer",
-                              fontSize: 10,
-                              padding: 0,
-                            }}
-                          >
-                            {groupExpanded[group] ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
-                            <span>{group}（{lines.length}）</span>
-                          </button>
-                          {groupExpanded[group] && (
-                            <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
-                              {lines.map((line, idx) => {
-                                const parsed = parseTimedTrace(line);
-                                return (
-                                  <div key={idx} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)" }}>
-                                    <span style={{ opacity: 0.9 }}>{traceIcon(parsed.text)}</span>
-                                    {parsed.elapsedMs != null && (
-                                      <span style={{ color: "var(--text-subtle)", minWidth: 56 }}>+{parsed.elapsedMs}ms</span>
-                                    )}
-                                    <span>{parsed.text}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
+          <ToolInputView name={toolCall.name} args={args} />
+          {toolCall.status !== "running" && (
+            <ToolOutputView
+              name={toolCall.name}
+              resultSummary={toolCall.result_summary}
+              args={args}
+              consistencyReport={consistencyReport}
+            />
+          )}
+          {toolCall.status === "error" && toolCall.result_summary && !consistencyReport && (
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try { await navigator.clipboard.writeText(toolCall.result_summary || ""); } catch {}
+              }}
+              style={{
+                marginTop: 4,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10,
+                background: "none",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                padding: "2px 6px",
+              }}
+            >
+              <Copy size={10} />
+              复制错误详情
+            </button>
+          )}
+          {toolCall.trace_logs && toolCall.trace_logs.length > 0 && (
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6 }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setTraceExpanded(!traceExpanded); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 4,
+                  fontSize: 10, background: "none", border: "none", cursor: "pointer",
+                  color: "var(--text-muted)", padding: 0,
+                }}
+              >
+                {traceExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                执行过程（{toolCall.trace_logs.length}）
+              </button>
+              {traceExpanded && (
+                <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {Object.entries(traceGroups).map(([group, lines]) => (
+                    <div key={group}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setGroupExpanded((prev) => ({ ...prev, [group]: !prev[group] }));
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          border: "none",
+                          background: "none",
+                          color: "var(--text-subtle)",
+                          cursor: "pointer",
+                          fontSize: 10,
+                          padding: 0,
+                        }}
+                      >
+                        {groupExpanded[group] ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                        <span>{group}（{lines.length}）</span>
+                      </button>
+                      {groupExpanded[group] && (
+                        <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+                          {lines.map((line, idx) => {
+                            const parsed = parseTimedTrace(line);
+                            return (
+                              <div key={idx} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)" }}>
+                                <span style={{ opacity: 0.9 }}>{traceIcon(parsed.text)}</span>
+                                {parsed.elapsedMs != null && (
+                                  <span style={{ color: "var(--text-subtle)", minWidth: 56 }}>+{parsed.elapsedMs}ms</span>
+                                )}
+                                <span>{parsed.text}</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       )}
