@@ -179,14 +179,15 @@ export interface EmbeddingTestResult {
 /**
  * Chunk-level semantic type tag.
  * Single source of truth: apps/backend/app/knowledge/types.py ChunkType enum.
+ * All types are content-dimension (not format-dimension).
  */
 export type ChunkType =
-  | "rule"        // 规则说明、技能定义、判定机制
-  | "example"     // 举例说明、示例场景
-  | "lore"        // 世界设定、背景叙述
-  | "table"       // 数值表格、技能列表、装备清单
-  | "procedure"   // 程序性内容：行动顺序、战斗流程
-  | "flavor";     // 纯叙事/氛围文字，无规则信息
+  | "rule"        // 规则系统：技能定义、检定机制、战斗规则、操作流程等可执行规则正文
+  | "entity"      // 游戏实体：怪物/装备/物品/NPC 数值数据块，以结构化数据为主
+  | "lore"        // 世界观背景：世界设定、历史叙述、背景故事、氛围文字等叙述性内容
+  | "adventure"   // 冒险剧情：模组场景、遭遇设定、剧情描述、GM 指引、跑团日志
+  | "appendix"    // 辅助资料：索引、术语表、版权页、参考文献等导航或辅助性内容
+  | "none";       // 无分类：目录页、封面等无法明确归类的内容（检索时作为兜底保留）
 
 export interface KnowledgeLibrary {
   id: string;

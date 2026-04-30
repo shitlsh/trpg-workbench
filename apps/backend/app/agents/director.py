@@ -10,6 +10,7 @@ from app.agents.tools import (
     AgentQuestionInterrupt,
 )
 from app.prompts import load_prompt
+from app.knowledge.types import build_chunk_types_section
 
 # M30: canonical 6 built-in types — order determines injection order in prompt
 _BUILTIN_TYPE_KEYS = ["outline", "stage", "npc", "monster", "map", "clue"]
@@ -105,10 +106,12 @@ def build_director_prompt(workspace_context: dict) -> str:
         prefix = load_prompt("_shared", "style_prefix", style_prompt=style)
         system_prompt = f"{prefix}\n\n{system_prompt}"
     asset_types_section = _build_asset_types_section(workspace_context)
+    chunk_types_section = build_chunk_types_section()
     snapshot = _build_workspace_snapshot(workspace_context)
     parts = [system_prompt]
     if asset_types_section:
         parts.append(asset_types_section)
+    parts.append(chunk_types_section)
     parts.append(snapshot)
     return "\n\n".join(parts)
 

@@ -28,12 +28,11 @@
 
 ## `suggested_chunk_type` 枚举（英文，与解析器一致）
 
-- `rule`：规则、技能、检定、战斗等**可执行规则**类正文
-- `example`：范例、战报、示范
-- `lore`：设定、历史、叙事（非表为主）
-- `table`：以**表**为主的装备/技能/数据/生物表等
-- `procedure`：分步流程、轮次、操作说明
-- `flavor`：以氛围/引文为主、**不承担规则**的短文
+- `rule`：规则、技能、检定、战斗等**可执行规则**类正文，含分步流程、操作说明
+- `entity`：怪物/装备/物品/NPC 数值数据块，以**结构化数值数据**为主的块（含数据表、生物属性表、装备清单）
+- `lore`：世界设定、历史叙述、背景故事、氛围文字等**叙述性**内容（含范例说明、引文）
+- `adventure`：模组场景描述、遭遇设定、剧情说明、GM 指引、跑团日志等**剧情类**内容
+- `appendix`：索引、术语表、版权页、参考文献、作者前言等**导航或辅助性**内容
 - `null`：无法从目录判断，或总览/纯导航节
 
 ## 输出示例
@@ -42,7 +41,8 @@
   "is_toc": true,
   "sections": [
     { "title": "第1章 基础规则", "page_from": 1, "suggested_chunk_type": "rule" },
-    { "title": "第2章 角色成长", "page_from": 45, "suggested_chunk_type": "rule" },
-    { "title": "附录A 数据表", "page_from": 200, "suggested_chunk_type": "table" }
+    { "title": "第2章 怪物图鉴", "page_from": 45, "suggested_chunk_type": "entity" },
+    { "title": "第3章 冒险场景", "page_from": 120, "suggested_chunk_type": "adventure" },
+    { "title": "附录A 术语表", "page_from": 200, "suggested_chunk_type": "appendix" }
   ]
 }

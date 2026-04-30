@@ -388,8 +388,9 @@ def get_asset_type_spec(type_key: str) -> str:
 @tool
 def search_knowledge(query: str = "", chunk_types: str = "") -> str:
     """检索工作空间关联的知识库（RAG）。返回相关段落列表（JSON），含文档名和页码。
-    chunk_types：可选，逗号分隔的类型过滤（rule/example/lore/table/procedure/flavor）。
-    例如："rule,table" 只检索规则说明和数值表格；留空则不过滤。"""
+    chunk_types：可选，逗号分隔的类型过滤（rule/entity/lore/adventure/appendix）。
+    例如："rule,entity" 只检索规则说明和数值实体数据；留空则不过滤。
+    chunk_type 为 none 的内容作为兜底自动保留。"""
     if not query or not query.strip():
         return json.dumps({"error": "query 参数不能为空，请提供具体的搜索关键词。"}, ensure_ascii=False)
     library_ids = _workspace_context.get("library_ids", [])
@@ -1070,7 +1071,9 @@ def check_consistency(draft_content_md: str = "", focus: str = "") -> str:
 
 @tool
 def consult_rules(question: str, review_mode: bool = False) -> str:
-    """向规则顾问 Agent 提问，检索知识库并返回带引用来源的建议。
+    """向规则顾问 Agent 提问，检索知识库中的规则/实体内容并返回带引用来源的建议。
+    自动过滤 chunk 类型为 rule（规则系统）和 entity（游戏实体）的内容；
+    chunk_type 为 none 的 chunk 作为兜底候选自动保留。
     question：规则问题或待审查内容描述。
     review_mode：True 时以结构化审查模式运行（含 severity/suggestion_patch 字段）。
     返回 {"suggestions": [...], "summary": str} JSON。"""
@@ -1112,6 +1115,53 @@ def consult_rules(question: str, review_mode: bool = False) -> str:
     if isinstance(result, dict):
         result["_trace"] = trace
     return json.dumps(result, ensure_ascii=False)
+
+
+@tool
+def consult_lore(question: str) -> str:
+    """向知识库检索世界观背景、剧情场景等叙事类内容，返回带引用来源的相关段落。
+    自动过滤 chunk 类型为 lore（世界观背景）和 adventure（冒险剧情）的内容；
+    chunk_type 为 none 的 chunk 作为兜底候选自动保留。
+    question：关于世界观、背景历史、场景描述、模组剧情等的查询。
+    返回 {"results": [...], "summary": str} JSON，每条含文档名、页码和内容摘要。"""
+    import time
+
+    t0 = time.monotonic()
+    library_ids = _workspace_context.get("library_ids", [])
+    if not library_ids or _db is None:
+        return json.dumps({
+            "results": [],
+            "message": "当前工作空间未绑定任何知识库。若需要世界观参考，请先在「知识库」页面导入相关资料并绑定到此工作空间。",
+        }, ensure_ascii=False)
+
+    try:
+        from app.knowledge.retriever import retrieve_knowledge
+        from app.knowledge.types import LORE_CHUNK_TYPES
+        knowledge_context = retrieve_knowledge(
+            query=question,
+            library_ids=library_ids,
+            db=_db,
+            top_k=_get_knowledge_top_k(default=6),
+            type_filter=LORE_CHUNK_TYPES,
+            workspace_path=_workspace_context.get("workspace_path"),
+        )
+        elapsed = int((time.monotonic() - t0) * 1000)
+        formatted = [
+            {
+                "document_name": r.get("document_name", r.get("document_filename", "")),
+                "page_from": r.get("page_from"),
+                "page_to": r.get("page_to"),
+                "chunk_type": r.get("chunk_type"),
+                "content": r.get("content", "")[:500],
+            }
+            for r in knowledge_context
+        ]
+        summary = f"检索到 {len(formatted)} 条叙事/背景类内容，耗时 {elapsed}ms。"
+        if not formatted:
+            summary = "知识库中未找到相关世界观或剧情内容，建议尝试不同关键词。"
+        return json.dumps({"results": formatted, "summary": summary}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"results": [], "error": str(e)}, ensure_ascii=False)
 
 
 @tool
@@ -1296,6 +1346,7 @@ ALL_TOOLS = [
     move_asset,
     check_consistency,
     consult_rules,
+    consult_lore,
     create_skill,
     web_search,
     ask_user,
@@ -1313,4 +1364,5 @@ EXPLORE_TOOLS = [
     read_config,
     web_search,
     consult_rules,
+    consult_lore,
 ]

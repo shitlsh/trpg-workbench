@@ -85,8 +85,10 @@ def retrieve_knowledge(
                 seen_chunk_ids.add(cid)
                 doc_info = doc_map.get(hit.get("document_id", ""), {})
                 chunk_type = hit.get("chunk_type") or None
-                # Apply type filter: chunks with no type are conservatively included
-                if type_filter and chunk_type and chunk_type not in type_filter:
+                # Apply type filter: chunks with no type OR type=="none" are
+                # conservatively included as fallback candidates.
+                effective_type = chunk_type if chunk_type and chunk_type != "none" else None
+                if type_filter and effective_type and effective_type not in type_filter:
                     continue
                 all_results.append({
                     "chunk_id": cid,

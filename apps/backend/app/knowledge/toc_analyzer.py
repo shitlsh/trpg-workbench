@@ -37,6 +37,7 @@ from app.agents.model_adapter import (
 _log = logging.getLogger(__name__)
 from app.prompts import load_prompt
 from app.knowledge.toc_extractor import preprocess_toc_text_for_llm
+from app.knowledge.types import ChunkType
 from app.services.llm_defaults import task_temperature
 
 # Wall-clock cap for one `complete_text_once` in TOC flows (PDF analyze-toc, each CHM batch).
@@ -287,7 +288,7 @@ def parse_pdf_toc_response(raw: str) -> TocAnalysisResult:
     if not isinstance(raw_sections, list):
         raise RuntimeError(f"Unexpected LLM response structure: {raw[:300]}")
 
-    valid_chunk_types = {"rule", "example", "lore", "table", "procedure", "flavor"}
+    valid_chunk_types = {t.value for t in ChunkType} - {ChunkType.NONE.value}
     sections: list[TocSection] = []
 
     for i, s in enumerate(raw_sections):
@@ -674,7 +675,7 @@ async def iter_assign_chm_section_chunk_types(
 
     effective_model_name = model_name or ""
     system_prompt = load_prompt("toc_analyzer", "chm_classify_system")
-    valid = {"rule", "example", "lore", "table", "procedure", "flavor"}
+    valid = {t.value for t in ChunkType} - {ChunkType.NONE.value}
     n = len(sections)
     anchor: dict[int, str | None] = {}
     num_batches = (len(to_label_idx) + CHM_CLASSIFY_BATCH - 1) // CHM_CLASSIFY_BATCH
