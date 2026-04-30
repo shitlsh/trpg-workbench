@@ -249,15 +249,16 @@ async def _chat_openai_like(
             call_id = item["id"] or f"call_{idx}"
             name = item["name"] or ""
             raw_args = item["arguments"] or "{}"
-            if not item["started"]:
-                yield {
-                    "event": "tool_call_start",
-                    "data": {
-                        "id": call_id,
-                        "name": name,
-                        "arguments": json.dumps(_best_effort_json_args(raw_args), ensure_ascii=False),
-                    },
-                }
+            # Always re-emit after streaming completes — the early emission during
+            # streaming (line 228) may have been sent before arguments arrived.
+            yield {
+                "event": "tool_call_start",
+                "data": {
+                    "id": call_id,
+                    "name": name,
+                    "arguments": json.dumps(_best_effort_json_args(raw_args), ensure_ascii=False),
+                },
+            }
             tool_calls.append(
                 {
                     "id": call_id,

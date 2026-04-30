@@ -354,13 +354,20 @@ async def send_message(
                     yield _sse("thinking_delta", data)
 
                 elif event_type == "tool_call_start":
-                    tool_calls_emitted.append({
-                        "id": data.get("id", ""),
-                        "name": data.get("name", ""),
-                        "arguments": data.get("arguments", "{}"),
-                        "status": "running",
-                        "result_summary": None,
-                    })
+                    tc_id = data.get("id", "")
+                    existing = next((tc for tc in tool_calls_emitted if tc["id"] == tc_id), None)
+                    if existing:
+                        # Update — later emission may carry complete arguments
+                        existing["name"] = data.get("name") or existing["name"]
+                        existing["arguments"] = data.get("arguments") or existing["arguments"]
+                    else:
+                        tool_calls_emitted.append({
+                            "id": tc_id,
+                            "name": data.get("name", ""),
+                            "arguments": data.get("arguments", "{}"),
+                            "status": "running",
+                            "result_summary": None,
+                        })
                     yield _sse("tool_call_start", data)
 
                 elif event_type == "tool_call_result":
