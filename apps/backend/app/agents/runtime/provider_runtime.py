@@ -224,18 +224,6 @@ async def _chat_openai_like(
                         item["name"] = fn_name
                     if isinstance(fn_args, str) and fn_args:
                         item["arguments"] += fn_args
-                if not item["started"] and (item["id"] or item["name"]):
-                    yield {
-                        "event": "tool_call_start",
-                        "data": {
-                            "id": item["id"] or f"call_{idx}",
-                            "name": item["name"] or "",
-                            "arguments": json.dumps(
-                                _best_effort_json_args(item["arguments"]), ensure_ascii=False
-                            ),
-                        },
-                    }
-                    item["started"] = True
 
             fr = getattr(ch, "finish_reason", None)
             if isinstance(fr, str) and fr:
