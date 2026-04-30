@@ -39,12 +39,12 @@ import { HelpButton } from "../components/HelpButton";
 
 
 const CHUNK_TYPES: { value: ChunkType; label: string; description: string }[] = [
-  { value: "rule", label: "规则说明", description: "规则机制、技能定义、判定方式" },
-  { value: "table", label: "数值表格", description: "技能列表、装备清单、数值表" },
-  { value: "procedure", label: "程序步骤", description: "战斗流程、行动顺序等程序性内容" },
-  { value: "lore", label: "世界设定", description: "背景叙述、世界观资料" },
-  { value: "example", label: "举例说明", description: "规则示例、示范场景" },
-  { value: "flavor", label: "氛围文字", description: "纯叙事文字，无规则信息" },
+  { value: "rule",      label: "规则系统",   description: "技能定义、检定机制、战斗规则、操作流程等可执行规则正文" },
+  { value: "entity",    label: "游戏实体",   description: "怪物/装备/物品/NPC 数值数据块，以结构化数值为主" },
+  { value: "lore",      label: "世界观背景", description: "世界设定、历史叙述、背景故事、氛围文字等叙述性内容" },
+  { value: "adventure", label: "冒险剧情",   description: "模组场景、遭遇设定、剧情描述、GM 指引、跑团日志" },
+  { value: "appendix",  label: "辅助资料",   description: "索引、术语表、版权页、参考文献等导航或辅助性内容" },
+  { value: "none",      label: "无分类",     description: "目录页、封面等无法明确归类的内容（检索时作为兜底保留）" },
 ];
 
 const STATUS_LABEL: Record<string, string> = {

@@ -18,6 +18,7 @@ const TOOL_LABELS: Record<string, string> = {
   move_asset: "移动/重命名资产",
   check_consistency: "一致性检查",
   consult_rules: "规则咨询",
+  consult_lore: "世界观检索",
   create_skill: "新建 Skill",
   web_search: "网络搜索",
   ask_user: "向用户提问",
@@ -156,7 +157,7 @@ function argsSummary(name: string, args: Record<string, unknown>): string | null
     const q = args.query as string;
     return q ? `"${q}"` : null;
   }
-  if (name === "consult_rules") {
+  if (name === "consult_rules" || name === "consult_lore") {
     const q = (args.question ?? args.query) as string;
     return q ? `"${q}"` : null;
   }
@@ -570,8 +571,46 @@ function ConsultRulesView({ raw }: { raw: string }) {
   );
 }
 
-function ReadAssetResultView({ raw }: { raw: string }) {
+function ConsultLoreView({ raw }: { raw: string }) {
+  let results: Array<{ content?: string; document_name?: string; page_from?: number; page_to?: number; chunk_type?: string }> = [];
+  let summary = "";
+  let message = "";
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    results = (data.results ?? []) as typeof results;
+    summary = (data.summary as string) ?? "";
+    message = (data.message as string) ?? "";
+  } catch {}
+
   return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {summary && (
+        <div style={{ fontSize: 11, color: "var(--text)", marginBottom: 6, fontWeight: 500, lineHeight: 1.5 }}>{summary}</div>
+      )}
+      {message && <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", marginBottom: 4 }}>{message}</div>}
+      {results.length === 0 && !message && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>未找到相关世界观或剧情内容</div>
+      )}
+      {results.map((r, i) => (
+        <div key={i} style={{
+          marginBottom: 6, padding: "4px 6px",
+          background: "var(--bg)", borderRadius: 3,
+          border: "1px solid var(--border)",
+          fontSize: 10,
+        }}>
+          <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>
+            {r.document_name} · p{r.page_from}{r.page_to && r.page_to !== r.page_from ? `–${r.page_to}` : ""}
+            {r.chunk_type && <span style={{ marginLeft: 4, opacity: 0.6 }}>[{r.chunk_type}]</span>}
+          </div>
+          <div style={{ color: "var(--text)", lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 120, overflowY: "auto" }}>{r.content ?? ""}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReadAssetResultView({ raw }: { raw: string }) {  return (
     <div style={{ marginBottom: 6 }}>
       <div style={sectionHeaderStyle}>输出</div>
       <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
@@ -708,6 +747,8 @@ function ToolOutputView({ name, resultSummary, args, consistencyReport }: {
       return <WebSearchResultView raw={resultSummary} />;
     case "consult_rules":
       return <ConsultRulesView raw={resultSummary} />;
+    case "consult_lore":
+      return <ConsultLoreView raw={resultSummary} />;
     case "read_asset":
     case "read_asset_section":
       return <ReadAssetResultView raw={resultSummary} />;
@@ -782,7 +823,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   }
 
   const inlineArgsSummary = argsSummary(toolCall.name, args);
-  const knowledgeSummary = (toolCall.name === "search_knowledge" || toolCall.name === "consult_rules") && toolCall.result_summary
+  const knowledgeSummary = (toolCall.name === "search_knowledge" || toolCall.name === "consult_rules" || toolCall.name === "consult_lore") && toolCall.result_summary
     ? knowledgeResultSummary(toolCall.result_summary)
     : null;
   const genericSummary = !consistencyReport && !knowledgeSummary
