@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, AsyncIterator
 
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
@@ -49,6 +49,10 @@ def _normalize_messages(messages: list[dict], role_map: dict[str, str]) -> list[
             rc = m.get("reasoning_content")
             if isinstance(rc, str) and rc.strip():
                 item["reasoning_content"] = rc
+            # Preserve OpenAI-format tool_calls so multi-turn history stays valid.
+            tool_calls = m.get("tool_calls")
+            if tool_calls:
+                item["tool_calls"] = tool_calls
         if role == "tool":
             item["tool_call_id"] = m.get("tool_call_id", "")
             item["name"] = m.get("name") or ""
@@ -110,13 +114,6 @@ def _extract_trace_lines(raw: str) -> list[str]:
     return out
 
 
-def _iter_text_chunks(text: str, size: int = 48):
-    if not text:
-        return
-    for i in range(0, len(text), size):
-        yield text[i : i + size]
-
-
 def _delta_text_content(delta: Any) -> str:
     content = getattr(delta, "content", None)
     if isinstance(content, str):
@@ -136,6 +133,65 @@ def _delta_text_content(delta: Any) -> str:
                     parts.append(t)
         return "".join(parts)
     return ""
+
+
+async def _execute_tool_call(
+    tool_map: dict[str, Any],
+    name: str,
+    args: dict[str, Any],
+    call_id: str,
+) -> AsyncIterator[dict]:
+    """Execute a single tool call and yield trace/result SSE events.
+
+    Shared by all three provider backends to eliminate duplicated logic.
+    Yields ``tool_trace`` events during execution then a final
+    ``tool_call_result`` event.  The caller can read the result string from
+    that last event's ``data["summary"]``.
+    """
+    emitted_trace_lines: list[str] = []
+    fn = tool_map.get(name)
+    if fn is None:
+        result = json.dumps({"success": False, "error": f"Unknown tool: {name}"}, ensure_ascii=False)
+        success = False
+    else:
+        loop = asyncio.get_running_loop()
+        tool_task, trace_q = _start_tool_call(fn, args, call_id, loop)
+        # Drain trace queue while the task is running.
+        while True:
+            if tool_task.done():
+                break
+            try:
+                line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
+            except asyncio.TimeoutError:
+                continue
+            emitted_trace_lines.append(str(line))
+            yield {"event": "tool_trace", "data": {"id": call_id, "delta": str(line)}}
+        # Flush any remaining lines that arrived before we checked done().
+        while True:
+            try:
+                line = trace_q.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            emitted_trace_lines.append(str(line))
+            yield {"event": "tool_trace", "data": {"id": call_id, "delta": str(line)}}
+        try:
+            raw = await tool_task
+            result = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
+            success = True
+        except Exception as exc:
+            if exc.__class__.__name__ == "AgentQuestionInterrupt":
+                raise
+            result = f"Tool execution failed: {exc}"
+            success = False
+
+    # Backward-compatible fallback: emit any _trace lines the tool embedded in
+    # its result JSON that weren't streamed live.
+    trace_lines = _extract_trace_lines(result)
+    if trace_lines and len(trace_lines) > len(emitted_trace_lines):
+        for line in trace_lines[len(emitted_trace_lines) :]:
+            yield {"event": "tool_trace", "data": {"id": call_id, "delta": line}}
+
+    yield {"event": "tool_call_result", "data": {"id": call_id, "success": success, "summary": result}}
 
 
 async def _chat_openai_like(
@@ -180,7 +236,6 @@ async def _chat_openai_like(
         text_parts: list[str] = []
         reasoning_parts: list[str] = []
         tool_acc: dict[int, dict[str, Any]] = {}
-        finish_reason: str | None = None
 
         async for chunk in stream:
             choices = getattr(chunk, "choices", None) or []
@@ -204,15 +259,7 @@ async def _chat_openai_like(
             d_tool_calls = getattr(delta, "tool_calls", None) or []
             for tc in d_tool_calls:
                 idx = int(getattr(tc, "index", 0) or 0)
-                item = tool_acc.setdefault(
-                    idx,
-                    {
-                        "id": "",
-                        "name": "",
-                        "arguments": "",
-                        "started": False,
-                    },
-                )
+                item = tool_acc.setdefault(idx, {"id": "", "name": "", "arguments": ""})
                 tc_id = getattr(tc, "id", None)
                 if isinstance(tc_id, str) and tc_id:
                     item["id"] = tc_id
@@ -225,10 +272,6 @@ async def _chat_openai_like(
                     if isinstance(fn_args, str) and fn_args:
                         item["arguments"] += fn_args
 
-            fr = getattr(ch, "finish_reason", None)
-            if isinstance(fr, str) and fr:
-                finish_reason = fr
-
         text = "".join(text_parts)
         reasoning_content = "".join(reasoning_parts)
         tool_calls: list[dict[str, Any]] = []
@@ -237,8 +280,6 @@ async def _chat_openai_like(
             call_id = item["id"] or f"call_{idx}"
             name = item["name"] or ""
             raw_args = item["arguments"] or "{}"
-            # Always re-emit after streaming completes — the early emission during
-            # streaming (line 228) may have been sent before arguments arrived.
             yield {
                 "event": "tool_call_start",
                 "data": {
@@ -247,16 +288,7 @@ async def _chat_openai_like(
                     "arguments": json.dumps(_best_effort_json_args(raw_args), ensure_ascii=False),
                 },
             }
-            tool_calls.append(
-                {
-                    "id": call_id,
-                    "type": "function",
-                    "function": {"name": name, "arguments": raw_args},
-                }
-            )
-
-        if not tool_calls and finish_reason != "tool_calls":
-            break
+            tool_calls.append({"id": call_id, "type": "function", "function": {"name": name, "arguments": raw_args}})
 
         if not tool_calls:
             break
@@ -268,10 +300,7 @@ async def _chat_openai_like(
                 {
                     "id": tc["id"],
                     "type": "function",
-                    "function": {
-                        "name": tc["function"]["name"],
-                        "arguments": tc["function"]["arguments"] or "{}",
-                    },
+                    "function": {"name": tc["function"]["name"], "arguments": tc["function"]["arguments"] or "{}"},
                 }
                 for tc in tool_calls
             ],
@@ -285,56 +314,12 @@ async def _chat_openai_like(
             raw_args = tc["function"]["arguments"] or "{}"
             args = _best_effort_json_args(raw_args)
             tc_id = tc["id"] or ""
-            emitted_trace_lines: list[str] = []
-            fn = tool_map.get(name)
-            if fn is None:
-                result = json.dumps({"success": False, "error": f"Unknown tool: {name}"}, ensure_ascii=False)
-                success = False
-            else:
-                loop = asyncio.get_running_loop()
-                tool_task, trace_q = _start_tool_call(fn, args, tc_id, loop)
-                while True:
-                    if tool_task.done():
-                        break
-                    try:
-                        line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
-                    except asyncio.TimeoutError:
-                        continue
-                    emitted_trace_lines.append(str(line))
-                    yield {
-                        "event": "tool_trace",
-                        "data": {"id": tc_id, "delta": str(line)},
-                    }
-                while True:
-                    try:
-                        line = trace_q.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
-                    emitted_trace_lines.append(str(line))
-                    yield {
-                        "event": "tool_trace",
-                        "data": {"id": tc_id, "delta": str(line)},
-                    }
-                try:
-                    raw = await tool_task
-                    result = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
-                    success = True
-                except Exception as exc:
-                    if exc.__class__.__name__ == "AgentQuestionInterrupt":
-                        raise
-                    result = f"Tool execution failed: {exc}"
-                    success = False
+            result: str = ""
+            async for evt in _execute_tool_call(tool_map, name, args, tc_id):
+                yield evt
+                if evt["event"] == "tool_call_result":
+                    result = evt["data"]["summary"]
             messages.append({"role": "tool", "tool_call_id": tc_id, "name": name, "content": result})
-            trace_lines = _extract_trace_lines(result)
-            if trace_lines and len(trace_lines) > len(emitted_trace_lines):
-                # Backward-compatible fallback for tools that only return final _trace.
-                # Emit missing tail as delta lines (incremental UI updates).
-                for line in trace_lines[len(emitted_trace_lines) :]:
-                    yield {"event": "tool_trace", "data": {"id": tc_id, "delta": line}}
-            yield {
-                "event": "tool_call_result",
-                "data": {"id": tc_id, "success": success, "summary": result},
-            }
 
 
 def _to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
@@ -446,54 +431,12 @@ async def _chat_anthropic(req: RuntimeRequest):
                     "arguments": json.dumps(args, ensure_ascii=False),
                 },
             }
-            emitted_trace_lines: list[str] = []
-            fn = tool_map.get(tu.name or "")
-            if fn is None:
-                result = json.dumps({"success": False, "error": f"Unknown tool: {tu.name}"}, ensure_ascii=False)
-                success = False
-            else:
-                loop = asyncio.get_running_loop()
-                tool_task, trace_q = _start_tool_call(fn, args, tu.id or "", loop)
-                while True:
-                    if tool_task.done():
-                        break
-                    try:
-                        line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
-                    except asyncio.TimeoutError:
-                        continue
-                    emitted_trace_lines.append(str(line))
-                    yield {
-                        "event": "tool_trace",
-                        "data": {"id": tu.id or "", "delta": str(line)},
-                    }
-                while True:
-                    try:
-                        line = trace_q.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
-                    emitted_trace_lines.append(str(line))
-                    yield {
-                        "event": "tool_trace",
-                        "data": {"id": tu.id or "", "delta": str(line)},
-                    }
-                try:
-                    raw = await tool_task
-                    result = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
-                    success = True
-                except Exception as exc:
-                    if exc.__class__.__name__ == "AgentQuestionInterrupt":
-                        raise
-                    result = f"Tool execution failed: {exc}"
-                    success = False
+            result: str = ""
+            async for evt in _execute_tool_call(tool_map, tu.name or "", args, tu.id or ""):
+                yield evt
+                if evt["event"] == "tool_call_result":
+                    result = evt["data"]["summary"]
             messages.append({"role": "tool", "tool_call_id": tu.id, "name": tu.name, "content": result})
-            trace_lines = _extract_trace_lines(result)
-            if trace_lines and len(trace_lines) > len(emitted_trace_lines):
-                for line in trace_lines[len(emitted_trace_lines) :]:
-                    yield {"event": "tool_trace", "data": {"id": tu.id or "", "delta": line}}
-            yield {
-                "event": "tool_call_result",
-                "data": {"id": tu.id or "", "success": success, "summary": result},
-            }
 
 
 def _to_gemini_contents(messages: list[dict]) -> list[Any]:
@@ -515,15 +458,49 @@ def _to_gemini_contents(messages: list[dict]) -> list[Any]:
         if role in ("user",):
             out.append(types.Content(role="user", parts=[types.Part(text=content or "")]))
         elif role in ("assistant", "model"):
-            # assistant messages may carry tool_call blocks in list form (Anthropic
-            # style); for Gemini history we only need the text.
+            # Rebuild FunctionCall parts so Gemini history stays accurate.
+            # Handles both OpenAI-style (tool_calls field) and Anthropic-style
+            # (content list with tool_use blocks).
+            model_parts: list[Any] = []
             if isinstance(content, list):
-                text = " ".join(
-                    b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
-                )
+                # Anthropic-style content list with text/tool_use blocks
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text" and block.get("text"):
+                        model_parts.append(types.Part(text=block["text"]))
+                    elif block.get("type") == "tool_use":
+                        model_parts.append(
+                            types.Part(
+                                function_call=types.FunctionCall(
+                                    name=block.get("name") or "",
+                                    args=block.get("input") or {},
+                                )
+                            )
+                        )
             else:
-                text = content or ""
-            out.append(types.Content(role="model", parts=[types.Part(text=text)]))
+                if content:
+                    model_parts.append(types.Part(text=content))
+                # OpenAI-style tool_calls field
+                for tc in m.get("tool_calls") or []:
+                    if not isinstance(tc, dict):
+                        continue
+                    fn_info = tc.get("function") or {}
+                    fn_name = fn_info.get("name") or ""
+                    fn_args_raw = fn_info.get("arguments") or "{}"
+                    try:
+                        fn_args = json.loads(fn_args_raw) if isinstance(fn_args_raw, str) else fn_args_raw
+                    except Exception:
+                        fn_args = {}
+                    if fn_name:
+                        model_parts.append(
+                            types.Part(
+                                function_call=types.FunctionCall(name=fn_name, args=fn_args)
+                            )
+                        )
+            if not model_parts:
+                model_parts = [types.Part(text="")]
+            out.append(types.Content(role="model", parts=model_parts))
         elif role == "tool":
             # Gemini expects function responses in a user Content.
             # Merge consecutive tool results (parallel calls) into one Content.
@@ -560,17 +537,20 @@ async def _chat_google(req: RuntimeRequest):
     client = genai.Client(api_key=api_key)
     tool_map = {t.__name__: t for t in req.tools}
 
-    # Build Gemini FunctionDeclaration tool specs
+    # Build Gemini FunctionDeclaration tool specs.
+    # Use parameters_json_schema (accepts raw dict) instead of parameters (requires Schema object).
+    # Also strip additionalProperties which is not supported by Gemini schema validation.
     gemini_tools: list[Any] = []
     if req.tools:
         decls = []
         for spec in build_openai_tool_specs(req.tools):
             fn = spec["function"]
+            raw_params: dict[str, Any] = {k: v for k, v in fn["parameters"].items() if k != "additionalProperties"}
             decls.append(
                 types.FunctionDeclaration(
                     name=fn["name"],
                     description=fn["description"],
-                    parameters=fn["parameters"],
+                    parameters_json_schema=raw_params,
                 )
             )
         gemini_tools = [types.Tool(function_declarations=decls)]
@@ -595,13 +575,26 @@ async def _chat_google(req: RuntimeRequest):
             config=config,
         ):
             last_response = chunk
-            # Stream text deltas
-            chunk_text = getattr(chunk, "text", None)
-            if chunk_text:
-                text_parts.append(chunk_text)
-                yield {"event": "text_delta", "data": {"content": chunk_text}}
+            # Stream text and thought deltas by inspecting individual parts.
+            # chunk.text aggregates all non-thought text; we inspect parts to
+            # distinguish thought (part.thought == True) from regular text.
+            candidates = getattr(chunk, "candidates", None) or []
+            for cand in candidates:
+                cand_content = getattr(cand, "content", None)
+                if cand_content is None:
+                    continue
+                for part in getattr(cand_content, "parts", None) or []:
+                    part_text = getattr(part, "text", None)
+                    if not part_text:
+                        continue
+                    is_thought = getattr(part, "thought", False)
+                    if is_thought:
+                        yield {"event": "thinking_delta", "data": {"content": part_text}}
+                    else:
+                        text_parts.append(part_text)
+                        yield {"event": "text_delta", "data": {"content": part_text}}
 
-        # Extract function_call parts from the final response candidates
+        # Extract function_call parts from the final response candidates.
         if last_response is not None:
             candidates = getattr(last_response, "candidates", None) or []
             for cand in candidates:
@@ -616,7 +609,7 @@ async def _chat_google(req: RuntimeRequest):
         if not function_calls:
             break
 
-        # Append model turn (text + function_calls) to contents
+        # Append model turn (text + function_calls) to contents.
         model_parts: list[Any] = []
         joined_text = "".join(text_parts)
         if joined_text:
@@ -632,67 +625,41 @@ async def _chat_google(req: RuntimeRequest):
             )
         contents.append(types.Content(role="model", parts=model_parts))
 
-        # Execute tools and collect results into a single user Content
+        # Execute tools and collect results into a single user Content.
+        # Use an index-prefixed call_id to disambiguate parallel calls to the
+        # same function (Gemini has no native call-id concept).
         result_parts: list[Any] = []
-        for fc in function_calls:
+        for i, fc in enumerate(function_calls):
             name = getattr(fc, "name", "") or ""
             args = dict(getattr(fc, "args", {}) or {})
+            call_id = f"{name}_{i}" if len(function_calls) > 1 else name
             yield {
                 "event": "tool_call_start",
                 "data": {
-                    "id": name,
+                    "id": call_id,
                     "name": name,
                     "arguments": json.dumps(args, ensure_ascii=False),
                 },
             }
-            fn = tool_map.get(name)
-            if fn is None:
-                resp_val: Any = {"success": False, "error": f"Unknown tool: {name}"}
-                success = False
-                result = json.dumps(resp_val, ensure_ascii=False)
-            else:
-                try:
-                    loop = asyncio.get_running_loop()
-                    tool_task, trace_q = _start_tool_call(fn, args, name, loop)
-                    while True:
-                        if tool_task.done():
-                            break
-                        try:
-                            line = await asyncio.wait_for(trace_q.get(), timeout=0.12)
-                        except asyncio.TimeoutError:
-                            continue
-                        yield {"event": "tool_trace", "data": {"id": name, "delta": str(line)}}
-                    while True:
-                        try:
-                            line = trace_q.get_nowait()
-                        except asyncio.QueueEmpty:
-                            break
-                        yield {"event": "tool_trace", "data": {"id": name, "delta": str(line)}}
-                    raw = await tool_task
-                    result = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
-                    success = True
+            resp_val: Any = None
+            async for evt in _execute_tool_call(tool_map, name, args, call_id):
+                yield evt
+                if evt["event"] == "tool_call_result":
+                    raw_result = evt["data"]["summary"]
                     try:
-                        resp_val = json.loads(result)
+                        resp_val = json.loads(raw_result)
                     except Exception:
-                        resp_val = {"result": result}
-                except Exception as exc:
-                    if exc.__class__.__name__ == "AgentQuestionInterrupt":
-                        raise
-                    result = f"Tool execution failed: {exc}"
-                    resp_val = {"error": result}
-                    success = False
+                        resp_val = {"result": raw_result}
 
+            if resp_val is None:
+                resp_val = {"error": "no result"}
             result_parts.append(
                 types.Part(
                     function_response=types.FunctionResponse(name=name, response=resp_val)
                 )
             )
-            yield {
-                "event": "tool_call_result",
-                "data": {"id": name, "success": success, "summary": result},
-            }
 
-        # All tool results go into a single user Content (Gemini requirement)
+        # All tool results go into a single user Content (Gemini requirement).
         contents.append(types.Content(role="user", parts=result_parts))
 
 
@@ -720,4 +687,3 @@ async def run_provider_runtime(req: RuntimeRequest):
         return
 
     raise RuntimeError(f"Unsupported provider_type: {provider}")
-
