@@ -21,6 +21,22 @@ const STATUS_COLORS: Record<string, string> = {
   final:  "#52c97e",
 };
 
+const CN_NUM: Record<string, number> = {
+  一: 1, 二: 2, 三: 3, 四: 4, 五: 5,
+  六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+  十一: 11, 十二: 12, 十三: 13, 十四: 14, 十五: 15,
+  十六: 16, 十七: 17, 十八: 18, 十九: 19, 二十: 20,
+};
+
+function extractActNumber(name: string): number {
+  // Match "第N幕" where N is Chinese or Arabic digits
+  const cnMatch = name.match(/^第([一二三四五六七八九十]+)\s*幕/);
+  if (cnMatch) return CN_NUM[cnMatch[1]] ?? 999;
+  const arMatch = name.match(/^第(\d+)\s*幕/);
+  if (arMatch) return parseInt(arMatch[1], 10);
+  return 999; // unrecognized format → sort last
+}
+
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -225,8 +241,13 @@ export function AssetTree({ workspaceId, ruleSetId }: { workspaceId: string; rul
   const byType: Record<string, Asset[]> = {};
   // Builtin groups
   for (const t of builtinKeys) {
-    const items = filtered.filter((a) => a.type === t);
-    if (items.length > 0) byType[t] = items;
+    let items = filtered.filter((a) => a.type === t);
+    if (items.length === 0) continue;
+    // Stage assets: sort by act number extracted from name prefix "第N幕"
+    if (t === "stage") {
+      items = [...items].sort((a, b) => extractActNumber(a.name) - extractActNumber(b.name));
+    }
+    byType[t] = items;
   }
   // Custom type groups
   for (const t of customKeys) {
