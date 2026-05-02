@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Asset, AssetWithContent, AssetStatus, CustomAssetTypeConfig } from "@trpg-workbench/shared-schema";
+import type { Asset, AssetWithContent, AssetStatus, CustomAssetTypeConfig, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
 import { useEditorStore } from "@/stores/editorStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { apiFetch } from "@/lib/api";
@@ -22,11 +22,12 @@ export function AssetMetaPanel() {
   const tab = tabs.find((t) => t.assetId === activeTabId);
 
   // Fetch workspace config to get ruleSetId for custom type labels
-  const { data: workspaceConfig } = useQuery({
+  const { data: configResp } = useQuery<WorkspaceConfigResponse>({
     queryKey: ["workspace", activeWorkspaceId, "config"],
-    queryFn: () => apiFetch<{ rule_set?: string }>(`/workspaces/${activeWorkspaceId}/config`),
+    queryFn: () => apiFetch<WorkspaceConfigResponse>(`/workspaces/${activeWorkspaceId}/config`),
     enabled: !!activeWorkspaceId,
   });
+  const workspaceConfig = configResp?.config;
   const { data: ruleSets = [] } = useQuery<{ id: string; name: string; slug: string }[]>({
     queryKey: ["rule-sets"],
     queryFn: () => apiFetch("/rule-sets"),
@@ -48,6 +49,7 @@ export function AssetMetaPanel() {
     activeWorkspaceId,
     tab?.asset.slug ?? null,
     allAssets,
+    tab?.asset.content_md,
   );
 
   const statusMutation = useMutation({
