@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, History, Save, RotateCcw } from "lucide-react";
-import type { AssetWithContent, AssetRevision } from "@trpg-workbench/shared-schema";
+import type { Asset, AssetWithContent, AssetRevision } from "@trpg-workbench/shared-schema";
 import { useEditorStore, EditorTab, EditorView } from "@/stores/editorStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
@@ -172,6 +172,13 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
   const { activeWorkspaceId } = useWorkspaceStore();
   const monacoTheme = theme === "dark" ? "vs-dark" : "vs";
 
+  // All workspace assets for [[slug]] wikilink resolution in preview
+  const { data: allAssets = [] } = useQuery<Asset[]>({
+    queryKey: ["assets", activeWorkspaceId],
+    queryFn: () => apiFetch<Asset[]>(`/workspaces/${activeWorkspaceId}/assets`),
+    enabled: !!activeWorkspaceId,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, string> = {
@@ -297,6 +304,12 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
             <MarkdownPreview
               content={tab.draftMd}
               assetName={tab.asset.name}
+              allAssets={allAssets}
+              onOpenAsset={(id) => {
+                apiFetch<AssetWithContent>(`/assets/${id}`).then((full) => {
+                  useEditorStore.getState().openTab(full);
+                });
+              }}
             />
           )}
         </div>

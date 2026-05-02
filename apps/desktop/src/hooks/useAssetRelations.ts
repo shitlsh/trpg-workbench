@@ -5,13 +5,14 @@
  *   outgoing(slug): slugs that the given asset references
  *   incoming(slug): slugs of assets that reference the given asset
  *
- * Data source: GET /workspaces/{id}/assets/relations
- * (scans frontmatter fields: key_npcs, key_locations, clues_available,
- *  accessible_in_stages, relationships[].target)
+ * Data sources:
+ *   1. GET /workspaces/{id}/assets/relations (frontmatter fields)
+ *   2. [[slug]] wikilinks found in currently-open asset's content_md
  */
 import { useQuery } from "@tanstack/react-query";
 import type { Asset, AssetRelationsMap } from "@trpg-workbench/shared-schema";
 import { apiFetch } from "@/lib/api";
+import { extractWikilinks } from "@/lib/wikilinks";
 
 interface AssetRef {
   slug: string;
@@ -30,12 +31,13 @@ export function useAssetRelations(
   workspaceId: string | null | undefined,
   currentSlug: string | null | undefined,
   allAssets: Asset[],
+  /** content_md of the currently-open asset, used to extract [[wikilinks]] */
+  contentMd?: string,
 ): UseAssetRelationsResult {
   const { data, isLoading } = useQuery<AssetRelationsMap>({
     queryKey: ["asset-relations", workspaceId],
     queryFn: () => apiFetch<AssetRelationsMap>(`/workspaces/${workspaceId}/assets/relations`),
     enabled: !!workspaceId,
-    // Relations don't change frequently — stale after 30s
     staleTime: 30_000,
   });
 
@@ -57,9 +59,15 @@ export function useAssetRelations(
     return { slug: asset.slug, name: asset.name, type: asset.type, id: asset.id };
   };
 
-  // Outgoing: slugs that currentSlug references
-  const outgoingSlugs = relations[currentSlug] ?? [];
-  const outgoing: AssetRef[] = outgoingSlugs
+  // Outgoing: frontmatter refs + [[wikilinks]] from content_md
+  const outgoingSlugs = new Set<string>(relations[currentSlug] ?? []);
+  if (contentMd) {
+    for (const slug of extractWikilinks(contentMd)) {
+      outgoingSlugs.add(slug);
+    }
+  }
+
+  const outgoing: AssetRef[] = Array.from(outgoingSlugs)
     .map(toRef)
     .filter((r): r is AssetRef => r !== null);
 
