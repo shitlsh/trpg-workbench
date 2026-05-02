@@ -270,6 +270,7 @@ export default function WorkspaceSettingsPage() {
   // Form state — must be declared before any hook/query that reads ruleSetName (TDZ)
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [author, setAuthor] = useState("");
   const [ruleSetName, setRuleSetName] = useState("");
   const [promptProfileName, setPromptProfileName] = useState("");
   const [defaultLlmName, setDefaultLlmName] = useState("");
@@ -329,6 +330,7 @@ export default function WorkspaceSettingsPage() {
     if (config) {
       setName(config.name ?? "");
       setDescription(config.description ?? "");
+      setAuthor(config.author ?? "");
       setRuleSetName(config.rule_set ?? "");
       setPromptProfileName(config.prompt_profile ?? "");
       setDefaultLlmName(config.models?.default_llm ?? "");
@@ -374,6 +376,7 @@ export default function WorkspaceSettingsPage() {
     configMutation.mutate({
       name: trimmedName,
       description: description.trim(),
+      author: author.trim(),
       rule_set: ruleSetName,
       prompt_profile: promptProfileName,
       models: {
@@ -427,6 +430,10 @@ export default function WorkspaceSettingsPage() {
           <label className={styles.label}>
             描述
             <textarea className={styles.textarea} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          </label>
+          <label className={styles.label}>
+            作者
+            <input className={styles.input} value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="模组作者姓名，用于 PDF 封面" />
           </label>
           <label className={styles.label}>
             规则体系

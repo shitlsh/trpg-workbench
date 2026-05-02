@@ -18,6 +18,7 @@ from app.utils.paths import config_yaml_path, init_workspace_dirs
 DEFAULT_CONFIG: dict[str, Any] = {
     "name": "",
     "description": "",
+    "author": "",  # M32: module author name, used in PDF export cover
     "created_at": "",
     "rule_set": "",
     "prompt_profile": "",  # prompt profile name within the rule set; empty = use first

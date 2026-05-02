@@ -70,6 +70,7 @@ export interface UpdateWorkspaceRequest {
 export interface WorkspaceConfig {
   name: string;
   description: string;
+  author: string; // M32: module author name, used in PDF export cover
   created_at: string;
   rule_set: string; // rule_set name
   prompt_profile: string; // prompt profile name scoped to the selected rule set (empty = use first)
