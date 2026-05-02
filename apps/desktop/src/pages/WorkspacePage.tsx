@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Workspace, RuleSet, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
@@ -8,7 +8,8 @@ import { ThreePanelLayout } from "@/components/editor/ThreePanelLayout";
 import { AssetTree } from "@/components/editor/AssetTree";
 import { EditorCenter } from "@/components/editor/EditorCenter";
 import { AgentPanel } from "@/components/agent/AgentPanel";
-import { ArrowLeft, Settings, AlertTriangle, PanelRight } from "lucide-react";
+import { ExportDialog } from "@/components/ExportDialog";
+import { ArrowLeft, Settings, AlertTriangle, PanelRight, BookDown } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 export function WorkspacePage() {
@@ -16,6 +17,7 @@ export function WorkspacePage() {
   const navigate = useNavigate();
   const { setActiveWorkspace } = useWorkspaceStore();
   const { leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed } = useEditorStore();
+  const [showExport, setShowExport] = useState(false);
 
   useEffect(() => {
     setActiveWorkspace(id ?? null);
@@ -114,6 +116,13 @@ export function WorkspacePage() {
           <PanelRight size={15} />
         </button>
         <button
+          onClick={() => setShowExport(true)}
+          style={{ background: "none", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer" }}
+          title="导出模组手册 PDF"
+        >
+          <BookDown size={15} />
+        </button>
+        <button
           onClick={() => navigate(`/workspace/${id}/settings`)}
           style={{ background: "none", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer" }}
           title="工作空间设置"
@@ -155,6 +164,10 @@ export function WorkspacePage() {
           right={<AssetTree workspaceId={workspace.id} ruleSetId={ruleSet?.id} />}
         />
       </div>
+
+      {showExport && id && (
+        <ExportDialog workspaceId={id} onClose={() => setShowExport(false)} />
+      )}
     </div>
   );
 }

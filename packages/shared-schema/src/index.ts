@@ -95,6 +95,24 @@ export interface WorkspaceConfigResponse {
   config: WorkspaceConfig;
 }
 
+// ─── M32: Export ──────────────────────────────────────────────────────────────
+
+export interface ExportDraftAsset {
+  slug: string;
+  name: string;
+  type: string;
+}
+
+export interface ExportBrokenRef {
+  source_slug: string;
+  ref_slug: string;
+}
+
+export interface ExportValidateResult {
+  draft_assets: ExportDraftAsset[];
+  broken_refs: ExportBrokenRef[];
+}
+
 // ─── M6: LLM Profiles ─────────────────────────────────────────────────────────
 
 export type LLMProviderType = "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";

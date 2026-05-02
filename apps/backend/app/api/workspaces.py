@@ -18,6 +18,7 @@ from app.services.workspace_service import (
     init_workspace, read_config, update_config, is_valid_workspace,
 )
 from app.services.sync_service import incremental_sync, rebuild_cache
+from app.services.export_service import validate_export, build_export_html
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -227,3 +228,22 @@ def rebuild_workspace_cache(workspace_id: str, db: Session = Depends(get_db)):
     ws.last_opened_at = datetime.now(timezone.utc)
     summary = rebuild_cache(ws.workspace_path, workspace_id, db)
     return summary
+
+
+# ─── A6: Export ───────────────────────────────────────────────────────────────
+
+@router.post("/{workspace_id}/export/validate")
+def export_validate(workspace_id: str, db: Session = Depends(get_db)):
+    """Return validation result: draft assets + broken slug refs."""
+    ws = _get_ws(workspace_id, db)
+    result = validate_export(ws.workspace_path)
+    return result.to_dict()
+
+
+@router.get("/{workspace_id}/export/html")
+def export_html(workspace_id: str, db: Session = Depends(get_db)):
+    """Return full HTML string for the module handbook."""
+    from fastapi.responses import HTMLResponse
+    ws = _get_ws(workspace_id, db)
+    html_content = build_export_html(ws.workspace_path)
+    return HTMLResponse(content=html_content)
