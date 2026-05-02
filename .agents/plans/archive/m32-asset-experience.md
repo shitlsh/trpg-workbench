@@ -2,7 +2,7 @@
 
 **前置条件**：无强依赖（各项功能均基于现有资产 CRUD 和文件结构，无需新能力前置）。
 
-**状态：✅ 已完成（commit 1f6882c）**
+**状态：✅ 已完成（commit 1f6882c；归档后修复 fix commit de73e23）**
 
 **目标**：修复 Stage 排序缺陷、移除遗留 content_json 技术债、在 AssetMetaPanel 中实现轻量级跨资产关系可视化、引入类 Obsidian 的双链语法与快速导航、为 config.yaml 增加 author 字段、实现模组手册 PDF 导出功能。
 
