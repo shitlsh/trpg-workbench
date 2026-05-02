@@ -3,14 +3,13 @@ import { persist } from "zustand/middleware";
 import { toast } from "sonner";
 import type { AssetWithContent } from "@trpg-workbench/shared-schema";
 
-export type EditorView = "markdown" | "json" | "diff" | "preview";
+export type EditorView = "markdown" | "diff" | "preview";
 
 export interface EditorTab {
   assetId: string;
   asset: AssetWithContent;
   /** Current in-editor content (may differ from saved) */
   draftMd: string;
-  draftJson: string;
   isDirty: boolean;
   view: EditorView;
   showHistory: boolean;
@@ -31,7 +30,7 @@ interface EditorState {
   closeTab: (assetId: string) => boolean; // returns false if dirty (caller should confirm)
   forceCloseTab: (assetId: string) => void;
   setActiveTab: (assetId: string) => void;
-  updateDraft: (assetId: string, draftMd?: string, draftJson?: string) => void;
+  updateDraft: (assetId: string, draftMd?: string) => void;
   markSaved: (assetId: string, updatedAsset: AssetWithContent) => void;
   setView: (assetId: string, view: EditorView) => void;
   toggleHistory: (assetId: string) => void;
@@ -68,7 +67,6 @@ export const useEditorStore = create<EditorState>()(
       assetId: asset.id,
       asset,
       draftMd: asset.content_md ?? "",
-      draftJson: asset.content_json ?? "{}",
       isDirty: false,
       view: "markdown",
       showHistory: false,
@@ -97,14 +95,13 @@ export const useEditorStore = create<EditorState>()(
 
   setActiveTab: (assetId) => set({ activeTabId: assetId }),
 
-  updateDraft: (assetId, draftMd, draftJson) => {
+  updateDraft: (assetId, draftMd) => {
     set((s) => ({
       tabs: s.tabs.map((t) => {
         if (t.assetId !== assetId) return t;
         const newMd = draftMd !== undefined ? draftMd : t.draftMd;
-        const newJson = draftJson !== undefined ? draftJson : t.draftJson;
-        const dirty = newMd !== t.asset.content_md || newJson !== t.asset.content_json;
-        return { ...t, draftMd: newMd, draftJson: newJson, isDirty: dirty };
+        const dirty = newMd !== t.asset.content_md;
+        return { ...t, draftMd: newMd, isDirty: dirty };
       }),
     }));
   },
@@ -117,7 +114,6 @@ export const useEditorStore = create<EditorState>()(
           ...t,
           asset: updatedAsset,
           draftMd: updatedAsset.content_md,
-          draftJson: updatedAsset.content_json,
           isDirty: false,
         };
       }),

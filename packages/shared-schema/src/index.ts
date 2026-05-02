@@ -437,7 +437,6 @@ export interface AssetRevision {
   asset_id: string;
   version: number;
   content_md: string;
-  content_json: string;
   change_summary: string;
   source_type: "agent" | "user";
   created_at: string;
@@ -445,7 +444,6 @@ export interface AssetRevision {
 
 export interface AssetWithContent extends Asset {
   content_md: string;
-  content_json: string;
   version: number;
 }
 
@@ -458,7 +456,6 @@ export interface CreateAssetRequest {
 
 export interface UpdateAssetRequest {
   content_md?: string;
-  content_json?: string;
   change_summary?: string;
   name?: string;
   status?: AssetStatus;

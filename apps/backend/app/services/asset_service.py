@@ -382,10 +382,6 @@ def get_asset_with_content(workspace_path: str | Path, file_path: Path) -> dict 
         return None
     meta = parsed["metadata"]
 
-    # Build a JSON representation from frontmatter for backward compat
-    json_data = {k: v for k, v in meta.items()
-                 if k not in ("type", "slug", "version", "created_at", "updated_at", "status")}
-
     return {
         "type": meta.get("type", ""),
         "name": meta.get("name", ""),
@@ -396,7 +392,6 @@ def get_asset_with_content(workspace_path: str | Path, file_path: Path) -> dict 
         "file_path": str(parsed["file_path"].relative_to(ws)),
         "file_hash": parsed["file_hash"],
         "content_md": parsed["body"],
-        "content_json": json.dumps(json_data, ensure_ascii=False, indent=2),
         "metadata_json": meta.get("metadata_json"),
         "created_at": meta.get("created_at", ""),
         "updated_at": meta.get("updated_at", ""),

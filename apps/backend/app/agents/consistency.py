@@ -10,7 +10,7 @@ def run_consistency_agent(
     model=None,
 ) -> dict:
     """
-    asset_summaries: list of {"type": str, "name": str, "slug": str, "content_json": str}
+    asset_summaries: list of {"type": str, "name": str, "slug": str, "content_md": str}
     Returns: ConsistencyReport dict
     """
     if model is None:

@@ -251,7 +251,6 @@ class AssetRevisionSchema(BaseModel):
 class AssetWithContentSchema(AssetSchema):
     """Asset with file content loaded from disk."""
     content_md: str = ""
-    content_json: str = "{}"
 
 
 class AssetCreate(BaseModel):
@@ -263,7 +262,6 @@ class AssetCreate(BaseModel):
 
 class AssetUpdate(BaseModel):
     content_md: str | None = None
-    content_json: str | None = None
     change_summary: str | None = None
     name: str | None = None
     status: str | None = None
@@ -315,7 +313,6 @@ class SendMessageRequest(BaseModel):
 
 class ApplyPatchRequest(BaseModel):
     content_md: str
-    content_json: str
     change_summary: str
     source_type: str = "agent"
 

@@ -59,7 +59,6 @@ def apply_patch(asset_id: str, body: ApplyPatchRequest, db: Session = Depends(ge
         "created_at": asset.created_at,
         "updated_at": asset.updated_at,
         "content_md": content.get("content_md", "") if content else "",
-        "content_json": content.get("content_json", "{}") if content else "{}",
     }
 
 
@@ -82,7 +81,7 @@ def consistency_check(workspace_id: str, db: Session = Depends(get_db)):
             "type": asset.type,
             "name": asset.name,
             "slug": asset.slug,
-            "content_json": content.get("content_json", "{}") if content else "{}",
+            "content_md": content.get("content_md", "") if content else "",
         })
 
     if not summaries:

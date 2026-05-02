@@ -174,13 +174,10 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const body: Record<string, string> = { change_summary: "用户手动编辑" };
-      if (tab.view === "markdown") body.content_md = tab.draftMd;
-      else if (tab.view === "json") body.content_json = tab.draftJson;
-      else {
-        body.content_md = tab.draftMd;
-        body.content_json = tab.draftJson;
-      }
+      const body: Record<string, string> = {
+        change_summary: "用户手动编辑",
+        content_md: tab.draftMd,
+      };
       return apiFetch<AssetWithContent>(`/assets/${tab.assetId}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -203,11 +200,10 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [tab.isDirty, tab.draftMd, tab.draftJson, tab.view]);
+  }, [tab.isDirty, tab.draftMd, tab.view]);
 
   const viewTabs: { key: EditorView; label: string }[] = [
     { key: "markdown", label: "Markdown" },
-    { key: "json",     label: "JSON" },
     { key: "diff",     label: "Diff" },
     { key: "preview",  label: "预览" },
   ];
@@ -283,18 +279,8 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
               language="markdown"
               theme={monacoTheme}
               value={tab.draftMd}
-              onChange={(v) => updateDraft(tab.assetId, v ?? "", undefined)}
+              onChange={(v) => updateDraft(tab.assetId, v ?? "")}
               options={{ wordWrap: "on", minimap: { enabled: false }, fontSize: 14, lineNumbers: "off" }}
-            />
-          )}
-          {tab.view === "json" && (
-            <Editor
-              height="100%"
-              language="json"
-              theme={monacoTheme}
-              value={tab.draftJson}
-              onChange={(v) => updateDraft(tab.assetId, undefined, v ?? "")}
-              options={{ wordWrap: "on", minimap: { enabled: false }, fontSize: 13, formatOnPaste: true }}
             />
           )}
           {tab.view === "diff" && (

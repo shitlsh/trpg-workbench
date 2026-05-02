@@ -133,7 +133,6 @@ def _build_asset_with_content(ws: WorkspaceORM, asset: AssetORM) -> dict:
             "created_at": asset.created_at,
             "updated_at": asset.updated_at,
             "content_md": "",
-            "content_json": "{}",
         }
 
     return {
@@ -151,7 +150,6 @@ def _build_asset_with_content(ws: WorkspaceORM, asset: AssetORM) -> dict:
         "created_at": asset.created_at,
         "updated_at": asset.updated_at,
         "content_md": content.get("content_md", ""),
-        "content_json": content.get("content_json", "{}"),
     }
 
 
