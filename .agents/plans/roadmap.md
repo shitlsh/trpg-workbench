@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路 **M1–M31 已完成**，下一个 milestone 待规划。
+核心功能链路 **M1–M31 已完成**，M32 资产体验增强进行中。
 
 ```
 ✅ M1 基础骨架
@@ -36,7 +36,8 @@
                                                                                                                                                                                            └── ✅ M28 原生 SDK Agent 运行时替换
                                                                                                                                                                                                   └── ✅ M29 Agent 交互质量提升
                                                                                                                                                                                                                    └── ✅ M30 资产类型系统重构
-                                                                                                                                                                                                                          └── ✅ M31 Chunk 类型系统重构
+                                                                                                                                                                                                                                                                                                                          └── ✅ M31 Chunk 类型系统重构
+                                                                                                                                                                                                                                                                                                                                       └── M32 资产体验增强
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -93,6 +94,7 @@
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
+| M32 | 资产体验增强 | Stage 排序修复、content_json 清除、关系可视化（轻量级）、[[双链]]语法、author 字段、模组手册 PDF 导出 | [m32-asset-experience.md](m32-asset-experience.md) |
 
 ---
 
@@ -131,14 +133,15 @@ trpg-workbench-data/   运行时数据（不提交 git）
 ### 资产文件命名约定
 
 ```
-{type}-{slug}.json    例：npc-mayor-arthur.json
-{type}-{slug}.md      例：npc-mayor-arthur.md
+{slug}.md      例：mayor-arthur.md（存放于 npcs/ 目录下）
 ```
 
-### Asset ID 约定
+资产类型由 frontmatter `type` 字段决定，不由文件名或目录决定。
+
+### Asset 跨资产引用约定
 
 ```
-{type}_{slug_underscored}    例：npc_mayor_arthur
+引用使用 slug（小写连字符格式）    例：mayor-arthur
 ```
 
-跨资产引用统一使用 asset_id，禁止用自然语言名称或文件名。
+跨资产引用统一使用 slug，禁止用自然语言名称或文件名。

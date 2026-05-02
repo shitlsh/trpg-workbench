@@ -2,7 +2,7 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M1–M31 已完成**（M31：ChunkType 重构为 rule/entity/lore/adventure/appendix/none 统一内容维度分类，新增 consult_lore 工具，build_chunk_types_section() 注入 Director 上下文，toc_analyzer valid set 改为动态导入，none 类型兜底修正；下一个 milestone 待规划）
+> **当前状态：M31 已完成，M32（资产体验增强）进行中**（Stage 排序修复、content_json 清除、关系可视化、[[双链]]语法、author 字段、模组手册 PDF 导出）
 
 ---
 
