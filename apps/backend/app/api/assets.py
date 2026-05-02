@@ -56,6 +56,68 @@ def list_assets(workspace_id: str, asset_type: str | None = None, db: Session = 
     return q.order_by(AssetORM.type, AssetORM.name).all()
 
 
+# ─── Asset relations map ──────────────────────────────────────────────────────
+
+# Known frontmatter fields that contain slug references (list[str] or list[dict] with 'target')
+_RELATION_FIELDS: list[str] = [
+    "key_npcs", "key_locations", "clues_available",   # stage
+    "accessible_in_stages",                            # map
+]
+_RELATION_TARGET_FIELDS: list[str] = [
+    "relationships",  # npc: list of {target: slug, ...}
+]
+
+
+def _extract_slugs_from_frontmatter(meta: dict) -> list[str]:
+    """Extract all outgoing slug references from known frontmatter fields."""
+    slugs: list[str] = []
+    for field in _RELATION_FIELDS:
+        val = meta.get(field)
+        if isinstance(val, list):
+            for item in val:
+                if isinstance(item, str):
+                    slugs.append(item)
+    for field in _RELATION_TARGET_FIELDS:
+        val = meta.get(field)
+        if isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict) and isinstance(item.get("target"), str):
+                    slugs.append(item["target"])
+    return slugs
+
+
+@router.get("/relations")
+def get_asset_relations(workspace_id: str, db: Session = Depends(get_db)):
+    """Return a map of slug → list[slug] (outgoing references) for all assets.
+
+    Scans frontmatter of every asset file for known reference fields.
+    The frontend uses this to build both outgoing and incoming (reverse) maps.
+    """
+    ws = _get_workspace(workspace_id, db)
+    assets = db.query(AssetORM).filter(
+        AssetORM.workspace_id == workspace_id,
+        AssetORM.status != "deleted",
+    ).all()
+
+    relations: dict[str, list[str]] = {}
+    for asset in assets:
+        file_path = Path(ws.workspace_path) / asset.file_path
+        content = asset_service.get_asset_with_content(ws.workspace_path, file_path)
+        if not content:
+            relations[asset.slug] = []
+            continue
+        # Re-read frontmatter to get all fields
+        try:
+            import frontmatter as fm
+            post = fm.load(str(file_path))
+            meta = dict(post.metadata)
+        except Exception:
+            meta = {}
+        relations[asset.slug] = _extract_slugs_from_frontmatter(meta)
+
+    return {"relations": relations}
+
+
 # ─── Create asset ────────────────────────────────────────────────────────────
 
 @router.post("", response_model=AssetWithContentSchema)

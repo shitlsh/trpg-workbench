@@ -462,6 +462,11 @@ export interface UpdateAssetRequest {
   summary?: string;
 }
 
+export interface AssetRelationsMap {
+  /** slug → list of outgoing slug references (from known frontmatter fields) */
+  relations: Record<string, string[]>;
+}
+
 // ─── M4: Chat ─────────────────────────────────────────────────────────────────
 
 export interface ChatSession {
