@@ -12,7 +12,7 @@
 
 基础目标达成度 review 发现：当前除 Skill 文件外，几乎所有数据都锁在 SQLite DB 中，workspace 目录不是自描述的、不可移植。这与 local-first 创作工具的核心预期矛盾。
 
-- 来源：`docs/benchmark-reviews/accepted/2026-04-24_file-first-asset-storage.md`
+- 来源：`docs/benchmark-reviews/completed/2026-04-24_file-first-asset-storage.md`
 
 ---
 

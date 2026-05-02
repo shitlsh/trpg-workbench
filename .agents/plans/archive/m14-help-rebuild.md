@@ -12,8 +12,8 @@
 
 Benchmark review 发现当前 Help 文档存在严重的内容与 UI 不一致问题，且文档生成机制（DOM 提取→自动拼接→同步到 src）的质量天花板太低，无法产出合格的使用指南。详见：
 
-- `docs/benchmark-reviews/accepted/2026-04-23_help-doc-generation-mechanism.md`
-- `docs/benchmark-reviews/accepted/2026-04-23_help-module-improvements.md`
+- `docs/benchmark-reviews/completed/2026-04-23_help-doc-generation-mechanism.md`
+- `docs/benchmark-reviews/completed/2026-04-23_help-module-improvements.md`
 
 核心问题：
 1. getting-started.md 完全未提及 Setup Wizard，步骤顺序与实际相反

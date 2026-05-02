@@ -215,7 +215,19 @@ config.yaml 中的模型引用是 **名称字符串**（如 `"gemini-2.5-flash"`
 - 新建 workspace：使用 `rule_set` 名称（非 UUID），可选指定 `workspace_path`
 - 打开已有 workspace：`POST /workspaces/open` 注册已有目录
 - 删除 = 从注册表移除（不删磁盘文件）
-- 无导出功能 — workspace 目录本身就是可交付产物
+
+### WorkspacePage 顶部工具栏
+
+路径：`src/pages/WorkspacePage.tsx`，顶部 toolbar 右侧区域，从左到右：
+
+1. **PanelRight 图标**：折叠/展开右侧资产树
+2. **BookDown 图标**（导出手册）：点击打开 `ExportDialog`，触发模组手册 PDF 导出流程
+3. **Settings 图标**：跳转工作空间设置页
+
+导出流程：
+- `ExportDialog` 先 `POST /workspaces/{id}/export/validate` 检查草稿资产和断裂引用
+- 用户确认后 `GET /workspaces/{id}/export/html` 取自包含 HTML
+- 注入隐藏 `<iframe>` 并调用 `iframe.contentWindow.print()` 触发系统打印对话框
 
 ---
 
@@ -549,6 +561,16 @@ interface TaskProgress {
 - 折叠条显示：slug、status badge、version
 - 点击折叠条展开完整 `AssetMetaPanel`，max-height 约 280px
 - 折叠状态用 `EditorCenter` 内部的 `metaOpen` state 管理
+
+**关联资产区块（M32）**：
+
+面板底部展示跨资产引用关系，分"引用了"和"被引用"两列：
+
+- 数据来源：`useAssetRelations(workspaceId, slug, allAssets, contentMd)` hook
+  - 向后端请求 `GET /workspaces/{id}/assets/relations`（frontmatter 字段引用）
+  - 同时扫描当前资产 `content_md` 中的 `[[slug]]` wikilink 引用
+- 点击条目调用 `apiFetch(/assets/{id})` + `useEditorStore.openTab()` 跳转
+- 状态更新后需 invalidate `["asset-relations", workspaceId]` query key
 
 ---
 

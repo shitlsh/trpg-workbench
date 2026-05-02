@@ -4,14 +4,14 @@
 
 **状态：✅ 已完成（commit ce16a0a）**
 
-**目标**：在**不引入通用 shell / 任意 CLI** 的前提下，用**结构化、可审计**的 Agent 工具补上 **移动 / 删除** 等当前 Director 无法直接表达的能力，并提供 **批量化** 能力（减少多轮 `patch_asset` 与 token 消耗），与 [benchmark：Agent CLI 取舍](../../docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md) 中 **方案 C** 一致。
+**目标**：在**不引入通用 shell / 任意 CLI** 的前提下，用**结构化、可审计**的 Agent 工具补上 **移动 / 删除** 等当前 Director 无法直接表达的能力，并提供 **批量化** 能力（减少多轮 `patch_asset` 与 token 消耗），与 [benchmark：Agent CLI 取舍](../../docs/benchmark-reviews/completed/2026-04-27_agent-cli-workspace-commands.md) 中 **方案 C** 一致。
 
 ---
 
 ## 背景与动机
 
 - HTTP 层已有资产 [删除](../../../apps/backend/app/api/assets.py) 等能力，**Agent 工具集**中仍缺少对等的 `delete` / `move` 等，模型只能多轮绕路，**效率与 token** 差。
-- 用户已审阅 [2026-04-27 agent CLI proposal](../../docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md)：**不采用**开放命令行，**采用**结构化批处理；本 milestone 为该决策的**工程落地**。
+- 用户已审阅 [2026-04-27 agent CLI proposal](../../docs/benchmark-reviews/completed/2026-04-27_agent-cli-workspace-commands.md)：**不采用**开放命令行，**采用**结构化批处理；本 milestone 为该决策的**工程落地**。
 - 与已完成 [batch-asset-write](../../docs/benchmark-reviews/completed/2026-04-26_batch-asset-write.md) 相区别：后者解决的是 **连续单资产写入不中断**；**未**从协议上把「N 个新建」收束为**单次工具调用**，因此一话生成十几个 asset 仍是 **N 次 `create_asset`**，与随后 **M 次 `patch_asset`** 的 **模型往返与上下文膨胀** 问题，需在本 milestone 的 **A4** 中单独解决。
 - 用户核心场景：故事驱动 **批量新建** 与 **小范围多资产改细节**；倾向 CLI 的动机是 **脚本一次编排**——本处用 **结构化批工具** 达到「一轮工具调用提交多项」的等效，**不**用任意 shell。
 
@@ -136,7 +136,7 @@ packages/shared-schema/...（若 tool 的 JSON 形状需前后端共类型）
 2. **A1 批量**：`delete_assets` / `move_assets` 各能 **一次工具调用**处理多项（与连调多次单删/单移相比，**round-trip 次数** 减少），且 `results` 逐条可辨；批移在单移语义稳定后验收。
 3. 至少一种 **批处理** 能力（以 **跨资产文本替换** 为优先）支持 **先 preview 再 apply**（A2.1），单轮或两轮工具调用可完成「多文件同一替换」类任务，相较纯多次 `patch_asset` **可观测地**减少轮次与重复。
 4. **A4**：可用 **一次** `create_assets` 提交**多项**创建；可用 **一次** `patch_assets` 对多个 slug 做局替。实现须复用 `execute_patch_proposal`，**验收**时对比 **round-trip 次数** 少于单条工具累加（不要求总 token 数学最优）。
-5. 与 benchmark [accepted/2026-04-27_agent-cli-workspace-commands.md](../../docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md) 的「不默认可变 shell、结构化批处理」**一致**；代码审查中**无**对用户字符串直接 `shell=True` 的调用。
+5. 与 benchmark [accepted/2026-04-27_agent-cli-workspace-commands.md](../../docs/benchmark-reviews/completed/2026-04-27_agent-cli-workspace-commands.md) 的「不默认可变 shell、结构化批处理」**一致**；代码审查中**无**对用户字符串直接 `shell=True` 的调用。
 6. Explore 会话**不能**通过工具完成写删或批量改（用工具列表或 E2E 自测可证）。
 
 ---

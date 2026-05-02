@@ -10,7 +10,7 @@
 
 ## 背景与动机
 
-来源：`docs/benchmark-reviews/accepted/2026-04-27_knowledge-library-type-routing.md`
+来源：`docs/benchmark-reviews/completed/2026-04-27_knowledge-library-type-routing.md`
 
 当前知识库存在三个相互关联的缺陷：
 1. `library.type` 字段定义了 6 种类型但从未被读取（`pdf_ingest.py:166` 写入 `None`），是已承诺但未兑现的能力

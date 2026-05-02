@@ -79,7 +79,7 @@
 | M24 ✅ | 知识库检索质量提升 | chunk 级类型标签、chunker 修复、top_k 配置化、rerank 接入 | [archive/m24-knowledge-retrieval-quality.md](archive/m24-knowledge-retrieval-quality.md) |
 | M25 ✅ | LLM Profile 字段瘦身与模型选择体验 | 去掉 Profile 死字段、能力归目录、模型下拉可搜可筛可展示 | [archive/m25-llm-profile-fields-cleanup.md](archive/m25-llm-profile-fields-cleanup.md) |
 | M26 ✅ | 探索子 Agent 与 Prompt 体系统一 | 落地只读 Explore + 会话分流；**统一中文化**（含 **PDF/CHM 两套 TOC prompt**）；P0、死 prompt、`prompts` 规范；聊天摘要等；`knowledge-library-ingest` skill；不恢复旧顺序主链；用量见 plan B1 | [archive/m26-explore-prompt-integrity.md](archive/m26-explore-prompt-integrity.md) |
-| M27 ✅ | 资产单步操作与批处理 | Director 工具补足 **删除/移动**；**批量** create/patch/delete/move；**跨资产** `preview`→`apply` 文本替换；不引入通用 shell；见 [benchmark accepted](../../docs/benchmark-reviews/accepted/2026-04-27_agent-cli-workspace-commands.md) | [archive/m27-asset-ops-and-batch.md](archive/m27-asset-ops-and-batch.md) |
+| M27 ✅ | 资产单步操作与批处理 | Director 工具补足 **删除/移动**；**批量** create/patch/delete/move；**跨资产** `preview`→`apply` 文本替换；不引入通用 shell；见 [benchmark completed](../../docs/benchmark-reviews/completed/2026-04-27_agent-cli-workspace-commands.md) | [archive/m27-asset-ops-and-batch.md](archive/m27-asset-ops-and-batch.md) |
 | M28 ✅ | 原生 SDK Agent 运行时替换 | 将聊天与工具编排从 Agno 迁移到 Provider 原生 SDK，保留现有记忆/RAG/LanceDB 能力与 SSE 协议；修复 Anthropic 多工具并发 bug、workspace_mutating 误判、补齐 Gemini 流式 tool-calling | [archive/m28-native-sdk-agent-runtime.md](archive/m28-native-sdk-agent-runtime.md) |
 | M29 ✅ | Agent 交互质量提升 | 重写 ask_user 触发规则（信息量不足型 + 关键分叉型），新增单轮完成回复规范，实现 `<plan>` 标签解析 + 结构化 PlanCard 实时步骤展示；顺带修复 agent_question 在 chat.py 中缺少透传的 bug | [archive/m29-agent-interaction-quality.md](archive/m29-agent-interaction-quality.md) |
 

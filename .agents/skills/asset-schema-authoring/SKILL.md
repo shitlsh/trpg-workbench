@@ -259,7 +259,20 @@ relationships:
 
 ## Markdown Body 结构规范
 
-frontmatter 之后的 Markdown body 应有固定的标题结构：
+frontmatter 之后的 Markdown body 应有固定的标题结构。
+
+### [[双链]] 语法（M32）
+
+在 body 中可以用 `[[slug]]` 或 `[[slug|显示文字]]` 引用其他资产：
+
+```markdown
+[[mayor-arthur]] 在此场景中首次亮相。
+可前往 [[old-mansion|老宅]] 调查线索。
+```
+
+- 预览中存在的 slug 渲染为可点击链接，不存在的渲染为红色断链样式
+- `[[slug]]` 引用也会出现在 `useAssetRelations` 的 outgoing 列表中
+- **优先使用 frontmatter 字段**（`key_npcs`、`key_locations` 等）来声明关系；`[[双链]]` 用于 body 中自然语言叙述时的顺带引用
 
 ### NPC
 

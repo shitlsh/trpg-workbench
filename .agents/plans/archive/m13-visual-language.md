@@ -12,8 +12,8 @@
 
 当前产品的视觉体验存在三个明显短板，在 benchmark review 中被评级为 high priority：
 
-- `docs/benchmark-reviews/accepted/2026-04-23_inscriptor-visual-language.md`
-- `docs/benchmark-reviews/accepted/2026-04-23_inscriptor-layout-density.md`
+- `docs/benchmark-reviews/completed/2026-04-23_inscriptor-visual-language.md`
+- `docs/benchmark-reviews/completed/2026-04-23_inscriptor-layout-density.md`
 
 **问题一**：所有资产类型在资产树中使用同一个灰色 `<File>` 图标（`AssetTree.tsx:250`），用户只能靠读文字标签来区分类型，资产数量 > 10 后扫视成本高。
 

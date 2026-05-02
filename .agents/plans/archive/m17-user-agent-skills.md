@@ -14,7 +14,7 @@
 
 更根本的问题是：trpg-workbench 当前没有可扩展的 Agent 能力机制。未来有人写了一个"怪物描述→风格化配图"的 skill，我们没有框架来发现和加载它。
 
-来源：`docs/benchmark-reviews/accepted/2026-04-24_user-defined-agent-skills.md`
+来源：`docs/benchmark-reviews/completed/2026-04-24_user-defined-agent-skills.md`
 
 ### 关键设计决策：文件而非数据库
 

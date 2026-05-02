@@ -10,7 +10,7 @@
 
 ## 背景与动机
 
-来源：`docs/benchmark-reviews/accepted/2026-04-26_agent-mid-task-question-interrupt.md`
+来源：`docs/benchmark-reviews/completed/2026-04-26_agent-mid-task-question-interrupt.md`
 
 当前 Director 遇到方向歧义时只能猜测或在流式文本中用自然语言提问，用户需要手动回复自由文本。
 参考 OpenCode 的 `question` 工具，引入结构化选项卡片，让 Director 在写入资产之前可以先收集关键决策。

@@ -24,8 +24,8 @@ M10 通过两条并行改进线解决这个问题：
 - **主线 A（Wizard）**：分步配置引导，强制用户在进入工作空间前完成最低配置
 - **主线 B（Inline Hint）**：在表单字段层面给出推荐值和说明，降低配错概率
 
-来源：benchmark review `docs/benchmark-reviews/accepted/2026-04-23_setup-wizard-onboarding.md`
-和 `docs/benchmark-reviews/accepted/2026-04-23_inline-hint-recommended-defaults.md`。
+来源：benchmark review `docs/benchmark-reviews/completed/2026-04-23_setup-wizard-onboarding.md`
+和 `docs/benchmark-reviews/completed/2026-04-23_inline-hint-recommended-defaults.md`。
 
 ---
 

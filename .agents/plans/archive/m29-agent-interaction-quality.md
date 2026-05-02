@@ -12,9 +12,9 @@
 
 本 milestone 来源于以下三个已接受的 benchmark review proposal：
 
-- `docs/benchmark-reviews/accepted/2026-04-29_clarification-trigger-redesign.md`
-- `docs/benchmark-reviews/accepted/2026-04-29_turn-completion-visibility.md`
-- `docs/benchmark-reviews/accepted/2026-04-29_agent-todo-list-visibility.md`
+- `docs/benchmark-reviews/completed/2026-04-29_clarification-trigger-redesign.md`
+- `docs/benchmark-reviews/completed/2026-04-29_turn-completion-visibility.md`
+- `docs/benchmark-reviews/completed/2026-04-29_agent-todo-list-visibility.md`
 
 **核心问题**：
 

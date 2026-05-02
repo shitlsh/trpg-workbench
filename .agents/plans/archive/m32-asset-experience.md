@@ -18,7 +18,7 @@
 4. **缺少作者信息**：导出手册时无法填写作者，workspace config 没有此字段。
 5. **无导出能力**：用户有将模组打印成完整手册的需求，当前 workspace 目录虽是真相源，但无法直接打印。
 
-来源 proposal：`docs/benchmark-reviews/accepted/2026-04-24_asset-relationship-visualization.md`
+来源 proposal：`docs/benchmark-reviews/completed/2026-04-24_asset-relationship-visualization.md`
 
 ---
 

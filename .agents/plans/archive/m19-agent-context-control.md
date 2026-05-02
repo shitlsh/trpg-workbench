@@ -14,7 +14,7 @@
 
 本 milestone 基于 Agno 框架的原生 tool-calling 能力，一次性完成七层能力体系建设。0.1.0 尚未发布，无兼容性包袱，直接删除旧架构。
 
-- 来源 proposal：`docs/benchmark-reviews/accepted/2026-04-24_agent-context-control.md`
+- 来源 proposal：`docs/benchmark-reviews/completed/2026-04-24_agent-context-control.md`
 
 ---
 

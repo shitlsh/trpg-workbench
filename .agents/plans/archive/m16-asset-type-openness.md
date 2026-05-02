@@ -16,7 +16,7 @@
 - 用户使用 D&D 或 TOR 工作区时，`spell`、`item`、`handout` 等核心概念无对应类型，只能用语义错误的 `lore_note` 勉强填充
 - 后端 `schemas.py` 的 `type` 字段本已是 `str`，数据库无 constraint，文件服务有 fallback；**真正的障碍只在 TypeScript 类型层、前端展示层，以及缺乏注册机制**
 
-来源：`docs/benchmark-reviews/accepted/2026-04-24_asset-type-coverage-across-trpg-systems.md`
+来源：`docs/benchmark-reviews/completed/2026-04-24_asset-type-coverage-across-trpg-systems.md`
 
 ---
 
