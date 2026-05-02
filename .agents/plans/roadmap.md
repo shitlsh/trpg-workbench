@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路 **M1–M31 已完成**，M32 资产体验增强进行中。
+核心功能链路 **M1–M32 已完成**。
 
 ```
 ✅ M1 基础骨架
@@ -37,7 +37,7 @@
                                                                                                                                                                                                   └── ✅ M29 Agent 交互质量提升
                                                                                                                                                                                                                    └── ✅ M30 资产类型系统重构
                                                                                                                                                                                                                                                                                                                           └── ✅ M31 Chunk 类型系统重构
-                                                                                                                                                                                                                                                                                                                                       └── M32 资产体验增强
+                                                                                                                                                                                                                                                                                                                                       └── ✅ M32 资产体验增强
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -89,12 +89,13 @@
 |---|------|------|---------|
 | M30 ✅ | 资产类型系统重构 | 内置类型精简为 6 种，引入 description+template_md，AI 辅助创建自定义类型，类型校验 | [archive/m30-asset-type-system.md](archive/m30-asset-type-system.md) |
 | M31 ✅ | Chunk 类型系统重构 | ChunkType 精简为语义统一的 5 种+none，`build_chunk_types_section()` 注入各 Agent 上下文，新增 consult_lore 工具 | [archive/m31-chunk-type-system.md](archive/m31-chunk-type-system.md) |
+| M32 ✅ | 资产体验增强 | Stage 排序修复、content_json 清除、关系可视化（轻量级）、[[双链]]语法、author 字段、模组手册 PDF 导出 | [archive/m32-asset-experience.md](archive/m32-asset-experience.md) |
 
 ### 进行中 / 待启动
 
 | # | 名称 | 目标 | 计划文件 |
 |---|------|------|---------|
-| M32 | 资产体验增强 | Stage 排序修复、content_json 清除、关系可视化（轻量级）、[[双链]]语法、author 字段、模组手册 PDF 导出 | [m32-asset-experience.md](m32-asset-experience.md) |
+|（无）| — | — | — |
 
 ---
 

@@ -2,6 +2,8 @@
 
 **前置条件**：无强依赖（各项功能均基于现有资产 CRUD 和文件结构，无需新能力前置）。
 
+**状态：✅ 已完成（commit 1f6882c）**
+
 **目标**：修复 Stage 排序缺陷、移除遗留 content_json 技术债、在 AssetMetaPanel 中实现轻量级跨资产关系可视化、引入类 Obsidian 的双链语法与快速导航、为 config.yaml 增加 author 字段、实现模组手册 PDF 导出功能。
 
 ---
@@ -201,42 +203,42 @@ Skill/文档
 
 ### A1：Stage 排序修复
 
-- [ ] **A1.1**：`apps/backend/app/prompts/asset_types/stage.txt` — 更新 `name` 字段说明，要求格式"第 N 幕：{名称}"，更新示例
-- [ ] **A1.2**：`apps/desktop/src/components/AssetTree.tsx` — 对 stage 组资产按中文/阿拉伯数字幕次排序，添加 `extractActNumber(name)` 辅助函数
+- [x] **A1.1**：`apps/backend/app/prompts/asset_types/stage.txt` — 更新 `name` 字段说明，要求格式"第 N 幕：{名称}"，更新示例
+- [x] **A1.2**：`apps/desktop/src/components/AssetTree.tsx` — 对 stage 组资产按中文/阿拉伯数字幕次排序，添加 `extractActNumber(name)` 辅助函数
 
 ### A2：移除 content_json
 
-- [ ] **A2.1**：`apps/backend/app/storage/asset_service.py` — 删除 `content_json` 序列化逻辑
-- [ ] **A2.2**：`apps/backend/app/api/assets.py` — `AssetUpdate`、`ApplyPatchRequest` 删除 `content_json` 字段
-- [ ] **A2.3**：`packages/shared-schema/src/index.ts` — `AssetWithContent` 删除 `content_json`
-- [ ] **A2.4**：全局搜索 `content_json`，清除前端任何引用（预期无实际使用，确认即可）
+- [x] **A2.1**：`apps/backend/app/storage/asset_service.py` — 删除 `content_json` 序列化逻辑
+- [x] **A2.2**：`apps/backend/app/api/assets.py` + `schemas.py` — `AssetUpdate`、`ApplyPatchRequest` 删除 `content_json` 字段
+- [x] **A2.3**：`packages/shared-schema/src/index.ts` — `AssetWithContent` 删除 `content_json`
+- [x] **A2.4**：全局搜索 `content_json`，清除前端任何引用（预期无实际使用，确认即可）
 
 ### A3：AssetMetaPanel 关系引用展示
 
-- [ ] **A3.1**：`apps/desktop/src/hooks/useAssetRelations.ts` — 新建 hook，扫描所有资产 frontmatter 字段，构建 `outgoing/incoming` 引用 Map
-- [ ] **A3.2**：确认各资产类型的引用字段（对照 stage.txt / npc.txt / clue.txt / map.txt / outline.txt）
-- [ ] **A3.3**：`apps/desktop/src/components/AssetMetaPanel.tsx` — 底部新增"关联资产"区块，显示 outgoing + incoming 引用列表，点击跳转
+- [x] **A3.1**：`apps/desktop/src/hooks/useAssetRelations.ts` — 新建 hook，扫描所有资产 frontmatter 字段，构建 `outgoing/incoming` 引用 Map（也新建后端 `/assets/relations` 端点供 hook 使用）
+- [x] **A3.2**：确认各资产类型的引用字段（对照 stage.txt / npc.txt / clue.txt / map.txt / outline.txt）
+- [x] **A3.3**：`apps/desktop/src/components/AssetMetaPanel.tsx` — 底部新增"关联资产"区块，显示 outgoing + incoming 引用列表，点击跳转
 
 ### A4：[[双链]] 语法
 
-- [ ] **A4.1**：确认当前编辑器使用的 Markdown 渲染库（CodeMirror? marked? remark?）
-- [ ] **A4.2**：编辑器预览/渲染层：将 `[[slug]]` / `[[slug|文字]]` 渲染为可点击链接（正常 slug=绿色链接，断链 slug=红色样式）
-- [ ] **A4.3**：`useAssetRelations.ts` — 补充扫描已打开资产的 `content_md` 中的 `[[slug]]` 引用
+- [x] **A4.1**：确认当前编辑器使用的 Markdown 渲染库（CodeMirror? marked? remark?）
+- [x] **A4.2**：编辑器预览/渲染层：将 `[[slug]]` / `[[slug|文字]]` 渲染为可点击链接（正常 slug=绿色链接，断链 slug=红色样式）
+- [x] **A4.3**：`useAssetRelations.ts` — 补充扫描已打开资产的 `content_md` 中的 `[[slug]]` 引用
 
 ### A5：Workspace config author 字段
 
-- [ ] **A5.1**：后端 `WorkspaceConfig` Pydantic 模型新增 `author: str = ""`
-- [ ] **A5.2**：`packages/shared-schema/src/index.ts` — `WorkspaceConfig` 新增 `author?: string`
-- [ ] **A5.3**：`apps/desktop/src/pages/WorkspaceSettingsPage.tsx` — 新增"作者"输入框，保存到 config.yaml
+- [x] **A5.1**：后端 `WorkspaceConfig` Pydantic 模型新增 `author: str = ""`（`workspace_service.py` DEFAULT_CONFIG）
+- [x] **A5.2**：`packages/shared-schema/src/index.ts` — `WorkspaceConfig` 新增 `author?: string`
+- [x] **A5.3**：`apps/desktop/src/pages/WorkspaceSettingsPage.tsx` — 新增"作者"输入框，保存到 config.yaml
 
 ### A6：模组手册 PDF 导出
 
-- [ ] **A6.1**：`apps/backend/app/services/export_service.py` — 新建，实现 `validate_export()` 和 `build_export_html()` 函数
-- [ ] **A6.2**：后端路由 — 新增 `POST /workspaces/{id}/export/validate` 和 `GET /workspaces/{id}/export/html`
-- [ ] **A6.3**：`packages/shared-schema/src/index.ts` — 新增 `ExportValidateResult` 类型
-- [ ] **A6.4**：`apps/desktop/src/components/ExportDialog.tsx` — 新建导出确认对话框（展示校验结果 + 确认/取消按钮）
-- [ ] **A6.5**：前端导出触发入口 — 在 WorkspaceSettingsPage 或顶部工具栏新增"导出手册"按钮
-- [ ] **A6.6**：前端 print 逻辑 — `<iframe>` 加载 HTML + `contentWindow.print()` 触发系统打印对话框
+- [x] **A6.1**：`apps/backend/app/services/export_service.py` — 新建，实现 `validate_export()` 和 `build_export_html()` 函数
+- [x] **A6.2**：后端路由 — 新增 `POST /workspaces/{id}/export/validate` 和 `GET /workspaces/{id}/export/html`
+- [x] **A6.3**：`packages/shared-schema/src/index.ts` — 新增 `ExportValidateResult` 类型
+- [x] **A6.4**：`apps/desktop/src/components/ExportDialog.tsx` — 新建导出确认对话框（展示校验结果 + 确认/取消按钮）
+- [x] **A6.5**：前端导出触发入口 — 在 WorkspacePage 顶部工具栏新增"导出手册"按钮（BookDown 图标）
+- [x] **A6.6**：前端 print 逻辑 — `<iframe>` 加载 HTML + `contentWindow.print()` 触发系统打印对话框
 
 ---
 
