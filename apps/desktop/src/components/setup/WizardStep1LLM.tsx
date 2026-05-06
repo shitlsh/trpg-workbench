@@ -3,11 +3,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
 import type { LLMProfile, CreateLLMProfileRequest } from "@trpg-workbench/shared-schema";
 
-const LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "openai_compatible"] as const;
+const LLM_PROVIDERS = ["openai", "google", "openrouter", "openai_compatible"] as const;
 type LLMProviderType = typeof LLM_PROVIDERS[number];
 
 const PROVIDER_LABELS: Record<string, string> = {
-  openai: "OpenAI", anthropic: "Anthropic", google: "Google",
+  openai: "OpenAI", google: "Google",
   openrouter: "OpenRouter", openai_compatible: "OpenAI Compatible（含本地模型）",
 };
 

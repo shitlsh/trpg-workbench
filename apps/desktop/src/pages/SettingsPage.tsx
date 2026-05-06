@@ -17,7 +17,7 @@ import { useModelList } from "../hooks/useModelList";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "openai_compatible"] as const;
+const LLM_PROVIDERS = ["openai", "google", "openrouter", "openai_compatible"] as const;
 const EMBEDDING_PROVIDERS = ["openai", "openai_compatible"] as const;
 
 type LLMProviderType = typeof LLM_PROVIDERS[number];
@@ -25,7 +25,6 @@ type EmbeddingProviderType = typeof EMBEDDING_PROVIDERS[number];
 
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
-  anthropic: "Anthropic",
   google: "Google",
   openrouter: "OpenRouter",
   openai_compatible: "OpenAI Compatible",
@@ -69,7 +68,7 @@ function LLMSection() {
   const [testModelName, setTestModelName] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  /** 云端供应商（OpenAI / Anthropic / Google / OpenRouter）新建时必须填 API Key；本地兼容可留空或随意字符 */
+  /** 云端供应商（OpenAI / Google / OpenRouter）新建时必须填 API Key；本地兼容可留空或随意字符 */
   const apiKeyRequiredForCreate =
     !editTarget && form.provider_type !== "openai_compatible";
 
@@ -151,7 +150,7 @@ function LLMSection() {
     e.preventDefault();
     setFormError(null);
     if (apiKeyRequiredForCreate && !form.api_key?.trim()) {
-      setFormError("请填写 API Key（OpenAI / Anthropic / Google / OpenRouter 新建时必填）");
+      setFormError("请填写 API Key（OpenAI / Google / OpenRouter 新建时必填）");
       return;
     }
     const body = { ...form };
@@ -305,7 +304,7 @@ function LLMSection() {
                 {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
                 <input className={styles.input} type="password" value={form.api_key ?? ""} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="sk-..." />
                 {apiKeyRequiredForCreate && (
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>OpenAI / Anthropic / Google / OpenRouter 新建时必须填写；OpenAI 兼容可留空（本地服务）</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>OpenAI / Google / OpenRouter 新建时必须填写；OpenAI 兼容可留空（本地服务）</span>
                 )}
               </label>
               {editTarget && (
