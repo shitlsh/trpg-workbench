@@ -267,7 +267,27 @@ function StreamingBubble({
   onQuestionSubmit: (answers: Record<string, string[]>) => void;
 }) {
   const lastTextIdx = events.reduce((last, e, i) => e.kind === "text_chunk" ? i : last, -1);
-  const hasContent = events.length > 0;
+  // Derive a human-readable status label for the waiting indicator.
+  const runningTool = isStreaming
+    ? events.slice().reverse().find(e => e.kind === "tool_call" && e.toolCall.status === "running")
+    : undefined;
+  const runningToolName = runningTool?.kind === "tool_call" ? runningTool.toolCall.name : undefined;
+  const TOOL_LABELS: Record<string, string> = {
+    create_asset: "创建资产",
+    update_asset: "更新资产",
+    delete_asset: "删除资产",
+    list_assets: "读取资产列表",
+    get_asset: "读取资产",
+    search_assets: "搜索资产",
+    ask_user: "等待你的回答",
+    get_workspace_config: "读取工作空间配置",
+    update_workspace_config: "更新工作空间配置",
+    read_knowledge: "查阅知识库",
+    search_knowledge: "检索知识库",
+  };
+  const waitingLabel = runningToolName
+    ? (TOOL_LABELS[runningToolName] ?? `调用 ${runningToolName}`)
+    : "思考中";
 
   return (
     <div style={{
@@ -281,9 +301,11 @@ function StreamingBubble({
         fontSize: 13,
         lineHeight: 1.6,
       }}>
-        {!hasContent && isStreaming && (
+        {/* Show waiting indicator when streaming but no text has arrived yet,
+            OR when a tool is currently running (between tool_call_start and tool_call_result). */}
+        {isStreaming && (lastTextIdx === -1 || runningToolName) && (
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-            思考中
+            {waitingLabel}
             <span style={{ display: "inline-flex", gap: 3, marginLeft: 3 }}>
               {[0, 1, 2].map((i) => (
                 <span key={i} style={{

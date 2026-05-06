@@ -609,14 +609,15 @@ async def _chat_google(req: RuntimeRequest):
         if joined_text:
             model_parts.append(types.Part(text=joined_text))
         for fc in function_calls:
-            model_parts.append(
-                types.Part(
-                    function_call=types.FunctionCall(
-                        name=getattr(fc, "name", "") or "",
-                        args=dict(getattr(fc, "args", {}) or {}),
-                    )
-                )
-            )
+            # Preserve the original Part object so that Gemini's `thought_signature`
+            # field (present when extended thinking is enabled) is not discarded.
+            # Reconstructing a bare FunctionCall(name, args) drops thought_signature
+            # and causes a 400 INVALID_ARGUMENT on the follow-up request.
+            if isinstance(fc, types.FunctionCall):
+                model_parts.append(types.Part(function_call=fc))
+            else:
+                # fc is already a Part (defensive fallback)
+                model_parts.append(fc)
         contents.append(types.Content(role="model", parts=model_parts))
 
         # Execute tools and collect results into a single user Content.

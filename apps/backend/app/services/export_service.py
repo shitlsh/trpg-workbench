@@ -73,21 +73,26 @@ def _act_number(name: str) -> int:
 # ─── Asset loading ────────────────────────────────────────────────────────────
 
 def _load_assets(workspace_path: str | Path) -> list[dict]:
-    """Walk workspace assets/ dir, parse frontmatter + body for each .md file."""
+    """Walk all asset-type subdirectories in the workspace, parse frontmatter + body."""
+    from app.utils.paths import RESERVED_DIRS
     root = Path(workspace_path)
-    assets_dir = root / "assets"
-    if not assets_dir.exists():
+    if not root.exists():
         return []
     results: list[dict] = []
-    for md_file in sorted(assets_dir.rglob("*.md")):
-        try:
-            post = frontmatter.load(str(md_file))
-        except Exception:
+    for type_dir in sorted(root.iterdir()):
+        if not type_dir.is_dir():
             continue
-        meta: dict[str, Any] = dict(post.metadata)
-        meta["_body"] = post.content
-        meta["_file"] = str(md_file.relative_to(root))
-        results.append(meta)
+        if type_dir.name in RESERVED_DIRS or type_dir.name.startswith("."):
+            continue
+        for md_file in sorted(type_dir.rglob("*.md")):
+            try:
+                post = frontmatter.load(str(md_file))
+            except Exception:
+                continue
+            meta: dict[str, Any] = dict(post.metadata)
+            meta["_body"] = post.content
+            meta["_file"] = str(md_file.relative_to(root))
+            results.append(meta)
     return results
 
 
