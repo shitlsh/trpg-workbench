@@ -731,6 +731,16 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
             if (currentEvent === "text_delta") {
               const chunk = (data.content as string) ?? "";
+              // When text starts arriving, any preceding thinking phase is done.
+              // This closes the thinking cursor even if no new thinking_delta follows.
+              const hasActiveThinking = accEvents.some(
+                (e) => e.kind === "thinking_chunk" && !e.done
+              );
+              if (hasActiveThinking) {
+                accEvents = accEvents.map((e) =>
+                  e.kind === "thinking_chunk" ? { ...e, done: true } : e
+                );
+              }
               flushTextChunk(chunk);
               flushUi();
 

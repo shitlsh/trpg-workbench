@@ -575,9 +575,11 @@ async def _chat_google(req: RuntimeRequest):
             config=config,
         ):
             last_response = chunk
-            # Stream text and thought deltas by inspecting individual parts.
-            # chunk.text aggregates all non-thought text; we inspect parts to
-            # distinguish thought (part.thought == True) from regular text.
+            # Use a dual-path approach for robustness:
+            # 1. Collect thought parts via candidates[].content.parts (part.thought flag).
+            # 2. Use chunk.text (SDK convenience property) for ordinary text — it already
+            #    skips thought parts and handles chunks where content/parts may be None.
+            thought_text_in_chunk: set[str] = set()
             candidates = getattr(chunk, "candidates", None) or []
             for cand in candidates:
                 cand_content = getattr(cand, "content", None)
@@ -587,12 +589,16 @@ async def _chat_google(req: RuntimeRequest):
                     part_text = getattr(part, "text", None)
                     if not part_text:
                         continue
-                    is_thought = getattr(part, "thought", False)
+                    is_thought = isinstance(getattr(part, "thought", None), bool) and part.thought
                     if is_thought:
+                        thought_text_in_chunk.add(part_text)
                         yield {"event": "thinking_delta", "data": {"content": part_text}}
-                    else:
-                        text_parts.append(part_text)
-                        yield {"event": "text_delta", "data": {"content": part_text}}
+
+            # Emit ordinary text via chunk.text to avoid double-counting thought parts.
+            chunk_text: str | None = getattr(chunk, "text", None)
+            if chunk_text:
+                text_parts.append(chunk_text)
+                yield {"event": "text_delta", "data": {"content": chunk_text}}
 
         # Extract function_call parts from the final response candidates.
         if last_response is not None:

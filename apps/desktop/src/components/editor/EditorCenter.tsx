@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import Editor, { DiffEditor } from "@monaco-editor/react";
+import Editor, { DiffEditor, type BeforeMount } from "@monaco-editor/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, History, Save, RotateCcw } from "lucide-react";
 import type { Asset, AssetWithContent, AssetRevision } from "@trpg-workbench/shared-schema";
@@ -172,6 +172,25 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
   const { activeWorkspaceId } = useWorkspaceStore();
   const monacoTheme = theme === "dark" ? "vs-dark" : "vs";
 
+  // Suppress Monaco's built-in markdown diagnostics that warn about Unicode
+  // confusable characters (e.g. Chinese punctuation "，。！？"). These are
+  // triggered by the internal markdown language worker and are noise for TRPG
+  // content which legitimately uses full-width CJK punctuation.
+  const handleBeforeMount: BeforeMount = (monaco) => {
+    // Override setModelMarkers to drop any markers emitted for "markdown" owners.
+    // This is the only reliable way to silence the markdown language worker's
+    // unicode-confusable diagnostics without disabling the entire language support.
+    const originalSetMarkers = monaco.editor.setModelMarkers.bind(monaco.editor);
+    monaco.editor.setModelMarkers = (
+      model: Parameters<typeof originalSetMarkers>[0],
+      owner: string,
+      markers: Parameters<typeof originalSetMarkers>[2],
+    ) => {
+      if (owner === "markdown" || owner === "markdownDiagnostics") return;
+      originalSetMarkers(model, owner, markers);
+    };
+  };
+
   // All workspace assets for [[slug]] wikilink resolution in preview
   const { data: allAssets = [] } = useQuery<Asset[]>({
     queryKey: ["assets", activeWorkspaceId],
@@ -288,6 +307,7 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
               value={tab.draftMd}
               onChange={(v) => updateDraft(tab.assetId, v ?? "")}
               options={{ wordWrap: "on", minimap: { enabled: false }, fontSize: 14, lineNumbers: "off" }}
+              beforeMount={handleBeforeMount}
             />
           )}
           {tab.view === "diff" && (
@@ -297,6 +317,7 @@ function AssetEditor({ tab }: { tab: EditorTab }) {
               theme={monacoTheme}
               original={tab.asset.content_md}
               modified={tab.draftMd}
+              beforeMount={handleBeforeMount}
               options={{ readOnly: true, wordWrap: "on", renderSideBySide: true }}
             />
           )}

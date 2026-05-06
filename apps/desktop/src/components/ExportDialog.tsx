@@ -3,9 +3,14 @@
  *
  * Flow:
  *   1. On open: POST /export/validate → show draft warnings + broken ref warnings
- *   2. User confirms → GET /export/html → inject into hidden <iframe> → print()
+ *   2. User confirms → shell.open(export/html URL) → system browser opens the
+ *      print-ready HTML page → user presses Cmd+P / Ctrl+P to save as PDF.
+ *
+ * Note: iframe.contentWindow.print() is silently suppressed in Tauri's WKWebView
+ * on macOS, so we delegate to the system browser instead.
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { apiFetch, BACKEND_URL } from "../lib/api";
 import type { ExportValidateResult } from "@trpg-workbench/shared-schema";
 
@@ -14,13 +19,12 @@ interface Props {
   onClose: () => void;
 }
 
-type Phase = "validating" | "ready" | "printing" | "done" | "error";
+type Phase = "validating" | "ready" | "opening" | "done" | "error";
 
 export function ExportDialog({ workspaceId, onClose }: Props) {
   const [phase, setPhase] = useState<Phase>("validating");
   const [validation, setValidation] = useState<ExportValidateResult | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Validate on mount
   useEffect(() => {
@@ -38,22 +42,14 @@ export function ExportDialog({ workspaceId, onClose }: Props) {
   }, [workspaceId]);
 
   const handlePrint = useCallback(async () => {
-    setPhase("printing");
+    setPhase("opening");
     try {
-      // Fetch raw HTML string from backend
-      const resp = await fetch(
-        `${BACKEND_URL}/workspaces/${workspaceId}/export/html`,
-      );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const htmlContent = await resp.text();
-
-      const iframe = iframeRef.current!;
-      iframe.srcdoc = htmlContent;
-      iframe.onload = () => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setPhase("done");
-      };
+      // Open the backend-rendered print-ready HTML directly in the system browser.
+      // The system browser supports window.print() / Cmd+P natively; Tauri's
+      // embedded WebView (WKWebView on macOS) silently ignores print() calls.
+      const exportUrl = `${BACKEND_URL}/workspaces/${workspaceId}/export/html`;
+      await shellOpen(exportUrl);
+      setPhase("done");
     } catch (err) {
       setErrorMsg(String(err));
       setPhase("error");
@@ -64,20 +60,19 @@ export function ExportDialog({ workspaceId, onClose }: Props) {
     (validation?.draft_assets.length ?? 0) > 0 ||
     (validation?.broken_refs.length ?? 0) > 0;
 
-  // ── Styles ──────────────────────────────────────────────────────────────────
   const overlay: React.CSSProperties = {
     position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
     display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
   };
   const dialog: React.CSSProperties = {
-    background: "var(--bg-panel, #1e1e2e)",
-    border: "1px solid var(--border, #333)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border)",
     borderRadius: 10,
     padding: "24px 28px",
     width: 480,
     maxHeight: "80vh",
     overflowY: "auto",
-    color: "var(--text, #cdd6f4)",
+    color: "var(--text)",
     boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
   };
   const title: React.CSSProperties = {
@@ -94,48 +89,41 @@ export function ExportDialog({ workspaceId, onClose }: Props) {
     fontWeight: 600, color: "#d4a020", marginBottom: 6,
   };
   const itemList: React.CSSProperties = {
-    margin: 0, paddingLeft: 16, lineHeight: 1.8, color: "var(--text-muted, #888)",
+    margin: 0, paddingLeft: 16, lineHeight: 1.8, color: "var(--text-muted)",
   };
   const footer: React.CSSProperties = {
     display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20,
   };
   const btnCancel: React.CSSProperties = {
     padding: "6px 16px", borderRadius: 6,
-    background: "transparent", border: "1px solid var(--border, #444)",
-    color: "var(--text-muted, #888)", cursor: "pointer", fontSize: 13,
+    background: "transparent", border: "1px solid var(--border)",
+    color: "var(--text-muted)", cursor: "pointer", fontSize: 13,
   };
   const btnPrint: React.CSSProperties = {
     padding: "6px 18px", borderRadius: 6,
-    background: "var(--accent, #89b4fa)", border: "none",
-    color: "#1e1e2e", fontWeight: 600, cursor: "pointer", fontSize: 13,
+    background: "var(--accent)", border: "none",
+    color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: 13,
   };
 
   return (
     <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      {/* Hidden iframe for print */}
-      <iframe
-        ref={iframeRef}
-        style={{ position: "fixed", width: 0, height: 0, border: "none", opacity: 0, pointerEvents: "none" }}
-        title="export-print"
-      />
-
       <div style={dialog}>
         <h2 style={title}>导出模组手册</h2>
 
         {phase === "validating" && (
-          <p style={{ color: "var(--text-muted, #888)", fontSize: 13 }}>正在校验资产…</p>
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>正在校验资产…</p>
         )}
 
         {phase === "error" && (
-          <p style={{ color: "var(--danger, #f38ba8)", fontSize: 13 }}>
+          <p style={{ color: "var(--danger)", fontSize: 13 }}>
             错误：{errorMsg}
           </p>
         )}
 
-        {(phase === "ready" || phase === "printing" || phase === "done") && validation && (
+        {(phase === "ready" || phase === "opening" || phase === "done") && validation && (
           <>
             {!hasWarnings && (
-              <p style={{ fontSize: 13, color: "var(--text-muted, #888)" }}>
+              <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
                 校验通过，所有资产均已发布，无断裂引用。
               </p>
             )}
@@ -155,7 +143,7 @@ export function ExportDialog({ workspaceId, onClose }: Props) {
 
             {validation.broken_refs.length > 0 && (
               <div style={{ ...section, background: "rgba(243,139,168,0.08)", borderColor: "rgba(243,139,168,0.25)" }}>
-                <div style={{ ...warningTitle, color: "var(--danger, #f38ba8)" }}>
+                <div style={{ ...warningTitle, color: "var(--danger)" }}>
                   {validation.broken_refs.length} 个断裂引用
                 </div>
                 <ul style={itemList}>
@@ -171,8 +159,8 @@ export function ExportDialog({ workspaceId, onClose }: Props) {
         )}
 
         {phase === "done" && (
-          <p style={{ fontSize: 13, color: "var(--success, #a6e3a1)", marginTop: 12 }}>
-            打印对话框已打开，请选择"存储为 PDF"。
+          <p style={{ fontSize: 13, color: "var(--success)", marginTop: 12 }}>
+            已在系统浏览器中打开，请按 <kbd style={{ padding: "1px 5px", borderRadius: 3, border: "1px solid var(--border)", fontSize: 11 }}>Cmd+P</kbd> 存储为 PDF。
           </p>
         )}
 
@@ -180,14 +168,14 @@ export function ExportDialog({ workspaceId, onClose }: Props) {
           <button style={btnCancel} onClick={onClose}>
             {phase === "done" ? "关闭" : "取消"}
           </button>
-          {(phase === "ready") && (
+          {phase === "ready" && (
             <button style={btnPrint} onClick={handlePrint}>
               {hasWarnings ? "忽略警告并导出" : "导出 PDF"}
             </button>
           )}
-          {phase === "printing" && (
+          {phase === "opening" && (
             <button style={{ ...btnPrint, opacity: 0.6, cursor: "default" }} disabled>
-              生成中…
+              正在打开…
             </button>
           )}
         </div>
