@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  # ── Job 1: Frontend typecheck + build (ubuntu, fast) ──────────────────────
+  frontend:
+    runs-on: ubuntu-latest
+    name: Frontend (typecheck + build)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Typecheck + build
+        run: pnpm --filter desktop build
+
+  # ── Job 2: Backend import check (ubuntu, fast) ────────────────────────────
+  backend:
+    runs-on: ubuntu-latest
+    name: Backend (import check)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd apps/backend
+          pip install -r requirements.txt
+
+      - name: Verify all app modules are importable
+        run: |
+          cd apps/backend
+          python - <<'EOF'
+          import pkgutil, importlib, sys, pathlib
+          errors = []
+          for path in sorted(pathlib.Path("app").rglob("*.py")):
+              parts = list(path.with_suffix("").parts)
+              if "__pycache__" in parts:
+                  continue
+              module = ".".join(parts)
+              try:
+                  importlib.import_module(module)
+              except Exception as e:
+                  errors.append(f"{module}: {e}")
+          if errors:
+              print("Import errors:")
+              for e in errors:
+                  print(" ", e)
+              sys.exit(1)
+          print(f"All {len(list(pathlib.Path('app').rglob('*.py')))} modules imported successfully")
+          EOF
+
+  # ── Job 3: PyInstaller build + smoke test (macOS & Windows) ───────────────
+  build-smoke:
+    needs: [frontend, backend]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform }}
+    name: Build + Smoke (${{ matrix.target }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install chmlib (macOS only)
+        if: runner.os == 'macOS'
+        run: brew install chmlib
+
+      - name: Install Python dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd apps/backend
+          python -m venv .venv
+          CFLAGS="-I$(brew --prefix chmlib)/include" \
+          LDFLAGS="-L$(brew --prefix chmlib)/lib" \
+          .venv/bin/pip install -r requirements.txt pyinstaller
+
+      - name: Install Python dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd apps/backend
+          python -m venv .venv
+          grep -v "^pychm" requirements.txt > requirements-win.txt
+          .venv/Scripts/pip install -r requirements-win.txt pyinstaller
+
+      - name: Build PyInstaller sidecar (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd apps/backend
+          .venv/bin/pyinstaller trpg-backend.spec
+
+      - name: Build PyInstaller sidecar (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd apps/backend
+          .venv/Scripts/pyinstaller trpg-backend.spec
+
+      - name: Smoke test — start backend and call /health (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          apps/backend/dist/trpg-backend --port 19821 &
+          PID=$!
+          # Wait up to 15s for backend to become ready
+          for i in $(seq 1 15); do
+            sleep 1
+            if curl -sf http://127.0.0.1:19821/health > /dev/null 2>&1; then
+              echo "Backend healthy"
+              kill $PID
+              exit 0
+            fi
+          done
+          echo "Backend did not start within 15s"
+          kill $PID 2>/dev/null
+          exit 1
+
+      - name: Smoke test — start backend and call /health (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          apps/backend/dist/trpg-backend.exe --port 19821 &
+          PID=$!
+          for i in $(seq 1 15); do
+            sleep 1
+            if curl -sf http://127.0.0.1:19821/health > /dev/null 2>&1; then
+              echo "Backend healthy"
+              kill $PID
+              exit 0
+            fi
+          done
+          echo "Backend did not start within 15s"
+          kill $PID 2>/dev/null
+          exit 1
