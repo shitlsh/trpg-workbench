@@ -13,8 +13,13 @@ macOS prerequisite: brew install chmlib
 
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 backend_dir = Path(SPECPATH)  # apps/backend/
+
+# Collect ALL submodules under app/ so PyInstaller doesn't miss dynamically
+# referenced modules (e.g. app.services.export_service, app.agents.*, etc.)
+app_submodules = collect_submodules("app")
 
 a = Analysis(
     [str(backend_dir / "server.py")],
@@ -25,6 +30,7 @@ a = Analysis(
         (str(backend_dir / "app/prompts"), "app/prompts"),
     ],
     hiddenimports=[
+        *app_submodules,
         # uvicorn
         "uvicorn",
         "uvicorn.logging",
@@ -53,7 +59,7 @@ a = Analysis(
         "pyarrow.lib",
         # pdfplumber
         "pdfplumber",
-        # pychm
+        # pychm (macOS/Linux only — excluded on Windows via requirements-win.txt)
         "chm",
         "chm.chm",
         "chm.chmlib",
@@ -71,12 +77,36 @@ a = Analysis(
         "pydantic_settings",
         "multipart",
         "aiofiles",
-        # App entry point — must be explicit so PyInstaller includes it
-        "app.main",
     ],
     noarchive=False,
     optimize=0,
 )
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name="trpg-backend",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    # Single-file executable
+    onefile=True,
+)
+
 
 pyz = PYZ(a.pure)
 
