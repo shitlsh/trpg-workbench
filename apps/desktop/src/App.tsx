@@ -49,26 +49,28 @@ export default function App() {
     if (status !== "starting") return;
 
     let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
     (async () => {
       await initBackendUrl();
       if (cancelled) return;
 
-      const interval = setInterval(async () => {
+      interval = setInterval(async () => {
         const ok = await checkHealth();
         if (ok) {
-          clearInterval(interval);
+          clearInterval(interval!);
           setStatus("ready");
         } else if (Date.now() - startTimeRef.current > STARTUP_TIMEOUT) {
-          clearInterval(interval);
+          clearInterval(interval!);
           setStatus("failed", "后端服务启动超时（30秒），请检查环境或重试。");
         }
       }, POLL_INTERVAL);
-
-      // Cleanup for inner interval when outer effect is cleaned up
-      return () => clearInterval(interval);
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
   }, [status, setStatus]);
 
   // Disconnection monitoring while ready

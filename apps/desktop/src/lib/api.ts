@@ -10,12 +10,24 @@ export const BACKEND_URL = BASE_URL;
  * Must be called before any API requests are made.
  */
 export async function initBackendUrl(): Promise<void> {
-  try {
-    const port = await invoke<number>("get_backend_port");
-    BASE_URL = `http://127.0.0.1:${port}`;
-  } catch {
-    // Running in browser dev mode without Tauri – keep default port
+  // In browser dev mode (no Tauri), invoke will throw — keep default port.
+  // In production, invoke may fail transiently if the webview is not yet fully
+  // initialised when this is called. Retry until it succeeds so we always use
+  // the correct randomly-allocated port rather than the hardcoded fallback.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      const port = await invoke<number>("get_backend_port");
+      BASE_URL = `http://127.0.0.1:${port}`;
+      return;
+    } catch {
+      if (attempt === 0) {
+        // First failure — likely running in browser dev mode, keep default port.
+        // But we still try a few more times in case it's a timing issue.
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
+  // All retries exhausted — keep whatever BASE_URL is (default or last success).
 }
 
 export async function apiFetch<T>(
