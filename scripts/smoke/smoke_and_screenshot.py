@@ -301,8 +301,8 @@ def write_latest_manifest(snapshots_root: Path, date_slug: str, run_at: str):
 HELP_IMAGE_PAGES = [
     ("setup-wizard.png", "/setup",           "Setup Wizard (first launch)"),
     ("home.png",         "/",                "Home page"),
-    ("model-config.png", "/settings/models", "Model config (tabs)"),
-    ("settings-llm.png", "/settings/models", "LLM config form"),
+    ("model-config.png", "/settings/models", "Model config (profile list)"),
+    # settings-llm.png is captured separately: click first profile's edit button to show the form
     ("ruleset.png",      "/settings/rule-sets", "Rule set & knowledge management"),
     ("help-page.png",    "/help/getting-started", "Help page"),
 ]
@@ -424,6 +424,25 @@ def generate_help_images(frontend_url: str, backend_url: str):
                 )
                 print(f"  ✓ {filename}  ({description})")
 
+                # After model-config.png, also capture settings-llm.png:
+                # click the first profile's "编辑" button to open the edit form
+                if filename == "model-config.png":
+                    edit_btns = page.get_by_text("编辑", exact=True).all()
+                    if edit_btns:
+                        edit_btns[0].click()
+                        page.wait_for_timeout(1000)
+                        page.screenshot(
+                            path=str(out_dir / "settings-llm.png"), full_page=True
+                        )
+                        print("  ✓ settings-llm.png  (LLM profile edit form)")
+                        # dismiss modal if possible
+                        cancel_btn = page.get_by_text("取消", exact=True).first
+                        if cancel_btn.count() > 0:
+                            cancel_btn.click()
+                            page.wait_for_timeout(500)
+                    else:
+                        print("  — no LLM profile found, skipping settings-llm.png")
+
             # ── Step 3: workspace page (if a workspace exists) ──
             if workspace_id:
                 page.goto(
@@ -432,6 +451,24 @@ def generate_help_images(frontend_url: str, backend_url: str):
                 )
                 page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
                 page.wait_for_timeout(2000)
+
+                # Try to click the first asset in the tree to open it in the editor
+                # Asset rows are divs with cursor:pointer inside the asset tree panel
+                try:
+                    import urllib.request as _ur
+                    with _ur.urlopen(f"{backend_url}/workspaces/{workspace_id}/assets", timeout=5) as _r:
+                        _assets = json.loads(_r.read())
+                    if _assets:
+                        first_asset_name = _assets[0].get("name", "")
+                        if first_asset_name:
+                            asset_locator = page.get_by_text(first_asset_name, exact=True).first
+                            if asset_locator.count() > 0:
+                                asset_locator.click()
+                                page.wait_for_timeout(1500)
+                                print(f"    → opened asset: {first_asset_name}")
+                except Exception as exc:
+                    print(f"  — could not open asset before screenshot: {exc}")
+
                 page.screenshot(
                     path=str(out_dir / "workspace.png"), full_page=True
                 )
