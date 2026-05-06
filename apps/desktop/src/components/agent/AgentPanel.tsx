@@ -349,7 +349,7 @@ function StreamingBubble({
           return (
             <div key={i} className="agent-md">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{e.text}</ReactMarkdown>
-              {isLast && (
+              {isLast && isStreaming && (
                 <span style={{
                   display: "inline-block",
                   width: 6,
@@ -363,6 +363,29 @@ function StreamingBubble({
             </div>
           );
         })}
+        {/* Between-step waiting indicator: shown when streaming but last event is not a text_chunk
+            (e.g. after a tool call completes or thinking ends, waiting for next LLM tokens) */}
+        {isStreaming && events.length > 0 && events[events.length - 1].kind !== "text_chunk" && (
+          <span style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3,
+            marginTop: 6,
+            color: "var(--text-muted)",
+            fontSize: 11,
+          }}>
+            {[0, 1, 2].map((i) => (
+              <span key={i} style={{
+                display: "inline-block",
+                width: 4,
+                height: 4,
+                borderRadius: "50%",
+                background: "var(--text-muted)",
+                animation: `thinking-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
+              }} />
+            ))}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -702,7 +725,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           appendText(textCarry.slice(0, boundaryIdx + 1));
           textCarry = textCarry.slice(boundaryIdx + 1);
         }
-        if (textCarry.length > 120 || force) {
+        if (textCarry.length > 0 || force) {
           appendText(textCarry);
           textCarry = "";
         }
