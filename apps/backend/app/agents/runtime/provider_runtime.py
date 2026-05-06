@@ -567,50 +567,38 @@ async def _chat_google(req: RuntimeRequest):
 
         text_parts: list[str] = []
         function_calls: list[Any] = []
-        last_response: Any = None
 
         async for chunk in await client.aio.models.generate_content_stream(
             model=req.model_name,
             contents=contents,
             config=config,
         ):
-            last_response = chunk
-            # Use a dual-path approach for robustness:
-            # 1. Collect thought parts via candidates[].content.parts (part.thought flag).
-            # 2. Use chunk.text (SDK convenience property) for ordinary text — it already
-            #    skips thought parts and handles chunks where content/parts may be None.
-            thought_text_in_chunk: set[str] = set()
+            # Inspect every candidate's parts for thought, text, and function_call.
+            # function_calls must be collected inside the loop (not just from the
+            # last chunk) because the chunk carrying function_call parts may not
+            # be the final chunk — the last chunk often contains only usage metadata
+            # with empty candidates.
             candidates = getattr(chunk, "candidates", None) or []
             for cand in candidates:
                 cand_content = getattr(cand, "content", None)
                 if cand_content is None:
                     continue
                 for part in getattr(cand_content, "parts", None) or []:
+                    # function_call parts: accumulate for tool execution below.
+                    fc = getattr(part, "function_call", None)
+                    if fc is not None:
+                        function_calls.append(fc)
+                        continue  # function_call parts have no text; skip text paths
+
                     part_text = getattr(part, "text", None)
                     if not part_text:
                         continue
                     is_thought = isinstance(getattr(part, "thought", None), bool) and part.thought
                     if is_thought:
-                        thought_text_in_chunk.add(part_text)
                         yield {"event": "thinking_delta", "data": {"content": part_text}}
-
-            # Emit ordinary text via chunk.text to avoid double-counting thought parts.
-            chunk_text: str | None = getattr(chunk, "text", None)
-            if chunk_text:
-                text_parts.append(chunk_text)
-                yield {"event": "text_delta", "data": {"content": chunk_text}}
-
-        # Extract function_call parts from the final response candidates.
-        if last_response is not None:
-            candidates = getattr(last_response, "candidates", None) or []
-            for cand in candidates:
-                cand_content = getattr(cand, "content", None)
-                if cand_content is None:
-                    continue
-                for part in getattr(cand_content, "parts", None) or []:
-                    fc = getattr(part, "function_call", None)
-                    if fc is not None:
-                        function_calls.append(fc)
+                    else:
+                        text_parts.append(part_text)
+                        yield {"event": "text_delta", "data": {"content": part_text}}
 
         if not function_calls:
             break

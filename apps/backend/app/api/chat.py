@@ -282,6 +282,10 @@ async def send_message(
         text_buffer = []
         tool_calls_emitted: list[dict] = []
         thinking_buffer: list[str] = []
+        # Ordered content segments used to reconstruct {{tool:id}} placeholder
+        # string for persistent storage.  Each entry is either a text fragment
+        # (str) or a tool-call marker ("__tool__:<id>").
+        content_segments: list[str] = []
 
         # ── Keepalive via asyncio queue ───────────────────────────────────────
         # The director may go silent for 30-60s while LM Studio processes a
@@ -346,7 +350,9 @@ async def send_message(
                 data = evt.get("data", {})
 
                 if event_type == "text_delta":
-                    text_buffer.append(data.get("content", ""))
+                    chunk = data.get("content", "")
+                    text_buffer.append(chunk)
+                    content_segments.append(chunk)
                     yield _sse("text_delta", data)
 
                 elif event_type == "thinking_delta":
@@ -354,13 +360,16 @@ async def send_message(
                     yield _sse("thinking_delta", data)
 
                 elif event_type == "tool_call_start":
+                    tc_id = data.get("id", "")
                     tool_calls_emitted.append({
-                        "id": data.get("id", ""),
+                        "id": tc_id,
                         "name": data.get("name", ""),
                         "arguments": data.get("arguments", "{}"),
                         "status": "running",
                         "result_summary": None,
                     })
+                    # Record the tool's position in the content stream.
+                    content_segments.append(f"__tool__:{tc_id}")
                     yield _sse("tool_call_start", data)
 
                 elif event_type == "tool_call_result":
@@ -390,8 +399,19 @@ async def send_message(
                     yield _sse("tool_trace", data)
 
                 elif event_type == "done":
-                    # Save assistant message
-                    final_text = "".join(text_buffer)
+                    # Build interleaved content string with {{tool:id}} placeholders
+                    # so the frontend can restore the correct text/tool ordering on
+                    # reload.  content_segments holds alternating text fragments and
+                    # "__tool__:<id>" markers in arrival order.
+                    parts_out: list[str] = []
+                    for seg in content_segments:
+                        if seg.startswith("__tool__:"):
+                            tc_id_seg = seg[len("__tool__:"):]
+                            parts_out.append(f"\n{{{{tool:{tc_id_seg}}}}}\n")
+                        else:
+                            parts_out.append(seg)
+                    final_text = "".join(parts_out).strip()
+
                     tc_json = json.dumps(tool_calls_emitted, ensure_ascii=False) if tool_calls_emitted else None
                     final_thinking = "".join(thinking_buffer) if thinking_buffer else None
                     chat_service.append_message(

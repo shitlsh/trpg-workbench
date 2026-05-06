@@ -146,6 +146,8 @@ body {
 h1 { font-size: 22pt; margin-bottom: 0.3em; }
 h2 { font-size: 16pt; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 1.5em; }
 h3 { font-size: 13pt; margin-top: 1.2em; margin-bottom: 0.3em; }
+h4 { font-size: 12pt; margin-top: 1em; margin-bottom: 0.2em; }
+h5 { font-size: 11pt; font-style: italic; margin-top: 0.8em; margin-bottom: 0.2em; }
 p { margin: 0.4em 0; }
 .cover { text-align: center; padding-top: 30%; }
 .cover h1 { font-size: 28pt; }
@@ -189,11 +191,11 @@ def _render_body(md_body: str) -> str:
 
     for line in lines:
         if line.startswith("### "):
-            close_lists(); out.append(f"<h4>{inline(_e(line[4:]))}</h4>")
+            close_lists(); out.append(f"<h5>{inline(_e(line[4:]))}</h5>")
         elif line.startswith("## "):
-            close_lists(); out.append(f"<h5>{inline(_e(line[3:]))}</h5>")
+            close_lists(); out.append(f"<h4>{inline(_e(line[3:]))}</h4>")
         elif line.startswith("# "):
-            close_lists(); out.append(f"<h6>{inline(_e(line[2:]))}</h6>")
+            close_lists(); out.append(f"<h3>{inline(_e(line[2:]))}</h3>")
         elif re.match(r"^[-*] ", line):
             if not in_ul:
                 close_lists(); out.append("<ul>"); in_ul = True
