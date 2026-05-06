@@ -4,7 +4,7 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
-## v0.1.2 — TBD
+## v0.1.2 — 2026-05-07
 
 ### Bug Fixes
 
