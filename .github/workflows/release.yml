@@ -47,6 +47,18 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install chmlib
 
+      - name: Install chmlib (Windows only)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          # vcpkg is pre-installed on GitHub Windows runners
+          vcpkg install chmlib:x64-windows
+          # Expose headers and libs so pychm can find them at compile time
+          VCPKG_ROOT="${VCPKG_INSTALLATION_ROOT}"
+          echo "INCLUDE=${VCPKG_ROOT}/installed/x64-windows/include;${INCLUDE}" >> "$GITHUB_ENV"
+          echo "LIB=${VCPKG_ROOT}/installed/x64-windows/lib;${LIB}" >> "$GITHUB_ENV"
+          echo "VCPKG_ROOT=${VCPKG_ROOT}" >> "$GITHUB_ENV"
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -76,10 +88,8 @@ jobs:
         run: |
           cd apps/backend
           python -m venv .venv
-          # pychm has no Windows wheel and chmlib has no Windows port;
-          # install everything except pychm — CHM support is unavailable on Windows.
-          grep -v "^pychm" requirements.txt > requirements-win.txt
-          .venv/Scripts/pip install -r requirements-win.txt pyinstaller
+          # chmlib installed via vcpkg; INCLUDE/LIB env vars set in previous step
+          .venv/Scripts/pip install -r requirements.txt pyinstaller
 
       - name: Build PyInstaller sidecar (macOS)
         if: runner.os == 'macOS'
@@ -93,6 +103,9 @@ jobs:
         shell: bash
         run: |
           cd apps/backend
+          # Copy vcpkg chmlib DLL into dist so PyInstaller bundles it
+          VCPKG_BIN="${VCPKG_ROOT}/installed/x64-windows/bin"
+          cp "${VCPKG_BIN}/chmlib.dll" . 2>/dev/null || true
           .venv/Scripts/pyinstaller trpg-backend.spec
           cp dist/trpg-backend.exe ../desktop/src-tauri/binaries/trpg-backend-${{ matrix.target }}.exe
 
