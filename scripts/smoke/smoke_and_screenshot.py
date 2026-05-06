@@ -452,20 +452,19 @@ def generate_help_images(frontend_url: str, backend_url: str):
                 page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
                 page.wait_for_timeout(2000)
 
-                # Try to click the first asset in the tree to open it in the editor
-                # Asset rows are divs with cursor:pointer inside the asset tree panel
+                # Try to click the first asset row in the asset tree to open it in the editor.
+                # Asset rows are rendered as divs with inline style cursor:pointer (no stable className).
                 try:
-                    import urllib.request as _ur
-                    with _ur.urlopen(f"{backend_url}/workspaces/{workspace_id}/assets", timeout=5) as _r:
-                        _assets = json.loads(_r.read())
-                    if _assets:
-                        first_asset_name = _assets[0].get("name", "")
-                        if first_asset_name:
-                            asset_locator = page.get_by_text(first_asset_name, exact=True).first
-                            if asset_locator.count() > 0:
-                                asset_locator.click()
-                                page.wait_for_timeout(1500)
-                                print(f"    → opened asset: {first_asset_name}")
+                    asset_rows = page.locator(
+                        "div[style*='cursor: pointer'], div[style*='cursor:pointer']"
+                    ).all()
+                    if asset_rows:
+                        asset_rows[0].click()
+                        page.wait_for_timeout(1500)
+                        first_text = asset_rows[0].inner_text()[:30].strip()
+                        print(f"    → opened asset row: '{first_text}'")
+                    else:
+                        print("  — no asset rows found, skipping asset open")
                 except Exception as exc:
                     print(f"  — could not open asset before screenshot: {exc}")
 
