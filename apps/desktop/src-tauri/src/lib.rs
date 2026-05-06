@@ -50,6 +50,7 @@ fn get_system_memory_gb() -> u64 {
 
 #[tauri::command]
 fn get_backend_port(state: State<BackendPort>) -> u16 {
+    log::info!("[invoke] get_backend_port called, returning port {}", state.0);
     state.0
 }
 
