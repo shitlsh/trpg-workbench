@@ -8,7 +8,9 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 ### Bug Fixes
 
-- **Windows 启动失败修复**：PyInstaller 打包时 `uvicorn.run("app.main:app")` 字符串形式无法被静态分析，导致 `app.main` 模块未被打入 bundle，启动报 `could not import module "app.main"`。改为直接 `import` 对象传入解决。
+- **Windows 无法启动修复**：后端 sidecar 进程在 spawn 后被立即杀死，导致 UI 始终显示"服务启动失败"。根本原因是 Rust 侧进程 handle 在 setup block 结束时立即 drop，已修复为在 async task 中持续持有 handle。
+- **重试无效修复**：Tauri webview 初始化完成前调用 invoke 会静默失败并 fallback 到硬编码端口，导致点重试后仍然无法连接后端。现改为自动重试直到拿到正确端口。
+- **Python 模块打包缺失**：PyInstaller 打包时 `uvicorn.run("app.main:app")` 字符串形式无法被静态分析，导致 `app.main` 等模块未被打入 bundle。改为直接传入 import 对象，并将模块收集方式改为文件系统扫描，确保所有模块都被包含。
 - **Windows CHM 支持**：放弃在 MSVC 上编译 pychm（chmlib 依赖 POSIX 头文件），改用 Windows 内置的 `hh.exe -decompile` 解包 CHM，零依赖，功能对等。
 
 ### Features
