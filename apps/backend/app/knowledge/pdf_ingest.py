@@ -180,7 +180,9 @@ async def run_ingest(
     if toc_mapping:
         for m in toc_mapping:
             pf = m.get("page_from", 0)
-            pt = m.get("page_to", 99999)
+            # Use `or 99999` so that explicit 0 / None (sent by frontend when
+            # page_to is absent) still falls back to the sentinel value.
+            pt = m.get("page_to") or 99999
             ct = m.get("chunk_type", "") or ""
             _sorted_toc.append((pf, pt, ct))
         _sorted_toc.sort(key=lambda x: x[0])

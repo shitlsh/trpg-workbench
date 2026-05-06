@@ -1396,7 +1396,7 @@ function LibraryDetailPanel({
       return {
         title: String(r.title ?? ""),
         page_from: Number(r.page_from ?? 0),
-        page_to: Number(r.page_to ?? 0),
+        page_to: Number(r.page_to) || 0,
         depth: Number(r.depth ?? 1),
         chunk_type: ct,
         inherited: r.inherited === true,
@@ -1583,7 +1583,7 @@ function LibraryDetailPanel({
             toc_mapping: sections.map((s) => ({
               title: s.title,
               page_from: s.page_from,
-              page_to: s.page_to,
+              page_to: s.page_to || undefined,
               chunk_type: s.chunk_type ? String(s.chunk_type) : "",
             })),
           }),
@@ -1676,6 +1676,7 @@ function LibraryDetailPanel({
             className={styles.dropzone}
             style={uploadDisabled ? { opacity: 0.5, cursor: "not-allowed", pointerEvents: "none" } : undefined}
             onClick={() => !uploadDisabled && fileInputRef.current?.click()}
+            onDragEnter={(e) => e.preventDefault()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
