@@ -123,6 +123,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     name: Publish Release
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
