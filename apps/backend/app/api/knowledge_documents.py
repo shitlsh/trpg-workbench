@@ -37,7 +37,7 @@ def _toc_sections_payload(sections: list[TocSection]) -> list[dict[str, Any]]:
         {
             "title": s.title,
             "page_from": s.page_from,
-            "page_to": s.page_to,
+            "page_to": s.page_to if s.page_to is not None else 99999,
             "depth": s.depth,
             "suggested_chunk_type": s.suggested_chunk_type,
         }
@@ -662,7 +662,7 @@ async def detect_toc(file_id: str, body: DetectTocRequest = Body(default=DetectT
                 {
                     "title": s.title,
                     "page_from": s.page_from,
-                    "page_to": s.page_to,
+                    "page_to": s.page_to if s.page_to is not None else 99999,
                     "depth": s.depth,
                     "suggested_chunk_type": s.suggested_chunk_type,
                 }

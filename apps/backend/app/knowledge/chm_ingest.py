@@ -291,7 +291,9 @@ async def run_ingest(
     _sorted_toc: list[tuple[int, int, str]] = []
     if toc_mapping:
         for m in toc_mapping:
-            _sorted_toc.append((m.get("page_from", 0), m.get("page_to", 99999), m.get("chunk_type", "") or ""))
+            # Use `or 99999` so that explicit 0 / None falls back to sentinel,
+            # consistent with pdf_ingest behaviour.
+            _sorted_toc.append((m.get("page_from", 0), m.get("page_to") or 99999, m.get("chunk_type", "") or ""))
         _sorted_toc.sort(key=lambda x: x[0])
 
     def _chunk_type_for(page: int) -> str:

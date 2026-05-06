@@ -180,6 +180,14 @@ def full_toc_rows_to_preview(
                 "inherited": inherited,
             }
         )
+    # Back-fill page_to: rows where page_to == page_from (no explicit end) get
+    # inferred as next_row.page_from - 1.  Last row gets 99999 sentinel.
+    for i, row in enumerate(out):
+        if row["page_to"] <= row["page_from"]:
+            if i + 1 < len(out):
+                row["page_to"] = max(out[i + 1]["page_from"] - 1, row["page_from"])
+            else:
+                row["page_to"] = 99999
     return out
 
 
@@ -297,8 +305,12 @@ def parse_pdf_toc_response(raw: str) -> TocAnalysisResult:
         page_to: int | None = None
         if i + 1 < len(raw_sections):
             next_pf = raw_sections[i + 1].get("page_from")
-            if isinstance(next_pf, int):
-                page_to = max(next_pf - 1, s.get("page_from", 1))
+            try:
+                next_pf_int = int(next_pf) if next_pf is not None else None
+            except (TypeError, ValueError):
+                next_pf_int = None
+            if next_pf_int is not None:
+                page_to = max(next_pf_int - 1, s.get("page_from", 1))
 
         ctype = s.get("suggested_chunk_type")
         if ctype not in valid_chunk_types:
