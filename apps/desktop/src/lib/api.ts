@@ -1,15 +1,33 @@
-const BASE_URL = "http://127.0.0.1:7821";
+import { invoke } from "@tauri-apps/api/core";
+
+let BASE_URL = "http://127.0.0.1:7821";
+export const getBackendUrl = () => BASE_URL;
+/** @deprecated use getBackendUrl() for dynamic port */
 export const BACKEND_URL = BASE_URL;
+
+/**
+ * Initialize the backend base URL by querying Tauri for the allocated port.
+ * Must be called before any API requests are made.
+ */
+export async function initBackendUrl(): Promise<void> {
+  try {
+    const port = await invoke<number>("get_backend_port");
+    BASE_URL = `http://127.0.0.1:${port}`;
+  } catch {
+    // Running in browser dev mode without Tauri – keep default port
+  }
+}
 
 export async function apiFetch<T>(
   path: string,
   options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
   let res: Response;
+  const url = BASE_URL;
   const { timeoutMs, ...fetchOptions } = options ?? {};
   const signal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
   try {
-    res = await fetch(`${BASE_URL}${path}`, {
+    res = await fetch(`${url}${path}`, {
       headers: { "Content-Type": "application/json", ...fetchOptions.headers },
       signal,
       ...fetchOptions,
@@ -18,7 +36,7 @@ export async function apiFetch<T>(
     if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
       throw new Error("请求超时：模型响应时间过长，请稍后重试");
     }
-    throw new Error(`网络错误：无法连接到后端服务（${BASE_URL}）`);
+    throw new Error(`网络错误：无法连接到后端服务（${url}）`);
   }
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
@@ -36,7 +54,8 @@ export async function apiFetch<T>(
 
 /** Same as JSON GET, but also returns `X-Total-Count` when the backend sends it (e.g. chunk list). */
 export async function apiFetchWithTotalCount<T>(path: string): Promise<{ data: T; total: number | null }> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const url = BASE_URL;
+  const res = await fetch(`${url}${path}`, {
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) {
@@ -76,15 +95,16 @@ export async function apiPostSSEWithHandlers<T>(
   body: unknown,
   handlers?: SSEHandlers,
 ): Promise<T> {
+  const url = BASE_URL;
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${path}`, {
+    res = await fetch(`${url}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
   } catch (err) {
-    throw new Error(`网络错误：无法连接到后端服务（${BASE_URL}）`);
+    throw new Error(`网络错误：无法连接到后端服务（${url}）`);
   }
   if (!res.ok || !res.body) {
     let detail = `HTTP ${res.status}`;
@@ -146,4 +166,3 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
-

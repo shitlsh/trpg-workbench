@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { checkHealth } from "./lib/api";
+import { checkHealth, initBackendUrl } from "./lib/api";
 import { useBackendStore } from "./stores/backendStore";
 import { useThemeStore, applyTheme } from "./stores/themeStore";
 import StartingScreen from "./pages/StartingScreen";
@@ -44,22 +44,31 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Startup polling
+  // Startup polling: first resolve dynamic port, then poll /health
   useEffect(() => {
     if (status !== "starting") return;
 
-    const interval = setInterval(async () => {
-      const ok = await checkHealth();
-      if (ok) {
-        clearInterval(interval);
-        setStatus("ready");
-      } else if (Date.now() - startTimeRef.current > STARTUP_TIMEOUT) {
-        clearInterval(interval);
-        setStatus("failed", "后端服务启动超时（30秒），请检查环境或重试。");
-      }
-    }, POLL_INTERVAL);
+    let cancelled = false;
+    (async () => {
+      await initBackendUrl();
+      if (cancelled) return;
 
-    return () => clearInterval(interval);
+      const interval = setInterval(async () => {
+        const ok = await checkHealth();
+        if (ok) {
+          clearInterval(interval);
+          setStatus("ready");
+        } else if (Date.now() - startTimeRef.current > STARTUP_TIMEOUT) {
+          clearInterval(interval);
+          setStatus("failed", "后端服务启动超时（30秒），请检查环境或重试。");
+        }
+      }, POLL_INTERVAL);
+
+      // Cleanup for inner interval when outer effect is cleaned up
+      return () => clearInterval(interval);
+    })();
+
+    return () => { cancelled = true; };
   }, [status, setStatus]);
 
   // Disconnection monitoring while ready
