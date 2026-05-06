@@ -442,6 +442,32 @@ async def send_message(
 
         except asyncio.CancelledError:
             producer.cancel()
+            # Save whatever was accumulated before the user stopped
+            if text_buffer or tool_calls_emitted:
+                parts_out: list[str] = []
+                for seg in content_segments:
+                    if seg.startswith("__tool__:"):
+                        tc_id_seg = seg[len("__tool__:"):]
+                        parts_out.append(f"\n{{{{tool:{tc_id_seg}}}}}\n")
+                    else:
+                        parts_out.append(seg)
+                partial_text = "".join(parts_out).strip()
+                tc_json = json.dumps(tool_calls_emitted, ensure_ascii=False) if tool_calls_emitted else None
+                final_thinking = "".join(thinking_buffer) if thinking_buffer else None
+                try:
+                    chat_service.append_message(
+                        workspace_path=ws.workspace_path,
+                        session_id=session_id,
+                        role="assistant",
+                        content=partial_text,
+                        tool_calls_json=tc_json,
+                        thinking_json=final_thinking,
+                    )
+                    if not session.title and body.content:
+                        session.title = body.content[:100]
+                    db.commit()
+                except Exception:
+                    pass
             raise
         except Exception as e:
             yield _sse("error", {"message": str(e)})

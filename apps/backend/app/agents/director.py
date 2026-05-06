@@ -216,6 +216,7 @@ async def run_director_stream(
         call_name_by_id: dict[str, str] = {}
         _in_think = False
         _think_buf = ""
+        _think_buf_safe = False  # True once </think> has been seen; flush text immediately after
 
         # <plan> tag parsing state
         _in_plan = False
@@ -251,6 +252,7 @@ async def run_director_stream(
                             if end > 0:
                                 yield {"event": "thinking_delta", "data": {"content": raw[:end]}}
                             _in_think = False
+                            _think_buf_safe = True
                             raw = raw[end + len("</think>"):]
                     elif _in_plan:
                         end = raw.find("</plan>")
@@ -303,11 +305,19 @@ async def run_director_stream(
                             next_tag = "plan"
 
                         if next_tag_start == -1:
-                            # No special tags — guard against partial tag at end
-                            safe = max(0, len(raw) - 7)
-                            if safe > 0:
-                                yield {"event": "text_delta", "data": {"content": raw[:safe]}}
-                            _think_buf = raw[safe:]
+                            # No special tags found.
+                            # Only guard against partial tag at end if we haven't
+                            # finished thinking yet — once thinking is done, no
+                            # more <think>/<plan> tags are expected and we can
+                            # flush the entire buffer immediately.
+                            if _in_think or not _think_buf_safe:
+                                safe = max(0, len(raw) - 7)
+                                if safe > 0:
+                                    yield {"event": "text_delta", "data": {"content": raw[:safe]}}
+                                _think_buf = raw[safe:]
+                            else:
+                                yield {"event": "text_delta", "data": {"content": raw}}
+                                _think_buf = ""
                             raw = ""
                         else:
                             if next_tag_start > 0:
@@ -362,6 +372,10 @@ async def run_director_stream(
                         },
                     }
                     _plan_step_cursor += 1
+            # Native reasoning_content thinking_delta: once we see any thinking,
+            # it's safe to flush text immediately when thinking ends.
+            if evt.get("event") == "thinking_delta":
+                _think_buf_safe = True
             yield evt
         if _think_buf:
             evt_name = "thinking_delta" if _in_think else "text_delta"

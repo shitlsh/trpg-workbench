@@ -165,7 +165,8 @@ type StreamEvent =
   | { kind: "tool_call"; toolCall: ToolCall }
   | { kind: "question_interrupt"; question: AgentQuestion }
   | { kind: "thinking_chunk"; text: string; done: boolean }
-  | { kind: "plan"; plan: AgentPlan };
+  | { kind: "plan"; plan: AgentPlan }
+  | { kind: "agent_status"; message: string };
 
 // ─── ThinkingBlock ────────────────────────────────────────────────────────────
 
@@ -342,6 +343,22 @@ function StreamingBubble({
                 key={`plan_${e.plan.plan_id}`}
                 plan={e.plan}
               />
+            );
+          }
+          if (e.kind === "agent_status") {
+            return (
+              <span key="agent_status" style={{ color: "var(--text-muted)", fontSize: 12, display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                {e.message}
+                <span style={{ display: "inline-flex", gap: 3 }}>
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} style={{
+                      display: "inline-block", width: 4, height: 4,
+                      borderRadius: "50%", background: "var(--text-muted)",
+                      animation: `thinking-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
+                    }} />
+                  ))}
+                </span>
+              </span>
             );
           }
           // text_chunk
@@ -649,6 +666,13 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     const timeoutSignal = AbortSignal.timeout(10 * 60 * 1000);
     const combinedSignal = AbortSignal.any([ctrl.signal, timeoutSignal]);
 
+    // These are declared outside try so the catch (AbortError) block can read them
+    // to finalize a partial message when the user stops mid-stream.
+    let accEvents: StreamEvent[] = [];
+    let accToolCallsById: Record<string, ToolCall> = {};
+    let traceStartAtById: Record<string, number> = {};
+    let textCarry = "";
+
     try {
       const resp = await fetch(`${BACKEND_URL}/chat/sessions/${session.id}/messages`, {
         method: "POST",
@@ -672,13 +696,13 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       const decoder = new TextDecoder();
       let buf = "";
 
-      let accEvents: StreamEvent[] = [];
-      let accToolCallsById: Record<string, ToolCall> = {};
-      let traceStartAtById: Record<string, number> = {};
+      accEvents = [];
+      accToolCallsById = {};
+      traceStartAtById = {};
       let currentEvent = "";
       let streamDone = false;
       let lastUiFlush = 0;
-      let textCarry = "";
+      textCarry = "";
       const flushUi = (force = false) => {
         const now = Date.now();
         if (!force && now - lastUiFlush < 33) return;
@@ -753,6 +777,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
             if (currentEvent === "text_delta") {
               const chunk = (data.content as string) ?? "";
+              // Clear any pending agent_status when text starts
+              accEvents = accEvents.filter((e) => e.kind !== "agent_status");
               // When text starts arriving, any preceding thinking phase is done.
               // This closes the thinking cursor even if no new thinking_delta follows.
               const hasActiveThinking = accEvents.some(
@@ -768,6 +794,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
             } else if (currentEvent === "thinking_delta") {
               const chunk = (data.content as string) ?? "";
+              // Clear any pending agent_status when thinking resumes
+              accEvents = accEvents.filter((e) => e.kind !== "agent_status");
               appendThinking(chunk);
               flushUi();
 
@@ -847,6 +875,14 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               }
               flushUi();
 
+            } else if (currentEvent === "agent_status") {
+              // All tools done, waiting for next LLM response (TTFT gap filler)
+              const message = (data.message as string) ?? "正在处理...";
+              // Remove any existing agent_status events; keep only the latest
+              accEvents = accEvents.filter((e) => e.kind !== "agent_status");
+              accEvents = [...accEvents, { kind: "agent_status", message }];
+              flushUi();
+
             } else if (currentEvent === "agent_question") {
               // Director wants to ask the user a question before continuing
               const q = data as unknown as AgentQuestion;
@@ -888,9 +924,11 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               // Build content with {{tool:id}} placeholders to preserve ordering.
               // Text segments and tool-call markers are interleaved in accEvents order.
               // Mark all thinking_chunks as done before finalizing.
-              accEvents = accEvents.map((e) =>
-                e.kind === "thinking_chunk" ? { ...e, done: true } : e
-              );
+              accEvents = accEvents
+                .filter((e) => e.kind !== "agent_status")
+                .map((e) =>
+                  e.kind === "thinking_chunk" ? { ...e, done: true } : e
+                );
               let contentWithPlaceholders = "";
               let accThinking = "";
               for (const ev of accEvents) {
@@ -988,6 +1026,51 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       setTyping(false);
       // Don't flush on abort — user intentionally stopped; discard queue too
       if ((e as Error).name === "AbortError") {
+        // Flush any partial text carry directly into accEvents
+        if (textCarry) {
+          const last = accEvents[accEvents.length - 1];
+          if (last && last.kind === "text_chunk") {
+            accEvents = [...accEvents.slice(0, -1), { kind: "text_chunk", text: last.text + textCarry }];
+          } else {
+            accEvents = [...accEvents, { kind: "text_chunk", text: textCarry }];
+          }
+          textCarry = "";
+        }
+        // Save accumulated content to local message list so it stays visible
+        const finalEvents = accEvents
+          .filter((ev) => ev.kind !== "agent_status")
+          .map((ev) => ev.kind === "thinking_chunk" ? { ...ev, done: true } : ev);
+        let abortContent = "";
+        let abortThinking = "";
+        for (const ev of finalEvents) {
+          if (ev.kind === "text_chunk") abortContent += ev.text;
+          else if (ev.kind === "tool_call") abortContent += `\n{{tool:${ev.toolCall.id}}}\n`;
+          else if (ev.kind === "thinking_chunk") {
+            if (abortThinking) abortThinking += "\n\n---\n\n";
+            abortThinking += ev.text;
+          }
+        }
+        const abortToolCalls = Object.values(accToolCallsById).map((tc) =>
+          tc.status === "running"
+            ? { ...tc, status: "done" as ToolCall["status"], result_summary: tc.result_summary ?? "已中断" }
+            : tc
+        );
+        if (abortContent.trim() || abortToolCalls.length > 0 || abortThinking) {
+          addMessage({
+            id: `assistant_${Date.now()}`,
+            session_id: session?.id ?? "",
+            role: "assistant",
+            content: abortContent.trim(),
+            references_json: null,
+            tool_calls_json: abortToolCalls.length > 0 ? JSON.stringify(abortToolCalls) : null,
+            thinking_json: abortThinking || null,
+            created_at: new Date().toISOString(),
+          });
+          // Refresh asset tree if any tool had already written workspace assets
+          if (abortToolCalls.some((tc) => tc.status === "auto_applied") && workspaceId) {
+            qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
+          }
+        }
         syncQueue([]);
       } else {
         flushQueue();

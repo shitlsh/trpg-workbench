@@ -321,6 +321,8 @@ async def _chat_openai_like(
                     result = evt["data"]["summary"]
             messages.append({"role": "tool", "tool_call_id": tc_id, "name": name, "content": result})
 
+        # Signal that all tools have been executed and we're waiting for the next LLM response (TTFT gap).
+        yield {"event": "agent_status", "data": {"message": "正在整合信息，继续生成..."}}
 
 def _to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
     """Convert internal message list to Anthropic API format.
@@ -671,7 +673,7 @@ async def _chat_google(req: RuntimeRequest):
 
         # All tool results go into a single user Content (Gemini requirement).
         contents.append(types.Content(role="user", parts=result_parts))
-
+        yield {"event": "agent_status", "data": {"message": "正在整合信息，继续生成..."}}
 
 async def run_provider_runtime(req: RuntimeRequest):
     policy = resolve_policy(req.profile, req.model_name)
