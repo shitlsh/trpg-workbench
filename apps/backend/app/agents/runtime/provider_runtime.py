@@ -507,9 +507,14 @@ def _to_gemini_contents(messages: list[dict]) -> list[Any]:
             name = m.get("name") or ""
             raw = content
             try:
-                resp_val: Any = json.loads(raw)
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
             except Exception:
-                resp_val = {"result": raw}
+                parsed = None
+            # FunctionResponse.response MUST be a dict; wrap non-dict values.
+            if isinstance(parsed, dict):
+                resp_val: dict = parsed
+            else:
+                resp_val = {"result": parsed if parsed is not None else (raw or "")}
             fr_part = types.Part(
                 function_response=types.FunctionResponse(name=name, response=resp_val)
             )
@@ -627,7 +632,9 @@ async def _chat_google(req: RuntimeRequest):
         for i, fc in enumerate(function_calls):
             name = getattr(fc, "name", "") or ""
             args = dict(getattr(fc, "args", {}) or {})
-            call_id = f"{name}_{i}" if len(function_calls) > 1 else name
+            # Preserve the SDK-assigned call id (if any) for FunctionResponse matching.
+            sdk_id: str | None = getattr(fc, "id", None) or None
+            call_id = sdk_id or (f"{name}_{i}" if len(function_calls) > 1 else name)
             yield {
                 "event": "tool_call_start",
                 "data": {
@@ -642,15 +649,24 @@ async def _chat_google(req: RuntimeRequest):
                 if evt["event"] == "tool_call_result":
                     raw_result = evt["data"]["summary"]
                     try:
-                        resp_val = json.loads(raw_result)
+                        parsed = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
                     except Exception:
-                        resp_val = {"result": raw_result}
+                        parsed = None
+                    # FunctionResponse.response MUST be a dict; wrap any other type.
+                    if isinstance(parsed, dict):
+                        resp_val = parsed
+                    else:
+                        resp_val = {"result": parsed if parsed is not None else (raw_result or "")}
 
             if resp_val is None:
                 resp_val = {"error": "no result"}
             result_parts.append(
                 types.Part(
-                    function_response=types.FunctionResponse(name=name, response=resp_val)
+                    function_response=types.FunctionResponse(
+                        id=sdk_id,
+                        name=name,
+                        response=resp_val,
+                    )
                 )
             )
 
