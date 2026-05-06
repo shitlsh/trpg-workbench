@@ -208,7 +208,8 @@ def _render_body(md_body: str) -> str:
         elif re.match(r"^\d+\. ", line):
             if not in_ol:
                 close_lists(); out.append("<ol>"); in_ol = True
-            out.append(f"<li>{inline(_e(re.sub(r'^\d+\.\s*', '', line)))}</li>")
+            text = re.sub(r'^\d+\.\s*', '', line)
+            out.append(f"<li>{inline(_e(text))}</li>")
         elif line.strip() == "":
             close_lists()
         else:
