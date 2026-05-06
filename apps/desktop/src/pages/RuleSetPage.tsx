@@ -200,16 +200,15 @@ function TocTreeRowsEditable({
               </td>
               <td style={{ padding: "5px 4px" }} onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <select
-                    style={{ fontSize: 12, padding: "2px 4px", borderRadius: 3, border: "1px solid var(--border)", background: "var(--bg)", color: n.row.inherited ? "var(--text-muted)" : "var(--text)", width: "100%" }}
-                    value={n.row.chunk_type}
-                    onChange={(e) => onChunkTypeChange(n.index, e.target.value as ChunkType | "")}
-                  >
-                    <option value="">— 无分类</option>
-                    {CHUNK_TYPES.map((ct) => (
-                      <option key={ct.value} value={ct.value}>{ct.label}</option>
-                    ))}
-                  </select>
+                   <select
+                     style={{ fontSize: 12, padding: "2px 4px", borderRadius: 3, border: "1px solid var(--border)", background: "var(--bg)", color: n.row.inherited ? "var(--text-muted)" : "var(--text)", width: "100%" }}
+                     value={n.row.chunk_type || "none"}
+                     onChange={(e) => onChunkTypeChange(n.index, e.target.value as ChunkType | "")}
+                   >
+                     {CHUNK_TYPES.map((ct) => (
+                       <option key={ct.value} value={ct.value}>{ct.label}</option>
+                     ))}
+                   </select>
                   {n.row.inherited && (
                     <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", opacity: 0.7 }}>继承</span>
                   )}
