@@ -68,11 +68,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
-          RELEASE_ID=$(gh release create "$TAG" \
+          gh release create "$TAG" \
             --draft \
             --title "TRPG Workbench ${TAG}" \
-            --notes-file release_body.md \
-            --json id --jq '.id')
+            --notes-file release_body.md
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$TAG --jq '.id')
           echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
 
   build:
