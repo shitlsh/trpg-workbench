@@ -17,6 +17,12 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 backend_dir = Path(SPECPATH)  # apps/backend/
 
+# Must add backend_dir to sys.path BEFORE calling collect_submodules,
+# otherwise PyInstaller cannot find the local 'app' package and returns
+# an empty list, causing all app.* modules to be excluded from the bundle.
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 # Collect ALL submodules under app/ so PyInstaller doesn't miss dynamically
 # referenced modules (e.g. app.services.export_service, app.agents.*, etc.)
 app_submodules = collect_submodules("app")
