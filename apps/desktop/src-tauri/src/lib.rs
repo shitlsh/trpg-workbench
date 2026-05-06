@@ -1,13 +1,17 @@
 use std::net::TcpListener;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::Manager;
 use tauri::State;
 use tauri_plugin_shell::ShellExt;
 
 #[cfg(not(debug_assertions))]
-use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 
 struct BackendPort(u16);
+
+#[cfg(not(debug_assertions))]
+struct BackendChild(Mutex<Option<CommandChild>>);
 
 /// Allocate a random available port by binding to port 0.
 fn get_free_port() -> u16 {
@@ -53,7 +57,7 @@ pub fn run() {
     let log_dir = get_data_dir().join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -71,7 +75,14 @@ pub fn run() {
                 .level_for("tracing", log::LevelFilter::Warn)
                 .build(),
         )
-        .manage(BackendPort(port))
+        .manage(BackendPort(port));
+
+    #[cfg(not(debug_assertions))]
+    {
+        builder = builder.manage(BackendChild(Mutex::new(None)));
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![get_system_memory_gb, get_backend_port])
         .setup(move |app| {
             log::info!("=== trpg-workbench started ===");
@@ -125,10 +136,11 @@ pub fn run() {
                     .spawn()
                     .expect("Failed to spawn trpg-backend sidecar");
 
-                // Keep `child` alive by moving it into the async task.
-                // If it were dropped here the OS would kill the sidecar process immediately.
+                // Store child handle in managed state so it can be killed on exit
+                let backend_child = app.state::<BackendChild>();
+                *backend_child.0.lock().unwrap() = Some(child);
+
                 tauri::async_runtime::spawn(async move {
-                    let _child = child; // held alive for the duration of this task
                     while let Some(event) = rx.recv().await {
                         match event {
                             CommandEvent::Stdout(line) => {
@@ -157,7 +169,18 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            #[cfg(not(debug_assertions))]
+            if let tauri::WindowEvent::Destroyed = event {
+                // Kill the backend sidecar when the main window is destroyed
+                let app = window.app_handle();
+                let backend_child = app.state::<BackendChild>();
+                if let Some(mut child) = backend_child.0.lock().unwrap().take() {
+                    let _ = child.kill();
+                    log::info!("[backend] sidecar killed on window destroy");
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
