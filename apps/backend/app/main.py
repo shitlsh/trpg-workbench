@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import health, workspaces, rule_sets
 from app.api import knowledge_libraries, knowledge_documents, tasks, knowledge_search
@@ -19,6 +22,14 @@ from app.storage.database import init_db
 from app.storage.seed import seed_default_data
 
 app = FastAPI(title="TRPG Workbench Backend", version="0.1.0")
+
+logger = logging.getLogger(__name__)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 app.add_middleware(
     CORSMiddleware,

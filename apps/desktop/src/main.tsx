@@ -1,8 +1,25 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { attachConsole, error as logError } from "@tauri-apps/plugin-log";
 import App from "./App";
 import "./index.css";
+
+// Pipe browser console output to tauri-plugin-log (writes to app.log file)
+attachConsole();
+
+// Capture unhandled JS errors
+window.addEventListener("error", (event) => {
+  logError(`[unhandled error] ${event.message} at ${event.filename}:${event.lineno}`);
+});
+
+// Capture unhandled promise rejections
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason instanceof Error
+    ? `${event.reason.message}\n${event.reason.stack ?? ""}`
+    : String(event.reason);
+  logError(`[unhandled rejection] ${reason}`);
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {
