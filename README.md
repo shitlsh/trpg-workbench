@@ -1,22 +1,71 @@
-# TRPG Workbench
+<div align="center">
+  <img src="apps/desktop/src-tauri/icons/128x128.png" alt="TRPG Workbench" width="96" />
 
-本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
+  # TRPG Workbench
 
-> **当前状态：M33 已完成**（0.1.0 打包与发布：PyInstaller sidecar、随机端口、GitHub Actions Mac/Windows 流水线）
+  **本地优先的 TRPG 主持人创作工作台**
+
+  类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
+
+  [![Release](https://img.shields.io/github/v/release/shitlsh/trpg-workbench?style=flat-square)](https://github.com/shitlsh/trpg-workbench/releases)
+  [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue?style=flat-square)](#安装)
+  [![License](https://img.shields.io/github/license/shitlsh/trpg-workbench?style=flat-square)](LICENSE)
+  [![Build](https://img.shields.io/github/actions/workflow/status/shitlsh/trpg-workbench/release.yml?style=flat-square&label=build)](https://github.com/shitlsh/trpg-workbench/actions)
+
+  [下载安装包](#安装) · [本地开发](#本地开发) · [路线图](.agents/plans/roadmap.md)
+</div>
 
 ---
+
+![TRPG Workbench 工作空间界面](apps/desktop/public/help-images/workspace.png)
 
 ## 功能概览
 
-- **多工作空间**：每个剧本独立工作空间，资产隔离
-- **AI 创作辅助**：对话式 Agent 协助写 NPC、场景、线索，支持 OpenAI / Anthropic / Google Gemini / 兼容接口
-- **结构化资产**：NPC、怪物、地点、线索、场景等类型化资产，带版本历史回溯
-- **知识库**：导入 PDF/CHM 规则书，自动切块向量化，AI 可按需检索引用
-- **Prompt 管理**：可视化编辑 system prompt，创建多套 Prompt Profile 切换
-- **双向链接**：资产内 `[[双链]]` 语法，可视化关系图
-- **模组手册导出**：一键生成 PDF
+- **多工作空间** — 每个剧本独立工作空间，资产完全隔离
+- **AI 创作辅助** — 对话式 Agent 协助撰写 NPC、场景、线索，支持 OpenAI / Anthropic / Google Gemini / 兼容接口
+- **结构化资产** — NPC、怪物、地点、线索、场景等类型化资产，带版本历史回溯
+- **知识库** — 导入 PDF/CHM 规则书，自动切块向量化，AI 可按需检索引用
+- **Prompt 管理** — 可视化编辑 system prompt，创建多套 Prompt Profile 随时切换
+- **双向链接** — 资产内 `[[双链]]` 语法，可视化关系图
+- **模组手册导出** — 一键生成 PDF
 
----
+## 安装
+
+> [!NOTE]
+> v0.1.0 为未签名测试版，首次运行需手动授权（见下方说明）。
+
+从 [Releases](https://github.com/shitlsh/trpg-workbench/releases) 页面下载对应平台安装包：
+
+| 平台 | 文件 |
+|------|------|
+| macOS Apple Silicon | `TRPG.Workbench_*_aarch64.dmg` |
+| macOS Intel | `TRPG.Workbench_*_x64.dmg` |
+| Windows | `TRPG.Workbench_*_x64-setup.exe` |
+
+<details>
+<summary><strong>macOS — 绕过 Gatekeeper</strong></summary>
+
+安装后如遇「无法打开，因为它来自身份不明的开发者」：
+
+```bash
+# 方法一：右键点击应用图标 → 选择「打开」→ 点击「打开」
+
+# 方法二：命令行移除隔离属性
+xattr -cr /Applications/TRPG\ Workbench.app
+```
+</details>
+
+<details>
+<summary><strong>Windows — 绕过 SmartScreen</strong></summary>
+
+安装时弹出「Windows 已保护你的电脑」：点击「更多信息」→「仍要运行」。
+</details>
+
+### 首次配置
+
+启动后会进入**配置向导**（4 步）：LLM 模型 → Embedding 模型 → 规则集 → 工作空间。各步均可跳过后补。
+
+![配置向导](apps/desktop/public/help-images/setup-wizard.png)
 
 ## 技术栈
 
@@ -28,75 +77,6 @@
 | 数据库 | SQLite（via SQLAlchemy） |
 | 向量索引 | lancedb |
 
----
-
-## 安装
-
-> [!NOTE]
-> v0.1.0 为未签名测试版，首次运行需手动授权。
-
-从 [Releases](../../releases) 页面下载对应平台的安装包：
-
-| 平台 | 文件 |
-|------|------|
-| macOS Apple Silicon | `TRPG.Workbench_*_aarch64.dmg` |
-| macOS Intel | `TRPG.Workbench_*_x64.dmg` |
-| Windows | `TRPG.Workbench_*_x64-setup.exe` |
-
-**macOS — 绕过 Gatekeeper**
-
-安装后如遇「无法打开，因为它来自身份不明的开发者」：
-
-```bash
-# 方法一：右键点击应用图标 → 选择「打开」→ 点击「打开」
-# 方法二：命令行移除隔离属性
-xattr -cr /Applications/TRPG\ Workbench.app
-```
-
-**Windows — 绕过 SmartScreen**
-
-安装时弹出「Windows 已保护你的电脑」：点击「更多信息」→「仍要运行」。
-
----
-
-## 仓库结构
-
-```
-trpg-workbench/
-  apps/
-    desktop/                # React + Tauri 前端
-      src/
-        pages/              # 页面组件
-        components/         # 通用组件（editor、agent、layout）
-        stores/             # Zustand 状态
-        lib/                # API 客户端工具
-      src-tauri/            # Tauri / Rust 壳
-        binaries/           # PyInstaller 打包的后端 sidecar（构建时填充）
-    backend/                # Python FastAPI 后端
-      app/
-        api/                # HTTP 路由（workspaces、assets、chat、llm_profiles 等）
-        agents/             # Agent 运行时（director/explore、tools、provider adapter）
-        data/               # 静态数据（model catalog JSON）
-        models/             # ORM（SQLAlchemy）+ Pydantic Schema
-        services/           # 业务逻辑（model_routing、catalog_service 等）
-        storage/            # SQLite 初始化、种子数据
-        utils/              # 路径、加密工具
-        workflows/          # 多步 Workflow（create_module、rules_review 等）
-        knowledge/          # PDF 解析、向量检索
-      server.py             # 启动入口（支持 --port 参数）
-      trpg-backend.spec     # PyInstaller 打包配置
-  packages/
-    shared-schema/          # 前后端共用 TypeScript 类型（API contract 唯一来源）
-  .github/
-    workflows/
-      release.yml           # Mac + Windows 自动构建发布流水线
-  .agents/
-    skills/                 # AI Agent skill 约束文档
-    plans/                  # 各里程碑开发计划
-```
-
----
-
 ## 本地开发
 
 ### 环境要求
@@ -106,7 +86,7 @@ trpg-workbench/
 - Python 3.11+（推荐 3.13）
 - Rust（`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`）
 - Tauri CLI（`cargo install tauri-cli`）
-- macOS：需安装 Xcode Command Line Tools；如需打包 CHM 支持，需 `brew install chmlib`
+- macOS：需安装 Xcode Command Line Tools；如需 CHM 支持，需 `brew install chmlib`
 
 ### 安装依赖
 
@@ -122,57 +102,69 @@ PIP_USER=false .venv/bin/pip install -r requirements.txt
 
 ### 启动开发服务器
 
-**方式一：仅调试后端**
+**完整桌面应用（推荐）**
+
+```bash
+bash scripts/dev.sh
+```
+
+**仅调试后端**
 
 ```bash
 cd apps/backend
 PIP_USER=false TRPG_DATA_DIR=~/trpg-workbench-data .venv/bin/python3 server.py
-# 后端监听 http://127.0.0.1:7821（dev 模式默认端口）
+# 后端监听 http://127.0.0.1:7821
 ```
 
-**方式二：完整桌面应用（Tauri + React + Python）**
+### 仓库结构
 
-```bash
-# 推荐方式：使用项目内置启动脚本（自动管理后端 + 前端 + 退出清理）
-bash scripts/dev.sh
-
-# 或手动启动
-source "$HOME/.cargo/env"
-cd apps/desktop
-cargo tauri dev
-# Tauri 会自动分配随机端口并拉起前端 Vite dev server 和 Python 后端
+```
+trpg-workbench/
+├── apps/
+│   ├── desktop/              # React + Tauri 前端
+│   │   ├── src/
+│   │   │   ├── pages/        # 页面组件
+│   │   │   ├── components/   # 通用组件（editor、agent、layout）
+│   │   │   ├── stores/       # Zustand 状态
+│   │   │   └── lib/          # API 客户端工具
+│   │   └── src-tauri/        # Tauri / Rust 壳
+│   └── backend/              # Python FastAPI 后端
+│       └── app/
+│           ├── api/          # HTTP 路由
+│           ├── agents/       # Agent 运行时
+│           ├── models/       # ORM + Pydantic Schema
+│           ├── services/     # 业务逻辑
+│           ├── workflows/    # 多步 Workflow
+│           └── knowledge/    # PDF 解析、向量检索
+├── packages/
+│   └── shared-schema/        # 前后端共用 TypeScript 类型
+└── .github/
+    └── workflows/
+        └── release.yml       # Mac + Windows 自动构建发布流水线
 ```
 
-### 首次配置
-
-1. 应用首次启动会进入**配置向导**（4 步）：LLM 模型 → Embedding 模型 → 规则集 → 工作空间；各步均可跳过后补
-2. 如需手动配置，进入「模型配置」分别添加 LLM Profile 和 Embedding Profile
-3. 进入工作空间设置，在「模型路由」区域绑定默认 LLM 和 Embedding 模型
-
----
-
-## 数据目录
+### 数据目录
 
 运行时数据默认存储在 `~/trpg-workbench-data/`，可通过环境变量 `TRPG_DATA_DIR` 覆盖。
 
-后端可选环境变量 `LLM_REQUEST_TIMEOUT_SECONDS`：设为正整数秒时，对 Provider SDK 的 LLM 与 Embedding 请求注入对应 HTTP 超时；不设置则由 SDK 默认行为决定。
-
 ```
 ~/trpg-workbench-data/
-  app.db               # SQLite 主数据库
-  .secret_key          # 本地加密密钥（chmod 600，勿提交）
-  workspaces/
-    <workspace-id>/    # 每个工作空间的资产文件目录
-      assets/          # 结构化资产（JSON + Markdown 双文件）
-  knowledge/
-    libraries/
-      <library-id>/    # 知识库索引和解析结果
+├── app.db                    # SQLite 主数据库
+├── .secret_key               # 本地加密密钥（勿提交）
+├── workspaces/
+│   └── <workspace-id>/
+│       └── assets/           # 结构化资产（JSON + Markdown 双文件）
+└── knowledge/
+    └── libraries/
+        └── <library-id>/     # 知识库索引和解析结果
 ```
 
----
+> [!TIP]
+> 可通过环境变量 `LLM_REQUEST_TIMEOUT_SECONDS`（正整数秒）为 LLM / Embedding 请求设置超时，不设置则由 SDK 默认行为决定。
 
 ## 贡献
 
 本项目处于积极开发阶段。参与前请先阅读：
-- `.agents/skills/trpg-workbench-architecture/SKILL.md`：整体架构约束
-- `.agents/plans/roadmap.md`：里程碑路线图
+
+- [架构约束](.agents/skills/trpg-workbench-architecture/SKILL.md) — 整体技术选型与分层规范
+- [里程碑路线图](.agents/plans/roadmap.md) — 当前状态与计划
