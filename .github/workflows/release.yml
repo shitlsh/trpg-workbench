@@ -108,7 +108,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "lts/*"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -173,7 +173,7 @@ jobs:
           cp dist/trpg-backend.exe ../desktop/src-tauri/binaries/trpg-backend-${{ matrix.target }}.exe
 
       - name: Build Tauri app and upload to draft release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
