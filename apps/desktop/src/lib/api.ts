@@ -1,41 +1,51 @@
 import { invoke } from "@tauri-apps/api/core";
 
-let BASE_URL = "http://127.0.0.1:7821";
-export const getBackendUrl = () => BASE_URL;
-/** @deprecated use getBackendUrl() for dynamic port */
-export const BACKEND_URL = BASE_URL;
+// ---------------------------------------------------------------------------
+// Backend URL resolution
+//
+// BASE_URL_PROMISE resolves exactly once to the correct backend origin.
+// Every fetch helper awaits it, so callers never need to worry about
+// calling initBackendUrl() at the right time — the Promise memoises the
+// result for free.
+//
+// In browser dev mode (no Tauri runtime) invoke throws and we fall back to
+// the hardcoded port 7821 after retries are exhausted.
+// ---------------------------------------------------------------------------
 
-/**
- * Initialize the backend base URL by querying Tauri for the allocated port.
- * Must be called before any API requests are made.
- */
-export async function initBackendUrl(): Promise<void> {
-  // In browser dev mode (no Tauri), invoke will throw — keep default port.
-  // In production, invoke may fail transiently if the webview is not yet fully
-  // initialised when this is called. Retry until it succeeds so we always use
-  // the correct randomly-allocated port rather than the hardcoded fallback.
+const BASE_URL_FALLBACK = "http://127.0.0.1:7821";
+
+const BASE_URL_PROMISE: Promise<string> = (async () => {
   for (let attempt = 0; attempt < 20; attempt++) {
     try {
       const port = await invoke<number>("get_backend_port");
-      BASE_URL = `http://127.0.0.1:${port}`;
-      return;
+      return `http://127.0.0.1:${port}`;
     } catch {
-      if (attempt === 0) {
-        // First failure — likely running in browser dev mode, keep default port.
-        // But we still try a few more times in case it's a timing issue.
-      }
       await new Promise((r) => setTimeout(r, 100));
     }
   }
-  // All retries exhausted — keep whatever BASE_URL is (default or last success).
+  // All retries exhausted — running in browser dev mode or Tauri init failed.
+  return BASE_URL_FALLBACK;
+})();
+
+/** @deprecated Use the async fetch helpers directly; they await the URL internally. */
+export const getBackendUrl = () => BASE_URL_FALLBACK;
+/** @deprecated legacy alias */
+export const BACKEND_URL = BASE_URL_FALLBACK;
+
+/**
+ * Warm up the URL resolution Promise eagerly.
+ * Safe to call multiple times — the Promise is shared and only runs once.
+ */
+export async function initBackendUrl(): Promise<void> {
+  await BASE_URL_PROMISE;
 }
 
 export async function apiFetch<T>(
   path: string,
   options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
+  const url = await BASE_URL_PROMISE;
   let res: Response;
-  const url = BASE_URL;
   const { timeoutMs, ...fetchOptions } = options ?? {};
   const signal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
   try {
@@ -66,7 +76,7 @@ export async function apiFetch<T>(
 
 /** Same as JSON GET, but also returns `X-Total-Count` when the backend sends it (e.g. chunk list). */
 export async function apiFetchWithTotalCount<T>(path: string): Promise<{ data: T; total: number | null }> {
-  const url = BASE_URL;
+  const url = await BASE_URL_PROMISE;
   const res = await fetch(`${url}${path}`, {
     headers: { "Content-Type": "application/json" },
   });
@@ -107,7 +117,7 @@ export async function apiPostSSEWithHandlers<T>(
   body: unknown,
   handlers?: SSEHandlers,
 ): Promise<T> {
-  const url = BASE_URL;
+  const url = await BASE_URL_PROMISE;
   let res: Response;
   try {
     res = await fetch(`${url}${path}`, {
@@ -172,7 +182,8 @@ export async function apiPostSSE<T>(path: string, body: unknown): Promise<T> {
 
 export async function checkHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(2000) });
+    const url = await BASE_URL_PROMISE;
+    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
     return res.ok;
   } catch {
     return false;

@@ -4,6 +4,17 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
+## v0.1.2 — TBD
+
+### Bug Fixes
+
+- **退出后后台进程残留修复**：关闭应用后 `trpg-backend` 进程仍在后台运行。将 `CommandChild` 存入 Tauri managed state，在主窗口 `Destroyed` 事件时显式 kill，确保进程随应用退出。同时加 `window.label() == "main"` guard 防止未来多窗口场景提前误杀后端。
+- **端口占用竞态修复（TOCTOU）**：`get_free_port()` 拿到端口后立刻释放 listener，Windows Defender 等进程可能在 sidecar bind 前抢占该端口。改为持有 `TcpListener` 直到 sidecar spawn 完成再 drop。
+- **sidecar 启动失败从 panic 改为 dialog**：bundle 损坏或 sidecar 二进制缺失时 app 会无声崩溃黑屏。现在改为弹出错误对话框并 graceful exit。
+- **dev 路径从 `current_dir()` 改为 `env!("CARGO_MANIFEST_DIR")`**：从 IDE 或 monorepo 根目录启动 dev 时 `current_dir()` 链式 `parent()` 可能 panic，改用编译时常量确保路径稳定。
+- **`BackendChild` cfg guard 移除**：debug build 也 manage `BackendChild(None)`，使 `on_window_event` 的 kill 逻辑在 debug 下也能编译和运行，避免仅 release 可测的盲区。
+- **`BASE_URL` 改为 Promise-based**：原 module-level `let BASE_URL` 在 `initBackendUrl` 完成前调用任意 fetch 函数均会使用 stale 的 7821 端口。改为 `BASE_URL_PROMISE`（模块加载时立即开始解析，所有 fetch 函数内部 `await`），彻底消除调用时序依赖。
+
 ## v0.1.1 — 2026-05-06
 
 ### Bug Fixes
