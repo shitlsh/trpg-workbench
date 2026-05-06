@@ -101,8 +101,10 @@ jobs:
         with:
           projectPath: apps/desktop
           args: ${{ matrix.args }}
-          # Do NOT pass tagName/releaseName here — release creation is handled
-          # by the publish-release job after all builds succeed.
+          # tagName tells tauri-action to overwrite the version in tauri.conf.json
+          # and package.json with the git tag, so built artifacts carry the correct
+          # version. Release creation is handled by the publish-release job below.
+          tagName: ${{ github.ref_name }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
