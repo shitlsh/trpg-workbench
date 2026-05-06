@@ -15,7 +15,9 @@ import { invoke } from "@tauri-apps/api/core";
 const BASE_URL_FALLBACK = "http://127.0.0.1:7821";
 
 const BASE_URL_PROMISE: Promise<string> = (async () => {
-  for (let attempt = 0; attempt < 20; attempt++) {
+  // Retry for up to 60 seconds (600 × 100ms) to accommodate slow Tauri
+  // webview initialisation on Windows before falling back to the dev port.
+  for (let attempt = 0; attempt < 600; attempt++) {
     try {
       const port = await invoke<number>("get_backend_port");
       return `http://127.0.0.1:${port}`;

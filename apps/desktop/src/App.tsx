@@ -66,7 +66,7 @@ export default function App() {
           setStatus("ready");
         } else if (elapsed > STARTUP_TIMEOUT) {
           clearInterval(interval!);
-          setStatus("failed", "后端服务启动超时（30秒），请检查环境或重试。");
+          setStatus("failed", "后端服务启动超时（60秒），请检查环境或重试。");
         }
       }, POLL_INTERVAL);
     })();
