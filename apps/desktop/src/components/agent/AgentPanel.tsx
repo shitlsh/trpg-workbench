@@ -14,7 +14,7 @@ import type {
 } from "@trpg-workbench/shared-schema";
 import { QuestionCard } from "./QuestionCard";
 import { PlanCard } from "./PlanCard";
-import { ToolCallCard } from "./ToolCallCard";
+import { ToolCallCard, GroupedToolCallCard } from "./ToolCallCard";
 import { MentionInput } from "./MentionInput";
 import { SessionDrawer } from "./SessionDrawer";
 import { apiFetch } from "@/lib/api";
@@ -298,88 +298,133 @@ function StreamingBubble({
             </span>
           </span>
         )}
-        {events.map((e, i) => {
-          if (e.kind === "thinking_chunk") {
-            return (
-              <ThinkingBlock
-                key={`think_${i}`}
-                content={e.text}
-                streaming={isStreaming && !e.done}
-              />
-            );
+        {(() => {
+          // Pre-process: group consecutive completed tool_call events of the same name (≥2).
+          // running tool calls are always rendered individually (sticky bottom effect).
+          type RenderEntry =
+            | { kind: "skip" }
+            | { kind: "group_start"; groupKey: string; toolCalls: import("@trpg-workbench/shared-schema").ToolCall[] }
+            | { kind: "passthrough" };
+
+          const renderHints: RenderEntry[] = events.map(() => ({ kind: "passthrough" as const }));
+
+          let ei = 0;
+          while (ei < events.length) {
+            const e = events[ei];
+            if (e.kind === "tool_call" && e.toolCall.status !== "running") {
+              let ej = ei + 1;
+              while (
+                ej < events.length &&
+                events[ej].kind === "tool_call" &&
+                (events[ej] as { kind: "tool_call"; toolCall: import("@trpg-workbench/shared-schema").ToolCall }).toolCall.name === e.toolCall.name &&
+                (events[ej] as { kind: "tool_call"; toolCall: import("@trpg-workbench/shared-schema").ToolCall }).toolCall.status !== "running"
+              ) {
+                ej++;
+              }
+              if (ej - ei >= 2) {
+                const groupTcs = events.slice(ei, ej).map(
+                  (ev) => (ev as { kind: "tool_call"; toolCall: import("@trpg-workbench/shared-schema").ToolCall }).toolCall
+                );
+                renderHints[ei] = { kind: "group_start", groupKey: `group_${ei}`, toolCalls: groupTcs };
+                for (let k = ei + 1; k < ej; k++) renderHints[k] = { kind: "skip" };
+                ei = ej;
+                continue;
+              }
+            }
+            ei++;
           }
-          if (e.kind === "tool_call") {
-            if (e.toolCall.status === "running") {
+
+          return events.map((e, i) => {
+            const hint = renderHints[i];
+            if (hint.kind === "skip") return null;
+
+            if (hint.kind === "group_start") {
+              return <GroupedToolCallCard key={hint.groupKey} toolCalls={hint.toolCalls} />;
+            }
+
+            // passthrough — original rendering
+            if (e.kind === "thinking_chunk") {
               return (
-                <div
-                  key={e.toolCall.id}
-                  style={{
-                    position: "sticky",
-                    bottom: 0,
-                    zIndex: 2,
-                    background: "color-mix(in srgb, var(--bg) 86%, transparent)",
-                    borderRadius: 4,
-                    backdropFilter: "blur(2px)",
-                  }}
-                >
-                  <ToolCallCard toolCall={e.toolCall} />
-                </div>
+                <ThinkingBlock
+                  key={`think_${i}`}
+                  content={e.text}
+                  streaming={isStreaming && !e.done}
+                />
               );
             }
-            return <ToolCallCard key={e.toolCall.id} toolCall={e.toolCall} />;
-          }
-          if (e.kind === "question_interrupt") {
-            return (
-              <QuestionCard
-                key={`qi_${i}`}
-                question={e.question}
-                onSubmit={onQuestionSubmit}
-              />
-            );
-          }
-          if (e.kind === "plan") {
-            return (
-              <PlanCard
-                key={`plan_${e.plan.plan_id}`}
-                plan={e.plan}
-              />
-            );
-          }
+            if (e.kind === "tool_call") {
+              if (e.toolCall.status === "running") {
+                return (
+                  <div
+                    key={e.toolCall.id}
+                    style={{
+                      position: "sticky",
+                      bottom: 0,
+                      zIndex: 2,
+                      background: "color-mix(in srgb, var(--bg) 86%, transparent)",
+                      borderRadius: 4,
+                      backdropFilter: "blur(2px)",
+                    }}
+                  >
+                    <ToolCallCard toolCall={e.toolCall} />
+                  </div>
+                );
+              }
+              return <ToolCallCard key={e.toolCall.id} toolCall={e.toolCall} />;
+            }
+            if (e.kind === "question_interrupt") {
+              return (
+                <QuestionCard
+                  key={`qi_${i}`}
+                  question={e.question}
+                  onSubmit={onQuestionSubmit}
+                />
+              );
+            }
+            if (e.kind === "plan") {
+              return (
+                <PlanCard
+                  key={`plan_${e.plan.plan_id}`}
+                  plan={e.plan}
+                />
+              );
+            }
           if (e.kind === "agent_status") {
-            return (
-              <span key="agent_status" style={{ color: "var(--text-muted)", fontSize: 12, display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
-                {e.message}
-                <span style={{ display: "inline-flex", gap: 3 }}>
-                  {[0, 1, 2].map((i) => (
-                    <span key={i} style={{
-                      display: "inline-block", width: 4, height: 4,
-                      borderRadius: "50%", background: "var(--text-muted)",
-                      animation: `thinking-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
-                    }} />
-                  ))}
+              return (
+                <span key="agent_status" style={{ color: "var(--text-muted)", fontSize: 12, display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  {e.message}
+                  <span style={{ display: "inline-flex", gap: 3 }}>
+                    {[0, 1, 2].map((i) => (
+                      <span key={i} style={{
+                        display: "inline-block", width: 4, height: 4,
+                        borderRadius: "50%", background: "var(--text-muted)",
+                        animation: `thinking-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
+                      }} />
+                    ))}
+                  </span>
                 </span>
-              </span>
+              );
+            }
+            // text_chunk
+            const isLast = i === lastTextIdx;
+            return (
+              <div key={i} className="agent-md">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{e.text}</ReactMarkdown>
+                {isLast && isStreaming && (
+                  <span style={{
+                    display: "inline-block",
+                    width: 6,
+                    height: 13,
+                    background: "var(--text-muted)",
+                    marginLeft: 2,
+                    verticalAlign: "text-bottom",
+                    animation: "blink 1s step-end infinite",
+                  }} />
+                )}
+              </div>
             );
-          }
-          // text_chunk
-          const isLast = i === lastTextIdx;
-          return (
-            <div key={i} className="agent-md">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{e.text}</ReactMarkdown>
-              {isLast && isStreaming && (
-                <span style={{
-                  display: "inline-block",
-                  width: 6,
-                  height: 13,
-                  background: "var(--text-muted)",
-                  marginLeft: 2,
-                  verticalAlign: "text-bottom",
-                  animation: "blink 1s step-end infinite",
-                }} />
-              )}
-            </div>
-          );
-        })}
+          });
+        })()}
         {/* Between-step waiting indicator: shown when streaming but last event is not a text_chunk
             (e.g. after a tool call completes or thinking ends, waiting for next LLM tokens) */}
         {isStreaming && events.length > 0 && events[events.length - 1].kind !== "text_chunk" && (

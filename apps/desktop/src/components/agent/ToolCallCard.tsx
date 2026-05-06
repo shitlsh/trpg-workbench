@@ -802,6 +802,128 @@ function traceIcon(line: string) {
   return <Info size={10} />;
 }
 
+// ---------------------------------------------------------------------------
+// GroupedToolCallCard
+// Renders N completed tool calls of the same name as a single summary row.
+// The row is collapsed by default; clicking expands the individual cards.
+// ---------------------------------------------------------------------------
+
+interface GroupedToolCallCardProps {
+  toolCalls: ToolCall[];
+}
+
+export function GroupedToolCallCard({ toolCalls }: GroupedToolCallCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  if (toolCalls.length === 0) return null;
+
+  const name = toolCalls[0].name;
+  const label = TOOL_LABELS[name] ?? name;
+  const hasError = toolCalls.some((tc) => tc.status === "error");
+  const hasAutoApplied = toolCalls.some((tc) => tc.status === "auto_applied");
+
+  const headerColor = hasError ? "#e05252" : hasAutoApplied ? "#52c97e" : "var(--text-muted)";
+  const borderColor = hasError
+    ? "rgba(224,82,82,0.45)"
+    : hasAutoApplied
+    ? "rgba(82,201,126,0.65)"
+    : "var(--border)";
+  const bgColor = hasError
+    ? "rgba(224,82,82,0.06)"
+    : hasAutoApplied
+    ? "rgba(82,201,126,0.12)"
+    : "var(--bg)";
+
+  const StatusIcon = hasError ? XCircle : hasAutoApplied ? Zap : CheckCircle2;
+
+  return (
+    <div style={{
+      margin: "4px 0",
+      border: `1px solid ${borderColor}`,
+      borderRadius: 4,
+      overflow: "hidden",
+      fontSize: 11,
+    }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          width: "100%",
+          padding: "4px 8px",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          background: bgColor,
+          border: "none",
+          cursor: "pointer",
+          color: "var(--text-muted)",
+          textAlign: "left",
+        }}
+      >
+        {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        <StatusIcon size={11} style={{ color: headerColor, flexShrink: 0 }} />
+        <span style={{ color: "var(--text)", fontWeight: 500, flexShrink: 0 }}>{label}</span>
+        <span style={{ color: "var(--text-muted)", fontSize: 10 }}>
+          × {toolCalls.length}
+        </span>
+        {hasAutoApplied && (
+          <span style={{
+            fontSize: 9, padding: "1px 5px", borderRadius: 8, flexShrink: 0,
+            background: "rgba(82,201,126,0.22)", color: "#52c97e",
+            border: "1px solid rgba(82,201,126,0.45)",
+          }}>
+            已自动写入
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div style={{ padding: "4px 8px 6px", background: "var(--bg-surface)", borderTop: "1px solid var(--border)" }}>
+          {toolCalls.map((tc) => (
+            <ToolCallCard key={tc.id} toolCall={tc} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers to group a list of tool calls for rendering.
+// Consecutive completed calls with the same name (≥2) are grouped together.
+// Running / question_interrupt items are never grouped.
+// ---------------------------------------------------------------------------
+
+type RenderItem =
+  | { kind: "single"; toolCall: ToolCall }
+  | { kind: "group"; toolCalls: ToolCall[] };
+
+export function groupToolCalls(toolCalls: ToolCall[]): RenderItem[] {
+  const items: RenderItem[] = [];
+  let i = 0;
+  while (i < toolCalls.length) {
+    const tc = toolCalls[i];
+    if (tc.status === "running") {
+      items.push({ kind: "single", toolCall: tc });
+      i++;
+      continue;
+    }
+    // Collect consecutive completed calls with the same name.
+    let j = i + 1;
+    while (
+      j < toolCalls.length &&
+      toolCalls[j].name === tc.name &&
+      toolCalls[j].status !== "running"
+    ) {
+      j++;
+    }
+    if (j - i >= 2) {
+      items.push({ kind: "group", toolCalls: toolCalls.slice(i, j) });
+    } else {
+      items.push({ kind: "single", toolCall: tc });
+    }
+    i = j;
+  }
+  return items;
+}
+
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [traceExpanded, setTraceExpanded] = useState(false);
