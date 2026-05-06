@@ -1,4 +1,5 @@
 use std::net::TcpListener;
+use std::path::PathBuf;
 use tauri::Manager;
 use tauri::State;
 use tauri_plugin_shell::ShellExt;
@@ -15,6 +16,17 @@ fn get_free_port() -> u16 {
         .local_addr()
         .unwrap()
         .port()
+}
+
+/// Mirror Python's get_data_dir(): $TRPG_DATA_DIR or ~/trpg-workbench-data
+fn get_data_dir() -> PathBuf {
+    if let Ok(val) = std::env::var("TRPG_DATA_DIR") {
+        PathBuf::from(val)
+    } else {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("trpg-workbench-data")
+    }
 }
 
 #[tauri::command]
@@ -35,11 +47,23 @@ fn get_backend_port(state: State<BackendPort>) -> u16 {
 pub fn run() {
     let port = get_free_port();
 
+    // Resolve log dir early so it can be passed into tauri-plugin-log builder.
+    // Both Python backend.log and Rust/frontend app.log end up in the same dir:
+    //   ~/trpg-workbench-data/logs/
+    let log_dir = get_data_dir().join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_log::Builder::new()
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Folder {
+                        path: log_dir.clone(),
+                        file_name: Some("app".into()),
+                    },
+                ))
                 .level(log::LevelFilter::Info)
                 // Suppress noisy crates
                 .level_for("tao", log::LevelFilter::Warn)
@@ -50,12 +74,8 @@ pub fn run() {
         .manage(BackendPort(port))
         .invoke_handler(tauri::generate_handler![get_system_memory_gb, get_backend_port])
         .setup(move |app| {
-            // Log file location for user reference (tauri-plugin-log handles the file):
-            // Windows: %APPDATA%\trpg-workbench\logs\trpg-workbench.log
-            // macOS:   ~/Library/Logs/trpg-workbench/trpg-workbench.log
-            if let Ok(log_dir) = app.path().app_log_dir() {
-                log::info!("App log dir: {}", log_dir.display());
-            }
+            log::info!("=== trpg-workbench started ===");
+            log::info!("Log dir: {}", log_dir.display());
             log::info!("Backend port: {port}");
 
             #[cfg(debug_assertions)]
@@ -137,3 +157,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
