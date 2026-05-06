@@ -71,6 +71,8 @@ a = Analysis(
         "pydantic_settings",
         "multipart",
         "aiofiles",
+        # App entry point — must be explicit so PyInstaller includes it
+        "app.main",
     ],
     noarchive=False,
     optimize=0,
