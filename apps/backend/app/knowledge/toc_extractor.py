@@ -399,14 +399,48 @@ def _decode_hhc_file(raw: bytes, chm_suggested_codec: str) -> str:
     return best[1] if best else raw.decode("utf-8", errors="replace")
 
 
+def _extract_hhc_windows(chm_path: Path) -> bytes | None:
+    """Windows-native: decompile CHM with hh.exe and find the .hhc file."""
+    import subprocess
+    import tempfile
+
+    hh_exe = Path(r"C:\Windows\System32\hh.exe")
+    if not hh_exe.exists():
+        return None
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        out_dir = Path(tmp_dir) / "chm_toc"
+        out_dir.mkdir()
+        subprocess.run(
+            [str(hh_exe), "-decompile", str(out_dir), str(chm_path)],
+            capture_output=True,
+            timeout=60,
+        )
+        # Find .hhc file
+        hhc_files = list(out_dir.rglob("*.hhc"))
+        if not hhc_files:
+            return None
+        return hhc_files[0].read_bytes()
+
+
 def extract_chm_toc_sync(chm_path: Path) -> list[dict]:
     """Extract the CHM directory structure from the embedded .hhc file.
 
     Returns list of {title: str, depth: int} — no page numbers (CHM uses
     sequential topic index as page numbers).
 
-    Raises RuntimeError if pychm is not available or .hhc cannot be found.
+    On Windows: uses hh.exe -decompile (built-in, no dependencies).
+    On macOS/Linux: uses pychm (requires chmlib + pip install pychm).
     """
+    from app.knowledge.pychm_loader import is_windows_platform
+
+    if is_windows_platform():
+        hhc_raw = _extract_hhc_windows(chm_path)
+        if not hhc_raw:
+            return []
+        hhc_text = _decode_hhc_file(hhc_raw, "utf-8")
+        return _parse_hhc_xml(hhc_text)
+
     from app.knowledge.pychm_loader import import_pychm
 
     chm_hl, chm_c = import_pychm()

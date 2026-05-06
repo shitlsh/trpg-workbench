@@ -14,10 +14,11 @@ openai>=1.50.0
 tiktoken>=0.7.0
 python-multipart>=0.0.9
 aiofiles>=24.1.0
-# M24-B1: CHM — needs system chmlib headers *and* the pychm PyPI package (import name: chm).
-# macOS: brew install chmlib, then if pip build fails on chm_lib.h:
+# M24-B1: CHM — macOS/Linux only. Windows uses hh.exe -decompile (built-in, no install needed).
+# macOS: brew install chmlib, then:
 #   CFLAGS="-I$(brew --prefix chmlib)/include" LDFLAGS="-L$(brew --prefix chmlib)/lib" pip install pychm
-# Linux: apt-get install libchm-dev && pip install pychm  |  Windows: pip install pychm (wheel)
+# Linux: apt-get install libchm-dev && pip install pychm
+# Windows: do NOT install pychm — CHM is handled natively via hh.exe.
 pychm>=0.8.6
 # M17: Skill file parsing
 python-frontmatter>=1.1.0

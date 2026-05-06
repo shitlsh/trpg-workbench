@@ -1,12 +1,11 @@
 """CHM ingest pipeline — adapted from pdf_ingest.py.
 
-Uses `pychm` (Python bindings to chmlib) to read CHM files cross-platform.
-
-Requirements:
-  macOS:   brew install chmlib; then pip install pychm in apps/backend venv.
-           If build fails on chm_lib.h: set CFLAGS/LDFLAGS to brew --prefix chmlib (see requirements.txt).
-  Linux:   apt-get install libchm-dev && pip install pychm
-  Windows: pip install pychm   (pre-built wheels available on PyPI)
+CHM parsing strategy (platform-dependent):
+  macOS/Linux: pychm (Python bindings to chmlib).
+               macOS: brew install chmlib; pip install pychm
+               Linux: apt-get install libchm-dev && pip install pychm
+  Windows:     hh.exe -decompile (built into every Windows install since XP).
+               No external dependencies required.
 
 Steps (same 8-step structure as pdf_ingest):
 1. Save original file to source/
@@ -128,11 +127,72 @@ def _decode_chm_html(raw: bytes, chm_suggested_codec: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def _extract_chm_pages_sync(chm_path: Path) -> list[dict]:
-    """Extract [{page: int, text: str}] from a CHM file using pychm.
+def _extract_chm_pages_windows(chm_path: Path) -> list[dict]:
+    """Windows-native CHM extraction using hh.exe -decompile.
 
-    Raises RuntimeError if pychm is not installed or the file cannot be opened.
+    hh.exe is built into every Windows install (system32/hh.exe).
+    It decompiles the CHM into a folder of HTML files which we then parse.
     """
+    import subprocess
+    import tempfile
+
+    hh_exe = Path(r"C:\Windows\System32\hh.exe")
+    if not hh_exe.exists():
+        raise RuntimeError(
+            "hh.exe not found at C:\\Windows\\System32\\hh.exe. "
+            "This is a built-in Windows tool that should always be present."
+        )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        out_dir = Path(tmp_dir) / "chm_out"
+        out_dir.mkdir()
+
+        result = subprocess.run(
+            [str(hh_exe), "-decompile", str(out_dir), str(chm_path)],
+            capture_output=True,
+            timeout=60,
+        )
+        # hh.exe returns non-zero even on success in many cases; check output instead
+        html_files = sorted(out_dir.rglob("*.htm")) + sorted(out_dir.rglob("*.html"))
+        if not html_files and result.returncode != 0:
+            raise RuntimeError(
+                f"hh.exe -decompile failed (exit {result.returncode}): "
+                f"{result.stderr.decode('utf-8', errors='replace')}"
+            )
+
+        pages: list[dict] = []
+        page_index = 0
+        for html_file in html_files:
+            path_str = str(html_file.relative_to(out_dir))
+            # Skip navigation/TOC frames
+            if html_file.name.lower() in ("toc.htm", "toc.html", "index.htm", "index.html"):
+                # Only skip if they look like nav frames (very short)
+                pass
+            try:
+                raw_bytes = html_file.read_bytes()
+            except OSError:
+                continue
+
+            raw_html = _decode_chm_html(raw_bytes, "utf-8")
+            text = _strip_html(raw_html)
+            if text and len(text) > 20:
+                page_index += 1
+                pages.append({"page": page_index, "text": text, "_path": path_str})
+
+        return pages
+
+
+def _extract_chm_pages_sync(chm_path: Path) -> list[dict]:
+    """Extract [{page: int, text: str}] from a CHM file.
+
+    On Windows: uses hh.exe -decompile (built-in, no dependencies).
+    On macOS/Linux: uses pychm (requires chmlib + pip install pychm).
+    """
+    from app.knowledge.pychm_loader import is_windows_platform
+
+    if is_windows_platform():
+        return _extract_chm_pages_windows(chm_path)
+
     from app.knowledge.pychm_loader import import_pychm
 
     chm_hl, chm_c = import_pychm()

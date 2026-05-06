@@ -51,9 +51,8 @@ jobs:
         run: |
           cd apps/backend
           python -m venv .venv
-          # pychm's search.c uses POSIX-only strcasecmp/strncasecmp which MSVC
-          # does not provide — pychm cannot be compiled on Windows at all.
-          # Exclude it; CHM import will show a user-friendly error at runtime.
+          # pychm (chmlib bindings) cannot be compiled on Windows — it requires POSIX headers.
+          # Windows CHM support uses hh.exe -decompile instead (built into every Windows install).
           grep -v "^pychm" requirements.txt > requirements-win.txt
           .venv/Scripts/pip install -r requirements-win.txt pyinstaller
 
@@ -79,24 +78,6 @@ jobs:
           CFLAGS="-I$(brew --prefix chmlib)/include" \
           LDFLAGS="-L$(brew --prefix chmlib)/lib" \
           .venv/bin/pip install -r requirements.txt pyinstaller
-
-      - name: Install Python dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          cd apps/backend
-          python -m venv .venv
-          # pychm's search.c defines strcasecmp→stricmp / strncasecmp→strnicmp,
-          # but modern MSVC requires the underscore-prefixed forms (_stricmp/_strnicmp).
-          # Download the source tarball, patch the two defines, then install from source.
-          .venv/Scripts/pip download pychm --no-deps -d /tmp/pychm-src
-          cd /tmp/pychm-src
-          tar xzf pychm-*.tar.gz
-          sed -i 's/#define strcasecmp stricmp/#define strcasecmp _stricmp/' pychm-*/chm/search.c
-          sed -i 's/#define strncasecmp strnicmp/#define strncasecmp _strnicmp/' pychm-*/chm/search.c
-          cd "$GITHUB_WORKSPACE/apps/backend"
-          .venv/Scripts/pip install /tmp/pychm-src/pychm-*/
-          .venv/Scripts/pip install -r requirements.txt pyinstaller
 
       - name: Build PyInstaller sidecar (macOS)
         if: runner.os == 'macOS'
