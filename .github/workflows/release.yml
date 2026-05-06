@@ -6,7 +6,43 @@ on:
       - "v*"
 
 jobs:
+  # Create the GitHub release draft with changelog before any build jobs run.
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_body: ${{ steps.changelog.outputs.content }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # git-cliff needs full history
+
+      - name: Generate changelog for this tag
+        id: changelog
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: --current --strip header
+        env:
+          OUTPUT: CHANGELOG_RELEASE.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Create release draft
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: false
+          name: "TRPG Workbench ${{ github.ref_name }}"
+          body: |
+            ${{ steps.changelog.outputs.content }}
+
+            ---
+            > ⚠️ 未签名测试版，macOS / Windows 首次运行需手动信任，详见 [README](https://github.com/${{ github.repository }}#安装)。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -97,17 +133,3 @@ jobs:
           releaseName: "TRPG Workbench ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false
-          releaseBody: |
-            ## TRPG Workbench ${{ github.ref_name }}
-
-            ### 安装说明
-
-            **macOS**: 下载 `.dmg` 文件，安装后如遇 Gatekeeper 阻止，右键点击应用选择「打开」，或前往「系统偏好设置 → 安全性与隐私」点击「仍要打开」。
-
-            **Windows**: 下载 `.exe` 安装包，如遇 SmartScreen 提示，点击「更多信息 → 仍要运行」。
-
-            > 本版本为未签名测试版（v0.1.0），代码签名将在后续版本加入。
-
-            ### 数据目录
-
-            运行时数据存储在 `~/trpg-workbench-data/`，可通过环境变量 `TRPG_DATA_DIR` 覆盖。
