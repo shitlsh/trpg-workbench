@@ -23,10 +23,6 @@ a = Analysis(
     datas=[
         # Prompt templates
         (str(backend_dir / "app/prompts"), "app/prompts"),
-        # Model catalog data
-        (str(backend_dir / "app/data"), "app/data"),
-        # tiktoken encoding files (bundled in the package)
-        ("tiktoken_ext", "tiktoken_ext"),
     ],
     hiddenimports=[
         # uvicorn
@@ -55,10 +51,6 @@ a = Analysis(
         "lancedb",
         "pyarrow",
         "pyarrow.lib",
-        # tiktoken
-        "tiktoken",
-        "tiktoken_ext",
-        "tiktoken_ext.openai_public",
         # pdfplumber
         "pdfplumber",
         # pychm
