@@ -2,9 +2,11 @@
 name: release-manager
 description: >
   管理 trpg-workbench 的版本发布流程。当用户说"发版"、"打 tag"、"release"、
-  "发布 vX.Y.Z"、"准备新版本"、"更新 changelog"、"写 release notes" 时必须加载本 skill。
+  "发布 vX.Y.Z"、"准备新版本"、"更新 changelog"、"写 release notes"、
+  "CI 失败重跑"、"重新触发"、"删除 tag" 时必须加载本 skill。
   本 skill 会引导完整的发版流程：生成 changelog 草稿 → 润色为用户友好文本 →
   确认后更新 CHANGELOG.md → 打 tag 并 push 触发 CI。
+  也包含 CI 失败后删除 tag 重打的处理流程。
 ---
 
 # Release Manager
@@ -15,8 +17,9 @@ trpg-workbench 的发版流程工具。执行完整发版步骤，确保 changel
 ## 背景
 
 - `CHANGELOG.md` 是单一事实来源，CI 从中提取对应版本段落作为 GitHub Release body
-- CI 流程：3 个 build job 并行 → 全部成功后 `publish-release` job 创建 release draft
+- CI 流程：build jobs 并行（aarch64-apple-darwin + x86_64-pc-windows-msvc）→ 全部成功后 `publish-release` job 创建 release draft
 - git tag 是触发 CI 的唯一入口，打 tag 前必须确认 changelog 内容正确
+- **Re-run 无效**：CI 失败后 Re-run 用的是打 tag 那一刻的代码，如果失败原因是代码问题，必须删 tag 修复后重打
 
 ## 发版流程
 
@@ -129,6 +132,52 @@ git push origin <VERSION>
 push 完成后告知用户：
 - CI 已触发，可在 GitHub Actions 页面查看进度
 - 构建完成后会生成 release draft，需要手动在 GitHub Releases 页面点击 Publish
+
+---
+
+## CI 失败后重新触发
+
+当 CI 构建失败，且失败原因是代码问题（已有修复 commit）时，需要删除旧 tag 重打。
+
+> **为什么不能直接 Re-run？** GitHub Actions 的 Re-run 使用的是触发那次 workflow 时的代码快照，后续的修复 commit 不会包含在内。
+
+### 流程
+
+**第一步：确认当前状态**
+
+```bash
+# 确认修复 commit 已在本地
+git log --oneline -5
+
+# 确认本地有该 tag
+git tag --list
+```
+
+**第二步：删除远端和本地 tag**
+
+```bash
+# 删除远端 tag（触发的 workflow 会继续跑完，不会中断）
+git push --delete origin <VERSION>
+
+# 删除本地 tag
+git tag -d <VERSION>
+```
+
+**第三步：检查是否有残留的 release draft**
+
+如果上次失败的 CI 已经跑到 `publish-release` 步骤并创建了 draft，需要手动到
+GitHub Releases 页面删除该 draft，否则重打 tag 后会创建重复的 release。
+
+通常 build 失败时 `publish-release` 不会执行（`needs: build`），可以跳过此步。
+
+**第四步：重新打 tag 并 push**
+
+```bash
+git tag <VERSION>
+git push origin <VERSION>
+```
+
+---
 
 ## 注意事项
 
