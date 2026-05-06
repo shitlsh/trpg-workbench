@@ -1676,7 +1676,6 @@ function LibraryDetailPanel({
             className={styles.dropzone}
             style={uploadDisabled ? { opacity: 0.5, cursor: "not-allowed", pointerEvents: "none" } : undefined}
             onClick={() => !uploadDisabled && fileInputRef.current?.click()}
-            onDragEnter={(e) => e.preventDefault()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
