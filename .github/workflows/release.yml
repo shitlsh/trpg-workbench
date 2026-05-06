@@ -173,7 +173,7 @@ jobs:
           cp dist/trpg-backend.exe ../desktop/src-tauri/binaries/trpg-backend-${{ matrix.target }}.exe
 
       - name: Build Tauri app and upload to draft release
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
