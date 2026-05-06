@@ -118,14 +118,17 @@ pub fn run() {
             // In release, use the bundled sidecar and pipe output into the log system
             #[cfg(not(debug_assertions))]
             {
-                let (mut rx, _child) = shell
+                let (mut rx, child) = shell
                     .sidecar("trpg-backend")
                     .expect("Failed to create sidecar command")
                     .args(["--port", &port_str])
                     .spawn()
                     .expect("Failed to spawn trpg-backend sidecar");
 
+                // Keep `child` alive by moving it into the async task.
+                // If it were dropped here the OS would kill the sidecar process immediately.
                 tauri::async_runtime::spawn(async move {
+                    let _child = child; // held alive for the duration of this task
                     while let Some(event) = rx.recv().await {
                         match event {
                             CommandEvent::Stdout(line) => {
