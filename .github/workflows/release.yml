@@ -1,16 +1,21 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 0.1.2)'
+        required: true
 
 jobs:
-  create-release:
+  prepare-release:
     runs-on: ubuntu-latest
-    name: Create Draft Release
+    name: Prepare Release
     permissions:
       contents: write
+    outputs:
+      release_id: ${{ steps.create-release.outputs.release_id }}
+      tag: ${{ steps.tag.outputs.tag }}
 
     steps:
       - name: Checkout
@@ -18,11 +23,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract changelog for this tag
-        id: changelog
+      - name: Compute tag
+        id: tag
+        run: echo "tag=v${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in tauri.conf.json and package.json
         shell: bash
         run: |
-          TAG="${{ github.ref_name }}"
+          SEMVER="${{ github.event.inputs.version }}"
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${SEMVER}\"/" apps/desktop/src-tauri/tauri.conf.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${SEMVER}\"/" apps/desktop/package.json
+
+      - name: Commit version bump
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/tauri.conf.json apps/desktop/package.json
+          git commit -m "chore(release): bump version to ${{ github.event.inputs.version }}"
+          git push
+
+      - name: Create git tag
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Extract changelog for this version
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
           BODY=$(awk "/^## ${TAG}/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
           if [ -z "$BODY" ]; then
             BODY="No changelog entry found for ${TAG}."
@@ -30,26 +61,22 @@ jobs:
           printf '%s\n\n---\n> ⚠️ 未签名测试版，macOS / Windows 首次运行需手动信任，详见 [README](https://github.com/%s#安装)。\n' \
             "$BODY" "${{ github.repository }}" > release_body.md
 
-      - name: Create or update draft release
+      - name: Create draft release
+        id: create-release
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.ref_name }}"
-          if gh release view "$TAG" &>/dev/null; then
-            gh release edit "$TAG" \
-              --draft \
-              --title "TRPG Workbench ${TAG}" \
-              --notes-file release_body.md
-          else
-            gh release create "$TAG" \
-              --draft \
-              --title "TRPG Workbench ${TAG}" \
-              --notes-file release_body.md
-          fi
+          TAG="${{ steps.tag.outputs.tag }}"
+          RELEASE_ID=$(gh release create "$TAG" \
+            --draft \
+            --title "TRPG Workbench ${TAG}" \
+            --notes-file release_body.md \
+            --json id --jq '.id')
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
 
   build:
-    needs: create-release
+    needs: prepare-release
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +96,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -144,5 +173,4 @@ jobs:
         with:
           projectPath: apps/desktop
           args: ${{ matrix.args }}
-          tagName: ${{ github.ref_name }}
-          releaseDraft: true
+          releaseId: ${{ needs.prepare-release.outputs.release_id }}
