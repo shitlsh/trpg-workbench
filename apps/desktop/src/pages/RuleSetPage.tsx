@@ -205,7 +205,7 @@ function TocTreeRowsEditable({
                     value={n.row.chunk_type}
                     onChange={(e) => onChunkTypeChange(n.index, e.target.value as ChunkType | "")}
                   >
-                    <option value="">— 混合</option>
+                    <option value="">— 无分类</option>
                     {CHUNK_TYPES.map((ct) => (
                       <option key={ct.value} value={ct.value}>{ct.label}</option>
                     ))}
