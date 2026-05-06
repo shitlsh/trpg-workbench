@@ -18,7 +18,7 @@ import { useSettingsStore } from "./stores/settingsStore";
 import { Toaster } from "sonner";
 
 const POLL_INTERVAL = 500;
-const STARTUP_TIMEOUT = 30_000;
+const STARTUP_TIMEOUT = 60_000;
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
@@ -55,12 +55,16 @@ export default function App() {
       await initBackendUrl();
       if (cancelled) return;
 
+      console.info("[startup] initBackendUrl resolved, starting health poll");
+
       interval = setInterval(async () => {
         const ok = await checkHealth();
+        const elapsed = Date.now() - startTimeRef.current;
+        console.info(`[startup] checkHealth=${ok} elapsed=${elapsed}ms`);
         if (ok) {
           clearInterval(interval!);
           setStatus("ready");
-        } else if (Date.now() - startTimeRef.current > STARTUP_TIMEOUT) {
+        } else if (elapsed > STARTUP_TIMEOUT) {
           clearInterval(interval!);
           setStatus("failed", "后端服务启动超时（30秒），请检查环境或重试。");
         }
