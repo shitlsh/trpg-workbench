@@ -167,8 +167,12 @@ pub fn run() {
                                         log::info!("[backend] {}", text.trim_end());
                                     }
                                     CommandEvent::Stderr(line) => {
+                                        // uvicorn writes all its logs (INFO/WARNING/ERROR) to stderr.
+                                        // Log at info level here to avoid false ERROR noise in app.log.
+                                        // Genuine Python exceptions will still appear but without
+                                        // alarming log levels for normal uvicorn output.
                                         let text = String::from_utf8_lossy(&line);
-                                        log::error!("[backend] {}", text.trim_end());
+                                        log::info!("[backend] {}", text.trim_end());
                                     }
                                     CommandEvent::Error(err) => {
                                         log::error!("[backend:error] {err}");
