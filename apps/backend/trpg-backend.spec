@@ -13,19 +13,29 @@ macOS prerequisite: brew install chmlib
 
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 backend_dir = Path(SPECPATH)  # apps/backend/
 
-# Must add backend_dir to sys.path BEFORE calling collect_submodules,
-# otherwise PyInstaller cannot find the local 'app' package and returns
-# an empty list, causing all app.* modules to be excluded from the bundle.
-if str(backend_dir) not in sys.path:
-    sys.path.insert(0, str(backend_dir))
+# Collect ALL submodules under app/ by walking the filesystem directly.
+# We intentionally avoid collect_submodules() here because it relies on
+# runtime import machinery (pkgutil.walk_packages) which silently returns
+# an empty list on Windows CI when the local 'app' package is not yet on
+# sys.path at spec evaluation time — causing modules like
+# app.services.export_service to be excluded from the bundle.
+def _walk_package(pkg_dir: Path, pkg_name: str) -> list:
+    modules = []
+    for path in sorted(pkg_dir.rglob("*.py")):
+        rel = path.relative_to(pkg_dir.parent)
+        # Convert path to dotted module name, strip .py suffix
+        parts = list(rel.with_suffix("").parts)
+        module = ".".join(parts)
+        # Skip __pycache__ and test files
+        if "__pycache__" in parts or any(p.startswith("test_") for p in parts):
+            continue
+        modules.append(module)
+    return modules
 
-# Collect ALL submodules under app/ so PyInstaller doesn't miss dynamically
-# referenced modules (e.g. app.services.export_service, app.agents.*, etc.)
-app_submodules = collect_submodules("app")
+app_submodules = _walk_package(backend_dir / "app", "app")
 
 a = Analysis(
     [str(backend_dir / "server.py")],
@@ -87,32 +97,6 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
-
-pyz = PYZ(a.pure)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name="trpg-backend",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    # Single-file executable
-    onefile=True,
-)
-
 
 pyz = PYZ(a.pure)
 
