@@ -15,7 +15,7 @@ def _install_hint() -> str:
         '  CFLAGS="-I$(brew --prefix chmlib)/include" '
         'LDFLAGS="-L$(brew --prefix chmlib)/lib" pip install pychm\n'
         "Linux: apt-get install libchm-dev && pip install pychm. "
-        "Windows: install chmlib via vcpkg (vcpkg install chmlib:x64-windows) then pip install pychm."
+        "Windows: CHM 文件导入在 Windows 上暂不支持（pychm 依赖的 C 扩展无法在 MSVC 下编译）。"
     )
 
 
