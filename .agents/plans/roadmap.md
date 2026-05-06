@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路 **M1–M32 已完成**。
+核心功能链路 **M1–M32 已完成**。**M33 打包发布已完成**。
 
 ```
 ✅ M1 基础骨架
@@ -38,6 +38,7 @@
                                                                                                                                                                                                                    └── ✅ M30 资产类型系统重构
                                                                                                                                                                                                                                                                                                                           └── ✅ M31 Chunk 类型系统重构
                                                                                                                                                                                                                                                                                                                                        └── ✅ M32 资产体验增强
+                                                                                                                                                                                                                                                                                                                                                    └── ✅ M33 0.1.0 打包与发布
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -82,20 +83,14 @@
 | M27 ✅ | 资产单步操作与批处理 | Director 工具补足 **删除/移动**；**批量** create/patch/delete/move；**跨资产** `preview`→`apply` 文本替换；不引入通用 shell；见 [benchmark completed](../../docs/benchmark-reviews/completed/2026-04-27_agent-cli-workspace-commands.md) | [archive/m27-asset-ops-and-batch.md](archive/m27-asset-ops-and-batch.md) |
 | M28 ✅ | 原生 SDK Agent 运行时替换 | 将聊天与工具编排从 Agno 迁移到 Provider 原生 SDK，保留现有记忆/RAG/LanceDB 能力与 SSE 协议；修复 Anthropic 多工具并发 bug、workspace_mutating 误判、补齐 Gemini 流式 tool-calling | [archive/m28-native-sdk-agent-runtime.md](archive/m28-native-sdk-agent-runtime.md) |
 | M29 ✅ | Agent 交互质量提升 | 重写 ask_user 触发规则（信息量不足型 + 关键分叉型），新增单轮完成回复规范，实现 `<plan>` 标签解析 + 结构化 PlanCard 实时步骤展示；顺带修复 agent_question 在 chat.py 中缺少透传的 bug | [archive/m29-agent-interaction-quality.md](archive/m29-agent-interaction-quality.md) |
-
-### 进行中 / 待启动
-
-| # | 名称 | 目标 | 计划文件 |
-|---|------|------|---------|
 | M30 ✅ | 资产类型系统重构 | 内置类型精简为 6 种，引入 description+template_md，AI 辅助创建自定义类型，类型校验 | [archive/m30-asset-type-system.md](archive/m30-asset-type-system.md) |
 | M31 ✅ | Chunk 类型系统重构 | ChunkType 精简为语义统一的 5 种+none，`build_chunk_types_section()` 注入各 Agent 上下文，新增 consult_lore 工具 | [archive/m31-chunk-type-system.md](archive/m31-chunk-type-system.md) |
 | M32 ✅ | 资产体验增强 | Stage 排序修复、content_json 清除、关系可视化（轻量级）、[[双链]]语法、author 字段、模组手册 PDF 导出 | [archive/m32-asset-experience.md](archive/m32-asset-experience.md) |
+| M33 ✅ | 0.1.0 打包与发布 | PyInstaller sidecar + 随机端口 + GitHub Actions → Mac/Windows 安装包 | [archive/m33-release-packaging.md](archive/m33-release-packaging.md) |
 
 ### 进行中 / 待启动
 
-| # | 名称 | 目标 | 计划文件 |
-|---|------|------|---------|
-|（无）| — | — | — |
+_当前无待启动 milestone。_
 
 ---
 
