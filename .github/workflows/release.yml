@@ -60,16 +60,26 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Install Python dependencies
+      - name: Install Python dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd apps/backend
+          python -m venv .venv
+          # Pass chmlib headers so pychm can compile against the brew-installed library
+          CFLAGS="-I$(brew --prefix chmlib)/include" \
+          LDFLAGS="-L$(brew --prefix chmlib)/lib" \
+          .venv/bin/pip install -r requirements.txt pyinstaller
+
+      - name: Install Python dependencies (Windows)
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           cd apps/backend
           python -m venv .venv
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            .venv/Scripts/pip install -r requirements.txt pyinstaller
-          else
-            .venv/bin/pip install -r requirements.txt pyinstaller
-          fi
+          # pychm has no Windows wheel and chmlib has no Windows port;
+          # install everything except pychm — CHM support is unavailable on Windows.
+          grep -v "^pychm" requirements.txt > requirements-win.txt
+          .venv/Scripts/pip install -r requirements-win.txt pyinstaller
 
       - name: Build PyInstaller sidecar (macOS)
         if: runner.os == 'macOS'

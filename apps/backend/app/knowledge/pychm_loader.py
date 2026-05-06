@@ -15,7 +15,7 @@ def _install_hint() -> str:
         '  CFLAGS="-I$(brew --prefix chmlib)/include" '
         'LDFLAGS="-L$(brew --prefix chmlib)/lib" pip install pychm\n'
         "Linux: apt-get install libchm-dev && pip install pychm. "
-        "Windows: pip install pychm"
+        "Windows: CHM support is not available on Windows (chmlib has no Windows port)."
     )
 
 
