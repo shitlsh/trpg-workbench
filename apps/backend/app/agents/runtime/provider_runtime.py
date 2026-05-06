@@ -571,7 +571,12 @@ async def _chat_google(req: RuntimeRequest):
         )
 
         text_parts: list[str] = []
-        function_calls: list[Any] = []
+        # Collect (original_part, function_call) pairs so we can reuse the
+        # original Part object when building the model turn.  Gemini thinking
+        # models embed a `thought_signature` in the Part — reconstructing a
+        # bare Part(function_call=fc) drops it and causes 400 INVALID_ARGUMENT
+        # on the follow-up request.
+        fc_parts: list[tuple[Any, Any]] = []  # (original_part, fc)
 
         async for chunk in await client.aio.models.generate_content_stream(
             model=req.model_name,
@@ -590,9 +595,10 @@ async def _chat_google(req: RuntimeRequest):
                     continue
                 for part in getattr(cand_content, "parts", None) or []:
                     # function_call parts: accumulate for tool execution below.
+                    # Store the original Part so thought_signature is preserved.
                     fc = getattr(part, "function_call", None)
                     if fc is not None:
-                        function_calls.append(fc)
+                        fc_parts.append((part, fc))
                         continue  # function_call parts have no text; skip text paths
 
                     part_text = getattr(part, "text", None)
@@ -605,36 +611,29 @@ async def _chat_google(req: RuntimeRequest):
                         text_parts.append(part_text)
                         yield {"event": "text_delta", "data": {"content": part_text}}
 
-        if not function_calls:
+        if not fc_parts:
             break
 
-        # Append model turn (text + function_calls) to contents.
+        # Append model turn (text + function_call parts) to contents.
+        # Use the original Part objects to preserve thought_signature.
         model_parts: list[Any] = []
         joined_text = "".join(text_parts)
         if joined_text:
             model_parts.append(types.Part(text=joined_text))
-        for fc in function_calls:
-            # Preserve the original Part object so that Gemini's `thought_signature`
-            # field (present when extended thinking is enabled) is not discarded.
-            # Reconstructing a bare FunctionCall(name, args) drops thought_signature
-            # and causes a 400 INVALID_ARGUMENT on the follow-up request.
-            if isinstance(fc, types.FunctionCall):
-                model_parts.append(types.Part(function_call=fc))
-            else:
-                # fc is already a Part (defensive fallback)
-                model_parts.append(fc)
+        for orig_part, _fc in fc_parts:
+            model_parts.append(orig_part)
         contents.append(types.Content(role="model", parts=model_parts))
 
         # Execute tools and collect results into a single user Content.
         # Use an index-prefixed call_id to disambiguate parallel calls to the
         # same function (Gemini has no native call-id concept).
         result_parts: list[Any] = []
-        for i, fc in enumerate(function_calls):
+        for i, (orig_part, fc) in enumerate(fc_parts):
             name = getattr(fc, "name", "") or ""
             args = dict(getattr(fc, "args", {}) or {})
             # Preserve the SDK-assigned call id (if any) for FunctionResponse matching.
             sdk_id: str | None = getattr(fc, "id", None) or None
-            call_id = sdk_id or (f"{name}_{i}" if len(function_calls) > 1 else name)
+            call_id = sdk_id or (f"{name}_{i}" if len(fc_parts) > 1 else name)
             yield {
                 "event": "tool_call_start",
                 "data": {
