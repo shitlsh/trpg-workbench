@@ -73,7 +73,8 @@ jobs:
             --draft \
             --title "TRPG Workbench ${TAG}" \
             --notes-file release_body.md
-          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$TAG --jq '.id')
+          # /releases/tags/{tag} does not return draft releases; use list instead
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name == \"$TAG\") | .id")
           echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
 
   build:
