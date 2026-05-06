@@ -23,8 +23,6 @@ a = Analysis(
     datas=[
         # Prompt templates
         (str(backend_dir / "app/prompts"), "app/prompts"),
-        # Alembic migrations
-        (str(backend_dir / "app/migrations"), "app/migrations"),
         # Model catalog data
         (str(backend_dir / "app/data"), "app/data"),
         # tiktoken encoding files (bundled in the package)
