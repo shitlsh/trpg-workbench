@@ -47,7 +47,10 @@ jobs:
       - name: Install dependencies
         run: |
           cd apps/backend
-          pip install -r requirements.txt
+          # pychm requires chmlib C headers (macOS/Linux native only).
+          # For the import check we don't need CHM support, so exclude it.
+          grep -v "^pychm" requirements.txt > requirements-ci.txt
+          pip install -r requirements-ci.txt
 
       - name: Verify all app modules are importable
         run: |
