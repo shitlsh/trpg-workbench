@@ -53,6 +53,8 @@ pub fn run() {
             {
                 let backend_dir = std::env::current_dir()
                     .unwrap()
+                    .parent() // apps/desktop/
+                    .unwrap()
                     .parent() // apps/
                     .unwrap()
                     .join("backend");

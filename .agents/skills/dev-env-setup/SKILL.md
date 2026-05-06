@@ -238,6 +238,8 @@ cargo tauri dev
 | `lancedb` 安装失败（Rust 编译错误）| lancedb 有 Rust native extension，需要 Rust 工具链 | 确保已完成第 3 步（rustup + source），再重新 pip install |
 | `lancedb` 在 Apple Silicon 报 `ImportError` | 架构不匹配的预编译轮子 | 用 `pip install lancedb --no-binary lancedb` 从源码编译 |
 | CHM 提示缺少 pychm / 无 `chm` 模块 | 只装了 `brew install chmlib`，未在 venv 装 `pychm`，或 pip 编译失败 | 在 `apps/backend` 的 venv 里 `pip install pychm`；若缺 `chm_lib.h` 见 **7.2** 的 `CFLAGS`/`LDFLAGS` 段落 |
+| `cargo tauri dev` 报 `resource path 'binaries/trpg-backend-*' doesn't exist` | sidecar 占位文件不存在（CI 才构建真正的二进制） | 手动创建占位文件：`printf '#!/bin/sh\n' > apps/desktop/src-tauri/binaries/trpg-backend-aarch64-apple-darwin && chmod +x apps/desktop/src-tauri/binaries/trpg-backend-aarch64-apple-darwin`（dev 模式下 Rust 代码不会实际调用此文件） |
+| `cargo tauri dev` 启动后应用显示「后端服务启动超时（30秒）」| Rust `lib.rs` 路径计算错误，venv Python 未被找到 | 确认 `apps/desktop/src-tauri/src/lib.rs` 中 `backend_dir` 路径是否正确（需要两次 `.parent()`：`src-tauri → desktop → apps`，再 `.join("backend")`） |
 
 ---
 

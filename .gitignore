@@ -28,6 +28,8 @@ dist/
 src-tauri/target/
 **/src-tauri/target/
 *.pdb
+# Sidecar binaries are built by CI (PyInstaller); only .gitkeep is tracked
+apps/desktop/src-tauri/binaries/trpg-backend-*
 
 # ── App data (local runtime data, never commit) ───────────────────
 trpg-workbench-data/
