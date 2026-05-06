@@ -2,7 +2,19 @@
 
 本地优先的 TRPG 主持人创作工作台。类 IDE 桌面应用，辅助 KP/GM 完成剧本撰写、NPC/怪物设计、线索编排、知识库检索等工作。
 
-> **当前状态：M32 已完成**（Stage 排序修复、content_json 清除、关系可视化、[[双链]]语法、author 字段、模组手册 PDF 导出）
+> **当前状态：M32 已完成，M33（0.1.0 打包与发布）进行中**
+
+---
+
+## 功能概览
+
+- **多工作空间**：每个剧本独立工作空间，资产隔离
+- **AI 创作辅助**：对话式 Agent 协助写 NPC、场景、线索，支持 OpenAI / Anthropic / Google Gemini / 兼容接口
+- **结构化资产**：NPC、怪物、地点、线索、场景等类型化资产，带版本历史回溯
+- **知识库**：导入 PDF/CHM 规则书，自动切块向量化，AI 可按需检索引用
+- **Prompt 管理**：可视化编辑 system prompt，创建多套 Prompt Profile 切换
+- **双向链接**：资产内 `[[双链]]` 语法，可视化关系图
+- **模组手册导出**：一键生成 PDF
 
 ---
 
@@ -12,9 +24,38 @@
 |------|------|
 | 桌面壳 | [Tauri 2](https://tauri.app) |
 | 前端 | React 18 + Vite + TypeScript |
-| AI 编排 | Python + Provider 原生 SDK（OpenAI / Anthropic / Google / OpenAI-compatible），可选适配框架 |
+| AI 编排 | Python + Provider 原生 SDK（OpenAI / Anthropic / Google / OpenAI-compatible） |
 | 数据库 | SQLite（via SQLAlchemy） |
 | 向量索引 | lancedb |
+
+---
+
+## 安装
+
+> [!NOTE]
+> v0.1.0 为未签名测试版，首次运行需手动授权。
+
+从 [Releases](../../releases) 页面下载对应平台的安装包：
+
+| 平台 | 文件 |
+|------|------|
+| macOS Apple Silicon | `TRPG.Workbench_*_aarch64.dmg` |
+| macOS Intel | `TRPG.Workbench_*_x64.dmg` |
+| Windows | `TRPG.Workbench_*_x64-setup.exe` |
+
+**macOS — 绕过 Gatekeeper**
+
+安装后如遇「无法打开，因为它来自身份不明的开发者」：
+
+```bash
+# 方法一：右键点击应用图标 → 选择「打开」→ 点击「打开」
+# 方法二：命令行移除隔离属性
+xattr -cr /Applications/TRPG\ Workbench.app
+```
+
+**Windows — 绕过 SmartScreen**
+
+安装时弹出「Windows 已保护你的电脑」：点击「更多信息」→「仍要运行」。
 
 ---
 
@@ -30,6 +71,7 @@ trpg-workbench/
         stores/             # Zustand 状态
         lib/                # API 客户端工具
       src-tauri/            # Tauri / Rust 壳
+        binaries/           # PyInstaller 打包的后端 sidecar（构建时填充）
     backend/                # Python FastAPI 后端
       app/
         api/                # HTTP 路由（workspaces、assets、chat、llm_profiles 等）
@@ -41,9 +83,13 @@ trpg-workbench/
         utils/              # 路径、加密工具
         workflows/          # 多步 Workflow（create_module、rules_review 等）
         knowledge/          # PDF 解析、向量检索
-      server.py             # 启动入口
+      server.py             # 启动入口（支持 --port 参数）
+      trpg-backend.spec     # PyInstaller 打包配置
   packages/
     shared-schema/          # 前后端共用 TypeScript 类型（API contract 唯一来源）
+  .github/
+    workflows/
+      release.yml           # Mac + Windows 自动构建发布流水线
   .agents/
     skills/                 # AI Agent skill 约束文档
     plans/                  # 各里程碑开发计划
@@ -60,7 +106,7 @@ trpg-workbench/
 - Python 3.11+（推荐 3.13）
 - Rust（`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`）
 - Tauri CLI（`cargo install tauri-cli`）
-- macOS：需安装 Xcode Command Line Tools
+- macOS：需安装 Xcode Command Line Tools；如需打包 CHM 支持，需 `brew install chmlib`
 
 ### 安装依赖
 
@@ -81,7 +127,7 @@ PIP_USER=false .venv/bin/pip install -r requirements.txt
 ```bash
 cd apps/backend
 PIP_USER=false TRPG_DATA_DIR=~/trpg-workbench-data .venv/bin/python3 server.py
-# 后端监听 http://127.0.0.1:8765
+# 后端监听 http://127.0.0.1:7821（dev 模式默认端口）
 ```
 
 **方式二：完整桌面应用（Tauri + React + Python）**
@@ -90,11 +136,11 @@ PIP_USER=false TRPG_DATA_DIR=~/trpg-workbench-data .venv/bin/python3 server.py
 # 推荐方式：使用项目内置启动脚本（自动管理后端 + 前端 + 退出清理）
 bash scripts/dev.sh
 
-# 或手动启动（先确保 Rust 工具链已 source）
+# 或手动启动
 source "$HOME/.cargo/env"
 cd apps/desktop
 cargo tauri dev
-# Tauri 会自动拉起前端 Vite dev server 和 Python 后端
+# Tauri 会自动分配随机端口并拉起前端 Vite dev server 和 Python 后端
 ```
 
 ### 首次配置
@@ -109,7 +155,7 @@ cargo tauri dev
 
 运行时数据默认存储在 `~/trpg-workbench-data/`，可通过环境变量 `TRPG_DATA_DIR` 覆盖。
 
-后端（FastAPI）可选环境变量 `LLM_REQUEST_TIMEOUT_SECONDS`：设为正整数秒时，会对 Provider SDK 的 LLM 与 Embedding 请求注入对应 HTTP 超时；**不设置**则不传 `timeout`，由 SDK 默认行为决定（与未接入该参数前一致）。**无应用内 UI**，需在启动进程前设置环境变量。
+后端可选环境变量 `LLM_REQUEST_TIMEOUT_SECONDS`：设为正整数秒时，对 Provider SDK 的 LLM 与 Embedding 请求注入对应 HTTP 超时；不设置则由 SDK 默认行为决定。
 
 ```
 ~/trpg-workbench-data/
