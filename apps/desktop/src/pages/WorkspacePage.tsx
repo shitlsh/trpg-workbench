@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Workspace, RuleSet, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { useEditorStore } from "@/stores/editorStore";
+import { useAgentStore } from "@/stores/agentStore";
 import { ThreePanelLayout } from "@/components/editor/ThreePanelLayout";
 import { AssetTree } from "@/components/editor/AssetTree";
 import { EditorCenter } from "@/components/editor/EditorCenter";
@@ -16,13 +17,18 @@ export function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { setActiveWorkspace } = useWorkspaceStore();
-  const { leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed } = useEditorStore();
+  const { leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, clearTabs } = useEditorStore();
+  const resetAgent = useAgentStore((s) => s.reset);
   const [showExport, setShowExport] = useState(false);
 
   useEffect(() => {
     setActiveWorkspace(id ?? null);
-    return () => setActiveWorkspace(null);
-  }, [id, setActiveWorkspace]);
+    return () => {
+      setActiveWorkspace(null);
+      clearTabs();
+      resetAgent();
+    };
+  }, [id, setActiveWorkspace, clearTabs, resetAgent]);
 
   // Zen Mode: Cmd+Shift+\ toggles both panels
   useEffect(() => {

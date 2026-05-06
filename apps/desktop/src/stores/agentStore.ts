@@ -15,6 +15,8 @@ export interface AgentState {
   addMessage: (m: ChatMessage) => void;
   setMessages: (msgs: ChatMessage[]) => void;
   setTyping: (v: boolean) => void;
+  /** Reset all chat state when switching workspaces. */
+  reset: () => void;
 }
 
 export const useAgentStore = create<AgentState>((set) => ({
@@ -29,4 +31,5 @@ export const useAgentStore = create<AgentState>((set) => ({
   addMessage: (m) => set((st) => ({ messages: [...st.messages, m] })),
   setMessages: (msgs) => set({ messages: msgs }),
   setTyping: (v) => set({ isTyping: v }),
+  reset: () => set({ session: null, sessions: [], messages: [], isTyping: false }),
 }));

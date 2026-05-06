@@ -35,6 +35,10 @@ interface EditorState {
   setView: (assetId: string, view: EditorView) => void;
   toggleHistory: (assetId: string) => void;
 
+  // Workspace isolation
+  /** Clear all open tabs when switching workspaces. Layout prefs are preserved. */
+  clearTabs: () => void;
+
   // Layout actions
   setLeftWidth: (w: number) => void;
   setLeftCollapsed: (v: boolean) => void;
@@ -133,6 +137,8 @@ export const useEditorStore = create<EditorState>()(
       ),
     }));
   },
+
+  clearTabs: () => set({ tabs: [], activeTabId: null }),
 
   setLeftWidth: (w) => set({ leftWidth: Math.max(280, Math.min(680, w)) }),
   setLeftCollapsed: (v) => set({ leftCollapsed: v }),
