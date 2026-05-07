@@ -4,6 +4,14 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
+## v0.1.4 — 2026-05-07
+
+### Bug Fixes
+
+- **动态端口未覆盖全部调用点**：`AgentPanel` 聊天发送、`ExportDialog` 导出、`RuleSetPage` 文件上传均使用硬编码的 7821 端口，绕过了动态端口机制。新增 `resolveBackendUrl()` 并替换所有 raw `fetch()` 调用点。
+- **启动时清理残留后端进程**：上次会话的 `trpg-backend.exe` 残留会导致新实例端口冲突。现在在 spawn sidecar 前先执行 `taskkill /F /IM /T` 清理旧进程。
+- **退出时进程 kill 改为阻塞 + 进程树**：`taskkill` 加 `/T` 确保子进程一并清理，改为 `.status()` 等待完成，避免 app 退出后进程仍残留。
+
 ## v0.1.3 — 2026-05-07
 
 ### Bug Fixes
