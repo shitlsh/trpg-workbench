@@ -744,7 +744,7 @@ export interface RerankProfile {
   id: string;
   name: string;
   provider_type: RerankProviderType;
-  model: string;
+  model_name: string;
   base_url: string | null;
   has_api_key: boolean;
   created_at: string;
@@ -754,7 +754,7 @@ export interface RerankProfile {
 export interface CreateRerankProfileRequest {
   name: string;
   provider_type: RerankProviderType;
-  model: string;
+  model_name: string;
   api_key?: string;
   base_url?: string;
 }
@@ -762,7 +762,7 @@ export interface CreateRerankProfileRequest {
 export interface UpdateRerankProfileRequest {
   name?: string;
   provider_type?: RerankProviderType;
-  model?: string;
+  model_name?: string;
   api_key?: string;
   clear_api_key?: boolean;
   base_url?: string;

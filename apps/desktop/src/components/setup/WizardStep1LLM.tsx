@@ -75,9 +75,17 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    if (!form.name.trim()) {
+      setFormError("请填写配置名称");
+      return;
+    }
     const isLocal = form.provider_type === "openai_compatible";
     if (!isLocal && !form.api_key?.trim()) {
-      setFormError("请填写 API Key");
+      setFormError("请填写 API Key（云端供应商必填）");
+      return;
+    }
+    if (isLocal && showBaseUrl && !form.base_url?.trim()) {
+      setFormError("OpenAI Compatible 需要填写 Base URL");
       return;
     }
     const body = { ...form };
@@ -182,7 +190,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
             <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后配置</button>
-            <button type="submit" style={btnPrimaryStyle} disabled={!form.name || createMutation.isPending}>
+            <button type="submit" style={btnPrimaryStyle} disabled={createMutation.isPending}>
               {createMutation.isPending ? "保存中..." : "保存并选择模型 →"}
             </button>
           </div>

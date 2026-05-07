@@ -64,14 +64,28 @@ export function WizardStep2Embedding({ onComplete, onSkip }: Props) {
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    if (!form.name.trim()) { setFormError("请填写配置名称"); return; }
+    if (form.provider_type === "openai_compatible" && !form.base_url?.trim()) {
+      setFormError("OpenAI Compatible 需要填写 Base URL"); return;
+    }
     const body = { ...form };
     if (!body.base_url) delete (body as Record<string, unknown>).base_url;
     if (!body.api_key) delete (body as Record<string, unknown>).api_key;
     createMutation.mutate(body);
   }
 
-  function handleConfirm() {
-    if (savedProfile) onComplete({ ...savedProfile, model_name: form.model_name });
+  async function handleConfirm() {
+    if (!savedProfile) return;
+    // PATCH the model_name if it changed from what was saved
+    if (form.model_name && form.model_name !== savedProfile.model_name) {
+      try {
+        await apiFetch(`/settings/embedding-profiles/${savedProfile.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ model_name: form.model_name }),
+        });
+      } catch { /* non-fatal — just pass the chosen model onward */ }
+    }
+    onComplete({ ...savedProfile, model_name: form.model_name });
   }
 
   // Static hints before saving
@@ -143,7 +157,7 @@ export function WizardStep2Embedding({ onComplete, onSkip }: Props) {
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
             <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后配置</button>
-            <button type="submit" style={btnPrimaryStyle} disabled={!form.name || createMutation.isPending}>
+            <button type="submit" style={btnPrimaryStyle} disabled={createMutation.isPending}>
               {createMutation.isPending ? "保存中..." : "保存并选择模型 →"}
             </button>
           </div>

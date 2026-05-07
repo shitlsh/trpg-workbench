@@ -36,7 +36,7 @@ const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
   name: "", provider_type: "openai", model_name: "", base_url: "", api_key: "", dimensions: undefined,
 };
 const EMPTY_RERANK: CreateRerankProfileRequest = {
-  name: "", provider_type: "jina", model: "jina-reranker-v3", api_key: "", base_url: "",
+  name: "", provider_type: "jina", model_name: "jina-reranker-v3", api_key: "", base_url: "",
 };
 
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
@@ -641,6 +641,13 @@ function RerankSection() {
   const [deleteTarget, setDeleteTarget] = useState<RerankProfile | null>(null);
   const [testResult, setTestResult] = useState<RerankTestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  // For new compat profiles: manually probed models via base_url
+  const [newProbeModels, setNewProbeModels] = useState<string[]>([]);
+  const [newProbing, setNewProbing] = useState(false);
+  const [newProbeError, setNewProbeError] = useState<string | null>(null);
+  // Track whether user changed provider during edit (affects which model list to show)
+  const [providerChangedDuringEdit, setProviderChangedDuringEdit] = useState(false);
 
   const showBaseUrl = form.provider_type === "openai_compatible";
 
@@ -648,9 +655,17 @@ function RerankSection() {
   const { models: profileModels, isLoading: loadingModels, error: modelError } =
     useModelList(editTarget ? { rerankProfileId: editTarget.id } : {});
 
-  // Fallback static hints
-  const staticHints = KNOWN_RERANK_MODELS[form.provider_type] ?? [];
-  const effectiveModels = profileModels.length > 0 ? profileModels : (editTarget ? [] : staticHints);
+  // effectiveModels logic:
+  // - New profile: static hints (Jina/Cohere) or probed compat models
+  // - Edit, provider unchanged: live probe results from saved profile
+  // - Edit, provider changed: static hints for new provider (probe not yet re-run)
+  const effectiveModels = editTarget
+    ? (providerChangedDuringEdit
+        ? (KNOWN_RERANK_MODELS[form.provider_type] ?? [])
+        : (profileModels.length > 0 ? profileModels : KNOWN_RERANK_MODELS[form.provider_type] ?? []))
+    : (form.provider_type !== "openai_compatible"
+        ? (KNOWN_RERANK_MODELS[form.provider_type] ?? [])
+        : newProbeModels);
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["rerank-profiles"],
@@ -678,21 +693,56 @@ function RerankSection() {
   });
 
   function openNew() {
-    setEditTarget(null); setForm({ ...EMPTY_RERANK }); setTestResult(null); setShowForm(true);
+    setEditTarget(null); setForm({ ...EMPTY_RERANK }); setTestResult(null);
+    setFormError(null); setNewProbeModels([]); setNewProbeError(null); setShowForm(true);
   }
   function openEdit(p: RerankProfile) {
     setEditTarget(p);
-    setForm({ name: p.name, provider_type: p.provider_type, model: p.model, api_key: "", base_url: p.base_url ?? "" });
-    setTestResult(null); setShowForm(true);
+    setForm({ name: p.name, provider_type: p.provider_type, model_name: p.model_name, api_key: "", base_url: p.base_url ?? "" });
+    setTestResult(null); setFormError(null); setNewProbeModels([]); setNewProbeError(null);
+    setProviderChangedDuringEdit(false); setShowForm(true);
   }
-  function closeForm() { setShowForm(false); setEditTarget(null); setTestResult(null); }
+  function closeForm() {
+    setShowForm(false); setEditTarget(null); setTestResult(null);
+    setFormError(null); setNewProbeModels([]); setNewProbeError(null); setProviderChangedDuringEdit(false);
+  }
 
   function handleProviderChange(provider: RerankProviderType) {
-    setForm(f => ({ ...f, provider_type: provider, model: RERANK_DEFAULT_MODELS[provider] }));
+    setForm(f => ({ ...f, provider_type: provider, model_name: RERANK_DEFAULT_MODELS[provider], base_url: "" }));
+    setNewProbeModels([]); setNewProbeError(null);
+    if (editTarget) setProviderChangedDuringEdit(true);
+  }
+
+  // Probe base_url for new openai_compatible rerank (problem 4)
+  async function handleProbeCompat() {
+    if (!form.base_url) return;
+    setNewProbing(true); setNewProbeError(null); setNewProbeModels([]);
+    try {
+      const params = new URLSearchParams({ base_url: form.base_url });
+      if (form.api_key) params.set("api_key", form.api_key);
+      const result = await apiFetch<{ models: string[]; error: string | null }>(
+        `/settings/model-catalog/probe-models?${params.toString()}`
+      );
+      if (result.error) { setNewProbeError(result.error); }
+      else {
+        setNewProbeModels(result.models);
+        if (result.models.length > 0 && !form.model_name) {
+          setForm(f => ({ ...f, model_name: result.models[0]! }));
+        }
+      }
+    } catch (e) { setNewProbeError((e as Error).message); }
+    finally { setNewProbing(false); }
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setFormError(null);
+    // Problem 1: validate required fields with user-visible error
+    if (!form.name.trim()) { setFormError("请填写配置名称"); return; }
+    if (!form.model_name.trim()) { setFormError("请填写或选择模型名称"); return; }
+    if (form.provider_type === "openai_compatible" && !form.base_url?.trim()) {
+      setFormError("OpenAI Compatible 需要填写 Base URL"); return;
+    }
     const body = { ...form };
     if (!body.api_key) delete (body as Record<string, unknown>).api_key;
     if (!body.base_url) delete (body as Record<string, unknown>).base_url;
@@ -724,6 +774,8 @@ function RerankSection() {
   }
 
   const isPending = createMutation.isPending || updateMutation.isPending;
+  // Disable save only while pending — show formError for field validation instead
+  const saveDisabled = isPending;
 
   return (
     <div>
@@ -747,7 +799,7 @@ function RerankSection() {
             <div className={styles.itemInfo}>
               <span className={styles.itemName}>{p.name}</span>
               <span className={styles.tag}>{RERANK_PROVIDERS.find(r => r.value === p.provider_type)?.label ?? p.provider_type}</span>
-              <span className={styles.itemModel}>{p.model}</span>
+              <span className={styles.itemModel}>{p.model_name}</span>
               {p.has_api_key && <span style={{ fontSize: 11, color: "#52c97e" }}>● Key 已配置</span>}
             </div>
             <div className={styles.itemActions}>
@@ -779,13 +831,25 @@ function RerankSection() {
                 </select>
               </label>
 
-              {/* 2. Base URL (openai_compatible only) */}
+              {/* 2. Base URL (openai_compatible only) + probe button for new profiles */}
               {showBaseUrl && (
                 <label className={styles.label}>
                   Base URL *
-                  <input className={styles.input} value={form.base_url ?? ""}
-                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-                    placeholder="https://..." />
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input className={styles.input} style={{ flex: 1 }} value={form.base_url ?? ""}
+                      onChange={(e) => { setForm({ ...form, base_url: e.target.value }); setNewProbeModels([]); setNewProbeError(null); }}
+                      placeholder="http://localhost:1234/v1" />
+                    {!editTarget && (
+                      <button type="button" className={styles.btnSecondary}
+                        style={{ whiteSpace: "nowrap", fontSize: 11 }}
+                        onClick={handleProbeCompat}
+                        disabled={!form.base_url || newProbing}>
+                        {newProbing ? "获取中…" : "获取模型列表"}
+                      </button>
+                    )}
+                  </div>
+                  {newProbeError && <span style={{ fontSize: 11, color: "var(--danger, #e05252)" }}>✗ {newProbeError}</span>}
+                  {newProbeModels.length > 0 && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>✓ 已获取 {newProbeModels.length} 个可用模型</span>}
                 </label>
               )}
 
@@ -794,10 +858,10 @@ function RerankSection() {
                 API Key {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
                 <input className={styles.input} type="password" value={form.api_key ?? ""}
                   onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-                  placeholder={form.provider_type === "jina" ? "jina_..." : form.provider_type === "cohere" ? "sk-..." : "sk-..."} />
+                  placeholder={form.provider_type === "jina" ? "jina_..." : "sk-..."} />
               </label>
 
-              {/* 4. Model — combobox with live probe (edit) or static hints (new) */}
+              {/* 4. Model — combobox. Edit: live probe. New Jina/Cohere: static hints. New compat: probe result */}
               <label className={styles.label}>
                 模型名称 *
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
@@ -805,8 +869,8 @@ function RerankSection() {
                     <ModelNameInput
                       catalog="embedding"
                       providerType={form.provider_type}
-                      value={form.model}
-                      onChange={(v) => setForm({ ...form, model: v })}
+                      value={form.model_name}
+                      onChange={(v) => setForm({ ...form, model_name: v })}
                       fetchedModels={effectiveModels}
                       placeholder="例：jina-reranker-v3"
                       className={styles.input}
@@ -816,7 +880,9 @@ function RerankSection() {
                 </div>
                 {editTarget
                   ? <ModelListHint isLoading={loadingModels} count={profileModels.length} error={modelError} />
-                  : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可直接输入，或保存后自动拉取供应商模型列表</span>
+                  : form.provider_type === "openai_compatible"
+                    ? <span style={{ fontSize: 11, color: "var(--text-muted)" }}>填写 Base URL 后点「获取模型列表」，或直接输入模型名称</span>
+                    : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可从下拉选择常用型号，或直接输入</span>
                 }
               </label>
 
@@ -824,10 +890,13 @@ function RerankSection() {
               <label className={styles.label}>
                 配置名称 *
                 <input className={styles.input} value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onChange={(e) => { setForm({ ...form, name: e.target.value }); setFormError(null); }}
                   placeholder="例：Jina Reranker"
                   autoFocus={!!editTarget} />
               </label>
+
+              {/* Problem 1: visible validation error */}
+              {formError && <p className={styles.error}>{formError}</p>}
 
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={closeForm}>取消</button>
@@ -836,7 +905,7 @@ function RerankSection() {
                     {testing ? "测试中..." : "测试连接"}
                   </button>
                 )}
-                <button type="submit" className={styles.btnPrimary} disabled={isPending || !form.name || !form.model}>
+                <button type="submit" className={styles.btnPrimary} disabled={saveDisabled}>
                   {isPending ? "保存中..." : editTarget ? "保存" : "保存并选择模型 →"}
                 </button>
               </div>

@@ -528,7 +528,7 @@ export default function WorkspaceSettingsPage() {
             Rerank 配置（留空则不使用 Rerank）
             <select className={styles.select} value={rerankName} onChange={(e) => setRerankName(e.target.value)}>
               <option value="">不使用 Rerank</option>
-              {rerankProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model})</option>)}
+              {rerankProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.model_name})</option>)}
             </select>
           </label>
           {!rerankName && (
