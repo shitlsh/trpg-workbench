@@ -19,7 +19,6 @@ export default function SetupWizardPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [stepStatus, setStepStatus] = useState<StepStatus[]>(["pending", "pending", "pending", "pending"]);
   const [llmProfile, setLlmProfile] = useState<LLMProfile | null>(null);
-  const [llmSuggestedModel, setLlmSuggestedModel] = useState<string>("");
   const [embeddingProfile, setEmbeddingProfile] = useState<EmbeddingProfile | null>(null);
   const [ruleSet, setRuleSet] = useState<RuleSet | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -49,14 +48,12 @@ export default function SetupWizardPage() {
               const isDone = status === "completed" || status === "skipped";
               return (
                 <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, position: "relative" }}>
-                  {/* connector line */}
                   {i > 0 && (
                     <div style={{ position: "absolute", left: 0, top: 13, width: "50%", height: 2, background: isDone || stepStatus[i - 1] !== "pending" ? "var(--accent, #7c6aff)" : "var(--border)" }} />
                   )}
                   {i < STEPS.length - 1 && (
                     <div style={{ position: "absolute", right: 0, top: 13, width: "50%", height: 2, background: isDone ? "var(--accent, #7c6aff)" : "var(--border)" }} />
                   )}
-                  {/* dot */}
                   <div style={{
                     width: 26, height: 26, borderRadius: "50%", zIndex: 1,
                     display: "flex", alignItems: "center", justifyContent: "center",
@@ -76,10 +73,10 @@ export default function SetupWizardPage() {
 
         {/* Step content */}
         {done ? (
-          <WizardSummary llmProfile={llmProfile} embeddingProfile={embeddingProfile} ruleSet={ruleSet} workspace={workspace} llmSuggestedModel={llmSuggestedModel} />
+          <WizardSummary llmProfile={llmProfile} embeddingProfile={embeddingProfile} ruleSet={ruleSet} workspace={workspace} />
         ) : currentStep === 0 ? (
           <WizardStep1LLM
-            onComplete={(p, suggestedModel) => { setLlmProfile(p); setLlmSuggestedModel(suggestedModel ?? ""); advanceStep(0, "completed"); }}
+            onComplete={(p) => { setLlmProfile(p); advanceStep(0, "completed"); }}
             onSkip={() => advanceStep(0, "skipped")}
           />
         ) : currentStep === 1 ? (
@@ -94,10 +91,9 @@ export default function SetupWizardPage() {
           />
         ) : (
           <WizardStepWorkspace
+            llmProfile={llmProfile}
             onComplete={(w) => { setWorkspace(w); advanceStep(3, "completed"); }}
             onSkip={() => { advanceStep(3, "skipped"); setDone(true); }}
-            suggestedLlmProfileName={llmProfile?.name}
-            suggestedLlmModel={llmSuggestedModel || undefined}
           />
         )}
       </div>

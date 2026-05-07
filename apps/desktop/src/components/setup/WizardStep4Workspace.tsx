@@ -1,33 +1,43 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
-import type { RuleSet, Workspace, CreateWorkspaceRequest, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
+import type { LLMProfile, RuleSet, Workspace, CreateWorkspaceRequest, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
+import { ModelNameInput } from "../ModelNameInput";
+import { useModelList } from "../../hooks/useModelList";
 
 interface Props {
   onComplete: (workspace: Workspace) => void;
   onSkip: () => void;
-  /** A7: LLM profile name selected in Step 1 — pre-fills workspace model routing */
-  suggestedLlmProfileName?: string;
-  /** A7: model name selected after key verification in Step 1 */
-  suggestedLlmModel?: string;
+  /** The LLM profile configured in Step 1, used to populate the model picker */
+  llmProfile: LLMProfile | null;
 }
 
-export function WizardStep4Workspace({ onComplete, onSkip, suggestedLlmProfileName, suggestedLlmModel }: Props) {
+export function WizardStep4Workspace({ onComplete, onSkip, llmProfile }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CreateWorkspaceRequest>({ name: "", description: "" });
+  const [selectedModel, setSelectedModel] = useState("");
 
   const { data: ruleSets = [] } = useQuery<RuleSet[]>({
     queryKey: ["rule-sets"],
     queryFn: () => apiFetch<RuleSet[]>("/rule-sets"),
   });
 
+  // Probe available models from the LLM profile configured in Step 1
+  const { models: availableModels, isLoading: loadingModels } =
+    useModelList(llmProfile ? { llmProfileId: llmProfile.id } : {});
+
+  function refreshModels() {
+    if (!llmProfile) return;
+    queryClient.invalidateQueries({ queryKey: ["model-list", "llm", llmProfile.id] });
+  }
+
   const createMutation = useMutation({
     mutationFn: (body: CreateWorkspaceRequest) =>
       apiFetch<Workspace>("/workspaces", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: async (workspace) => {
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
-      // A7: if Step 1 produced a suggested model, patch workspace config immediately
-      if (suggestedLlmProfileName) {
+      // If user chose a model, write it into workspace config
+      if (llmProfile && selectedModel) {
         try {
           const { config } = await apiFetch<WorkspaceConfigResponse>(`/workspaces/${workspace.id}/config`);
           await apiFetch(`/workspaces/${workspace.id}/config`, {
@@ -36,13 +46,13 @@ export function WizardStep4Workspace({ onComplete, onSkip, suggestedLlmProfileNa
               ...config,
               models: {
                 ...(config.models ?? {}),
-                default_llm: suggestedLlmProfileName,
-                ...(suggestedLlmModel ? { default_llm_model: suggestedLlmModel } : {}),
+                default_llm: llmProfile.name,
+                default_llm_model: selectedModel,
               },
             }),
           });
         } catch {
-          // Non-fatal: workspace is created, model pre-fill just didn't happen
+          // Non-fatal: workspace created, model selection just didn't persist
         }
       }
       onComplete(workspace);
@@ -64,11 +74,15 @@ export function WizardStep4Workspace({ onComplete, onSkip, suggestedLlmProfileNa
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <label style={labelStyle}>
           工作空间名称 *
-          <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：克苏鲁世界观 2024" autoFocus />
+          <input style={inputStyle} value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="例：克苏鲁世界观 2024" autoFocus />
         </label>
         <label style={labelStyle}>
           描述
-          <input style={inputStyle} value={form.description ?? ""} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="简单描述这个工作空间的内容..." />
+          <input style={inputStyle} value={form.description ?? ""}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="简单描述这个工作空间的内容..." />
         </label>
         <label style={labelStyle}>
           规则集 *
@@ -77,18 +91,57 @@ export function WizardStep4Workspace({ onComplete, onSkip, suggestedLlmProfileNa
               暂无规则集，请先在「规则集」页面创建
             </div>
           ) : (
-            <select style={inputStyle} value={form.rule_set ?? ""} onChange={(e) => setForm({ ...form, rule_set: e.target.value })}>
+            <select style={inputStyle} value={form.rule_set ?? ""}
+              onChange={(e) => setForm({ ...form, rule_set: e.target.value })}>
               <option value="">请选择规则集...</option>
               {ruleSets.map((rs) => <option key={rs.id} value={rs.name}>{rs.name}</option>)}
             </select>
           )}
         </label>
+
+        {/* Model selection — only shown if an LLM profile was configured in Step 1 */}
+        {llmProfile && (
+          <label style={labelStyle}>
+            默认 AI 模型
+            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400, marginTop: -2 }}>
+              供应商：{llmProfile.name}（可跳过，稍后在工作空间设置中选择）
+            </span>
+            <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <ModelNameInput
+                  catalog="llm"
+                  providerType={llmProfile.provider_type}
+                  value={selectedModel}
+                  onChange={setSelectedModel}
+                  catalogEntries={[]}
+                  fetchedModels={availableModels}
+                  placeholder="例：gemini-2.5-flash"
+                  style={inputStyle}
+                />
+              </div>
+              <button type="button"
+                style={{ ...btnSecondaryStyle, fontSize: 11, whiteSpace: "nowrap", marginTop: 2 }}
+                onClick={refreshModels}
+                disabled={loadingModels}>
+                {loadingModels ? "获取中…" : "刷新列表"}
+              </button>
+            </div>
+            {loadingModels && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>正在获取模型列表…</span>
+            )}
+            {!loadingModels && availableModels.length > 0 && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>✓ 已获取 {availableModels.length} 个可用模型</span>
+            )}
+          </label>
+        )}
+
         {createMutation.isError && (
           <p style={{ fontSize: 12, color: "var(--error, #f55)" }}>{(createMutation.error as Error).message}</p>
         )}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
           <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后创建</button>
-          <button type="submit" style={btnPrimaryStyle} disabled={!form.name || !form.rule_set || createMutation.isPending}>
+          <button type="submit" style={btnPrimaryStyle}
+            disabled={!form.name || !form.rule_set || createMutation.isPending}>
             {createMutation.isPending ? "创建中..." : "创建并继续"}
           </button>
         </div>
