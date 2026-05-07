@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
-import type { EmbeddingProfile, CreateEmbeddingProfileRequest } from "@trpg-workbench/shared-schema";
+import type { EmbeddingProfile, CreateEmbeddingProfileRequest, ProbeModelsResponse } from "@trpg-workbench/shared-schema";
 import { ModelNameInput } from "../ModelNameInput";
-import { useModelList } from "../../hooks/useModelList";
 import { KNOWN_EMBEDDING_MODELS } from "../../lib/modelCatalog";
 
 type EmbeddingProviderType = "openai" | "openai_compatible";
@@ -26,45 +25,57 @@ interface Props {
 export function WizardStep2Embedding({ onComplete, onSkip }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CreateEmbeddingProfileRequest>(EMPTY_FORM);
-  const [phase, setPhase] = useState<"new" | "pick">("new");
-  const [savedProfile, setSavedProfile] = useState<EmbeddingProfile | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // Probed model candidates (from inline probe before saving)
+  const [probedModels, setProbedModels] = useState<string[]>([]);
+  const [probing, setProbing] = useState(false);
+  const [probeError, setProbeError] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (body: CreateEmbeddingProfileRequest) =>
       apiFetch<EmbeddingProfile>("/settings/embedding-profiles", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: (profile) => {
       queryClient.invalidateQueries({ queryKey: ["embedding-profiles"] });
-      setSavedProfile(profile);
-      setPhase("pick");
+      onComplete(profile);
     },
     onError: (e) => setFormError((e as Error).message),
   });
 
-  // Probe models once profile is saved
-  const { models: probedModels, isLoading: probingModels, error: probeError } =
-    useModelList(savedProfile ? { embeddingProfileId: savedProfile.id } : {});
-
-  // Auto-select first probed model if model_name is still the default/empty
-  useEffect(() => {
-    if (probedModels.length > 0 && (!form.model_name)) {
-      const preferred =
-        probedModels.find(m => m.toLowerCase().includes("jina-embeddings-v5")) ??
-        probedModels.find(m => m.toLowerCase().includes("embedding")) ??
-        probedModels[0];
-      if (preferred) setForm(f => ({ ...f, model_name: preferred }));
+  // Probe models from current base_url + api_key without saving
+  async function handleProbe() {
+    if (!form.base_url) return;
+    setProbing(true); setProbeError(null); setProbedModels([]);
+    try {
+      const params = new URLSearchParams({ base_url: form.base_url });
+      if (form.api_key) params.set("api_key", form.api_key);
+      const result = await apiFetch<ProbeModelsResponse>(
+        `/settings/model-catalog/probe-models?${params.toString()}`
+      );
+      if (result.error) {
+        setProbeError(result.error);
+      } else {
+        setProbedModels(result.models);
+        // Auto-select a good embedding model if none chosen yet
+        if (!form.model_name && result.models.length > 0) {
+          const preferred =
+            result.models.find(m => m.toLowerCase().includes("jina-embeddings-v5")) ??
+            result.models.find(m => m.toLowerCase().includes("embedding")) ??
+            result.models[0];
+          if (preferred) setForm(f => ({ ...f, model_name: preferred }));
+        }
+      }
+    } catch (e) {
+      setProbeError((e as Error).message);
+    } finally {
+      setProbing(false);
     }
-  }, [probedModels, form.model_name]);
-
-  function refreshModels() {
-    if (!savedProfile) return;
-    queryClient.invalidateQueries({ queryKey: ["model-list", "embedding", savedProfile.id] });
   }
 
-  function handleSave(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
     if (!form.name.trim()) { setFormError("请填写配置名称"); return; }
+    if (!form.model_name.trim()) { setFormError("请填写或选择模型名称"); return; }
     if (form.provider_type === "openai_compatible" && !form.base_url?.trim()) {
       setFormError("OpenAI Compatible 需要填写 Base URL"); return;
     }
@@ -74,151 +85,116 @@ export function WizardStep2Embedding({ onComplete, onSkip }: Props) {
     createMutation.mutate(body);
   }
 
-  async function handleConfirm() {
-    if (!savedProfile) return;
-    // PATCH the model_name if it changed from what was saved
-    if (form.model_name && form.model_name !== savedProfile.model_name) {
-      try {
-        await apiFetch(`/settings/embedding-profiles/${savedProfile.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ model_name: form.model_name }),
-        });
-      } catch { /* non-fatal — just pass the chosen model onward */ }
-    }
-    onComplete({ ...savedProfile, model_name: form.model_name });
-  }
-
-  // Static hints before saving
-  const staticHints = KNOWN_EMBEDDING_MODELS[form.provider_type] ?? [];
   const showBaseUrl = form.provider_type === "openai_compatible";
-
-  // ── Phase: fill credentials ───────────────────────────────────────────────
-  if (phase === "new") {
-    return (
-      <div>
-        {/* Preset hints */}
-        <div style={{ marginBottom: 10, padding: "10px 14px", background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐本地：LM Studio + jina-embeddings-v5，数据不离本机</span>
-          <button type="button" style={presetBtnGreen}
-            onClick={() => setForm({ name: "LM Studio Embedding", provider_type: "openai_compatible", model_name: "", base_url: "http://localhost:1234/v1", api_key: "lm-studio" })}>
-            LM Studio 本地推荐
-          </button>
-        </div>
-        <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐云端：Jina Embeddings v3，多语言，适合中文规则书检索</span>
-          <button type="button" style={presetBtnPurple}
-            onClick={() => setForm({ name: "Jina Embeddings v3", provider_type: "openai_compatible", model_name: "jina-embeddings-v3", base_url: "https://api.jina.ai/v1", api_key: "" })}>
-            填入 Jina 推荐值
-          </button>
-        </div>
-
-        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: -4 }}>
-          保存后将自动获取可用模型列表，然后确认模型名称。
-        </p>
-
-        <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* 1. Provider */}
-          <label style={labelStyle}>
-            供应商 *
-            <select style={inputStyle} value={form.provider_type}
-              onChange={(e) => setForm({ ...form, provider_type: e.target.value as EmbeddingProviderType, model_name: "" })}>
-              <option value="openai">{PROVIDER_DISPLAY.openai}</option>
-              <option value="openai_compatible">{PROVIDER_DISPLAY.openai_compatible}</option>
-            </select>
-          </label>
-
-          {/* 2. Base URL */}
-          {showBaseUrl && (
-            <label style={labelStyle}>
-              Base URL
-              <input style={inputStyle} value={form.base_url ?? ""}
-                onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-                placeholder="http://localhost:1234/v1" />
-            </label>
-          )}
-
-          {/* 3. API Key */}
-          <label style={labelStyle}>
-            API Key {form.provider_type === "openai_compatible" && <span style={{ fontSize: 11, color: "#22c55e", fontWeight: "normal" }}>（本地模型可选）</span>}
-            <input style={inputStyle} type="password" value={form.api_key ?? ""}
-              onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-              placeholder={form.provider_type === "openai_compatible" ? "留空或填 'lm-studio'" : "jina_..."} />
-          </label>
-
-          {/* 4. Profile name */}
-          <label style={labelStyle}>
-            配置名称 *
-            <input style={inputStyle} value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="例：Jina Embeddings v3" />
-          </label>
-
-          {formError && <p style={{ fontSize: 12, color: "var(--error, #f55)", margin: 0 }}>{formError}</p>}
-
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-            <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后配置</button>
-            <button type="submit" style={btnPrimaryStyle} disabled={createMutation.isPending}>
-              {createMutation.isPending ? "保存中..." : "保存并选择模型 →"}
-            </button>
-          </div>
-        </form>
-      </div>
-    );
-  }
-
-  // ── Phase: confirm / pick model ───────────────────────────────────────────
-  const effectiveModels = probedModels.length > 0 ? probedModels : staticHints;
+  // Candidates: probed results first, then static known models as fallback hints
+  const staticHints = KNOWN_EMBEDDING_MODELS[form.provider_type] ?? [];
+  const candidateModels = probedModels.length > 0 ? probedModels : staticHints;
 
   return (
     <div>
-      <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(82,201,126,0.08)", border: "1px solid rgba(82,201,126,0.25)", borderRadius: 6 }}>
-        <p style={{ fontSize: 13, color: "#52c97e", margin: 0, fontWeight: 500 }}>
-          ✓ 供应商配置「{savedProfile?.name}」已保存
-        </p>
-        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>
-          确认模型名称（已自动选择推荐模型，也可从列表选择其他）
-        </p>
+      {/* Preset hints */}
+      <div style={{ marginBottom: 10, padding: "10px 14px", background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐本地：LM Studio + jina-embeddings-v5，数据不离本机</span>
+        <button type="button" style={presetBtnGreen}
+          onClick={() => {
+            setForm({ name: "LM Studio Embedding", provider_type: "openai_compatible", model_name: "jina-embeddings-v5-text-small-retrieval", base_url: "http://localhost:1234/v1", api_key: "lm-studio" });
+            setProbedModels([]); setProbeError(null);
+          }}>
+          LM Studio 本地推荐
+        </button>
+      </div>
+      <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐云端：Jina Embeddings v3，多语言，适合中文规则书检索</span>
+        <button type="button" style={presetBtnPurple}
+          onClick={() => {
+            setForm({ name: "Jina Embeddings v3", provider_type: "openai_compatible", model_name: "jina-embeddings-v3", base_url: "https://api.jina.ai/v1", api_key: "" });
+            setProbedModels([]); setProbeError(null);
+          }}>
+          填入 Jina 推荐值
+        </button>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* 1. Provider */}
         <label style={labelStyle}>
-          模型名称 *
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-            <div style={{ flex: 1 }}>
-              <ModelNameInput
-                catalog="embedding"
-                providerType={savedProfile?.provider_type ?? ""}
-                value={form.model_name}
-                onChange={(v) => setForm(f => ({ ...f, model_name: v }))}
-                fetchedModels={effectiveModels}
-                placeholder="例：jina-embeddings-v3"
-                style={inputStyle}
-              />
-            </div>
-            <button type="button" style={{ ...btnSecondaryStyle, fontSize: 11, whiteSpace: "nowrap", marginTop: 2 }}
-              onClick={refreshModels} disabled={probingModels}>
-              {probingModels ? "获取中…" : "刷新列表"}
-            </button>
-          </div>
-          {probingModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>正在获取模型列表…</span>}
-          {!probingModels && probeError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>✗ {probeError}</span>}
-          {!probingModels && !probeError && probedModels.length > 0 && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>✓ 已获取 {probedModels.length} 个模型</span>
-          )}
+          供应商 *
+          <select style={inputStyle} value={form.provider_type}
+            onChange={(e) => {
+              setForm({ ...form, provider_type: e.target.value as EmbeddingProviderType, model_name: "", base_url: "" });
+              setProbedModels([]); setProbeError(null);
+            }}>
+            <option value="openai">{PROVIDER_DISPLAY.openai}</option>
+            <option value="openai_compatible">{PROVIDER_DISPLAY.openai_compatible}</option>
+          </select>
         </label>
 
+        {/* 2. Base URL + probe button */}
+        {showBaseUrl && (
+          <label style={labelStyle}>
+            Base URL
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input style={{ ...inputStyle, flex: 1 }} value={form.base_url ?? ""}
+                onChange={(e) => { setForm({ ...form, base_url: e.target.value }); setProbedModels([]); setProbeError(null); }}
+                placeholder="http://localhost:1234/v1" />
+              <button type="button"
+                style={{ ...presetBtnPurple, minWidth: 90 }}
+                onClick={handleProbe}
+                disabled={!form.base_url || probing}>
+                {probing ? "获取中…" : "获取模型列表"}
+              </button>
+            </div>
+            {probeError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>✗ {probeError}</span>}
+            {!probing && !probeError && probedModels.length > 0 && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>✓ 已获取 {probedModels.length} 个模型</span>
+            )}
+          </label>
+        )}
+
+        {/* 3. API Key */}
+        <label style={labelStyle}>
+          API Key {form.provider_type === "openai_compatible" && <span style={{ fontSize: 11, color: "#22c55e", fontWeight: "normal" }}>（本地模型可选）</span>}
+          <input style={inputStyle} type="password" value={form.api_key ?? ""}
+            onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+            placeholder={form.provider_type === "openai_compatible" ? "留空或填 'lm-studio'" : "jina_..."} />
+        </label>
+
+        {/* 4. Model name — always required */}
+        <label style={labelStyle}>
+          模型名称 *
+          <ModelNameInput
+            catalog="embedding"
+            providerType={form.provider_type}
+            value={form.model_name}
+            onChange={(v) => setForm({ ...form, model_name: v })}
+            fetchedModels={candidateModels}
+            placeholder="例：jina-embeddings-v3"
+            style={inputStyle}
+          />
+          {candidateModels.length > 0
+            ? <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可从下拉选择，或直接输入</span>
+            : showBaseUrl
+              ? <span style={{ fontSize: 11, color: "var(--text-muted)" }}>填写 Base URL 后点「获取模型列表」，或直接输入</span>
+              : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可直接输入模型名称</span>
+          }
+        </label>
+
+        {/* 5. Profile name */}
+        <label style={labelStyle}>
+          配置名称 *
+          <input style={inputStyle} value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="例：Jina Embeddings v3" />
+        </label>
+
+        {formError && <p style={{ fontSize: 12, color: "var(--error, #f55)", margin: 0 }}>{formError}</p>}
+
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-          <button type="button" style={btnSecondaryStyle}
-            onClick={() => { if (savedProfile) onComplete(savedProfile); }}>
-            跳过，稍后选择
-          </button>
-          <button type="button" style={btnPrimaryStyle}
-            onClick={handleConfirm}
-            disabled={!form.model_name}>
-            确认并继续 →
+          <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后配置</button>
+          <button type="submit" style={btnPrimaryStyle} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "保存并继续..." : "保存并继续 →"}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
