@@ -7,7 +7,7 @@ import "./index.css";
 
 // Whether Tauri runtime is available (false in plain browser / Playwright headless)
 const isTauri = typeof window !== "undefined" &&
-  !!(window as Record<string, unknown>)["__TAURI_INTERNALS__"];
+  !!(window as unknown as Record<string, unknown>)["__TAURI_INTERNALS__"];
 
 async function bootstrap() {
   // Wait for console→tauri-plugin-log bridge before mounting React,
