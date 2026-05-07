@@ -206,6 +206,20 @@ pub fn run() {
                     if let Some(child) = backend_child.0.lock().unwrap().take() {
                         let _ = child.kill();
                         log::info!("[backend] sidecar killed on window destroy");
+                        // On Windows, child.kill() may not reliably terminate the
+                        // Python backend process. Use taskkill as a follow-up guarantee.
+                        #[cfg(target_os = "windows")]
+                        {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            let _ = std::process::Command::new("taskkill")
+                                .args(["/F", "/IM", "trpg-backend.exe"])
+                                .stdout(std::process::Stdio::null())
+                                .stderr(std::process::Stdio::null())
+                                .spawn();
+                            log::info!(
+                                "[backend] taskkill fallback executed for trpg-backend.exe"
+                            );
+                        }
                     };
                 }
             }

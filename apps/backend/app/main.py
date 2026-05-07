@@ -33,7 +33,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:1420", "tauri://localhost"],
+    allow_origins=[
+        "http://localhost:1420",
+        "tauri://localhost",
+        "https://tauri.localhost",
+        "http://tauri.localhost",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
