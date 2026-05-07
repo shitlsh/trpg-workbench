@@ -1,14 +1,18 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
-import type { RuleSet, Workspace, CreateWorkspaceRequest } from "@trpg-workbench/shared-schema";
+import type { RuleSet, Workspace, CreateWorkspaceRequest, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
 
 interface Props {
   onComplete: (workspace: Workspace) => void;
   onSkip: () => void;
+  /** A7: LLM profile name selected in Step 1 — pre-fills workspace model routing */
+  suggestedLlmProfileName?: string;
+  /** A7: model name selected after key verification in Step 1 */
+  suggestedLlmModel?: string;
 }
 
-export function WizardStep4Workspace({ onComplete, onSkip }: Props) {
+export function WizardStep4Workspace({ onComplete, onSkip, suggestedLlmProfileName, suggestedLlmModel }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CreateWorkspaceRequest>({ name: "", description: "" });
 
@@ -20,8 +24,27 @@ export function WizardStep4Workspace({ onComplete, onSkip }: Props) {
   const createMutation = useMutation({
     mutationFn: (body: CreateWorkspaceRequest) =>
       apiFetch<Workspace>("/workspaces", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: (workspace) => {
+    onSuccess: async (workspace) => {
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+      // A7: if Step 1 produced a suggested model, patch workspace config immediately
+      if (suggestedLlmProfileName) {
+        try {
+          const { config } = await apiFetch<WorkspaceConfigResponse>(`/workspaces/${workspace.id}/config`);
+          await apiFetch(`/workspaces/${workspace.id}/config`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              ...config,
+              models: {
+                ...(config.models ?? {}),
+                default_llm: suggestedLlmProfileName,
+                ...(suggestedLlmModel ? { default_llm_model: suggestedLlmModel } : {}),
+              },
+            }),
+          });
+        } catch {
+          // Non-fatal: workspace is created, model pre-fill just didn't happen
+        }
+      }
       onComplete(workspace);
     },
   });

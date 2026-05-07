@@ -164,3 +164,43 @@
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* ── Section headers for recommended / other grouping ── */
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px 3px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface, var(--bg));
+}
+
+.sectionLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sectionToggle {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.sectionToggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Recommended-only rows (not yet confirmed by probe) */
+.rowRecommendedOnly {
+  opacity: 0.55;
+  font-style: italic;
+}

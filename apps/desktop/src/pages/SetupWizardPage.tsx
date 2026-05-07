@@ -19,6 +19,7 @@ export default function SetupWizardPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [stepStatus, setStepStatus] = useState<StepStatus[]>(["pending", "pending", "pending", "pending"]);
   const [llmProfile, setLlmProfile] = useState<LLMProfile | null>(null);
+  const [llmSuggestedModel, setLlmSuggestedModel] = useState<string>("");
   const [embeddingProfile, setEmbeddingProfile] = useState<EmbeddingProfile | null>(null);
   const [ruleSet, setRuleSet] = useState<RuleSet | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -75,10 +76,10 @@ export default function SetupWizardPage() {
 
         {/* Step content */}
         {done ? (
-          <WizardSummary llmProfile={llmProfile} embeddingProfile={embeddingProfile} ruleSet={ruleSet} workspace={workspace} />
+          <WizardSummary llmProfile={llmProfile} embeddingProfile={embeddingProfile} ruleSet={ruleSet} workspace={workspace} llmSuggestedModel={llmSuggestedModel} />
         ) : currentStep === 0 ? (
           <WizardStep1LLM
-            onComplete={(p) => { setLlmProfile(p); advanceStep(0, "completed"); }}
+            onComplete={(p, suggestedModel) => { setLlmProfile(p); setLlmSuggestedModel(suggestedModel ?? ""); advanceStep(0, "completed"); }}
             onSkip={() => advanceStep(0, "skipped")}
           />
         ) : currentStep === 1 ? (
@@ -95,6 +96,8 @@ export default function SetupWizardPage() {
           <WizardStepWorkspace
             onComplete={(w) => { setWorkspace(w); advanceStep(3, "completed"); }}
             onSkip={() => { advanceStep(3, "skipped"); setDone(true); }}
+            suggestedLlmProfileName={llmProfile?.name}
+            suggestedLlmModel={llmSuggestedModel || undefined}
           />
         )}
       </div>

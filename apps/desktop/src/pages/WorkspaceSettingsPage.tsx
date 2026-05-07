@@ -460,28 +460,38 @@ export default function WorkspaceSettingsPage() {
               )}
             </label>
           )}
+          {/* A6: Model routing card */}
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>模型路由</div>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -4, marginBottom: 8 }}>
-            模型引用按名称存储，可跨设备移植。选择下拉中的配置名即可。
-          </p>
-          <label className={styles.label}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              默认 LLM（用于创建模组、修改资产等所有 AI 任务）
-              {!defaultLlmName && (
-                <span title="未指定 LLM 时，所有 AI 功能将无法运行" style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(230,160,30,0.15)", color: "#d4a020", border: "1px solid rgba(230,160,30,0.3)", cursor: "default" }}>
-                  未指定
-                </span>
-              )}
-            </span>
-            <select className={styles.select} value={defaultLlmName} onChange={(e) => { setDefaultLlmName(e.target.value); setDefaultLlmModel(""); }}>
-              <option value="">不指定</option>
-              {llmProfiles.map((p) => <option key={p.id} value={p.name}>{p.name} ({p.provider_type})</option>)}
-            </select>
-          </label>
-          {defaultLlmName && (
-            <div style={{ marginLeft: 0, marginTop: -4, marginBottom: 8 }}>
-              <div style={{ fontSize: 13, marginBottom: 4, fontWeight: 500, color: "var(--text-muted)" }}>模型名称</div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "14px 16px",
+            background: "var(--bg-surface)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            marginBottom: 4,
+          }}>
+            <label className={styles.label} style={{ marginBottom: 0 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                供应商配置
+                {!defaultLlmName && (
+                  <span title="未指定 LLM 时，所有 AI 功能将无法运行" style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(230,160,30,0.15)", color: "#d4a020", border: "1px solid rgba(230,160,30,0.3)" }}>
+                    未指定
+                  </span>
+                )}
+              </span>
+              <select className={styles.select} value={defaultLlmName} onChange={(e) => { setDefaultLlmName(e.target.value); setDefaultLlmModel(""); }}>
+                <option value="">不指定</option>
+                {llmProfiles.map((p) => {
+                  const provLabel = { openai: "OpenAI", google: "Google", anthropic: "Anthropic", openrouter: "OpenRouter", openai_compatible: "OpenAI Compatible" }[p.provider_type] ?? p.provider_type;
+                  return <option key={p.id} value={p.name}>{p.name} ({provLabel})</option>;
+                })}
+              </select>
+            </label>
+            {defaultLlmName && (
+              <label className={styles.label} style={{ marginBottom: 0 }}>
+                模型
                 <ModelNameInput
                   catalog="llm"
                   providerType={selectedLlmProfile?.provider_type ?? ""}
@@ -493,14 +503,26 @@ export default function WorkspaceSettingsPage() {
                   requireJsonMode
                   placeholder={selectedLlmProfile?.provider_type === "openai_compatible" ? "例：qwen3.5-35b-a3b" : "例：gemini-2.0-flash"}
                   className={styles.input}
-                  style={{ flex: 1 }}
                 />
-              </div>
-              {probeError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>{probeError}</span>}
-              {probingModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>获取模型列表中...</span>}
-              {!probingModels && probedModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ {probedModels.length} 个模型</span>}
+                {probeError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>{probeError}</span>}
+                {probingModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>获取模型列表中...</span>}
+                {!probingModels && probedModels.length > 0 && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    ⓘ 仅显示推荐模型 · 共 {probedModels.length} 个可用
+                  </span>
+                )}
+              </label>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                style={{ fontSize: 12, color: "var(--accent)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+                onClick={() => navigate("/settings/models")}
+              >
+                前往模型配置 →
+              </button>
             </div>
-          )}
+          </div>
           <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Rerank 重排序（可选）</div>
           <label className={styles.label}>
             Rerank 配置（留空则不使用 Rerank）

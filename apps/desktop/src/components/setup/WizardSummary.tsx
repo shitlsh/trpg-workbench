@@ -7,9 +7,11 @@ interface Props {
   embeddingProfile: EmbeddingProfile | null;
   ruleSet?: RuleSet | null;
   workspace: Workspace | null;
+  /** A7: model name selected in Step 1 after key verification */
+  llmSuggestedModel?: string;
 }
 
-export function WizardSummary({ llmProfile, embeddingProfile, ruleSet, workspace }: Props) {
+export function WizardSummary({ llmProfile, embeddingProfile, ruleSet, workspace, llmSuggestedModel }: Props) {
   const navigate = useNavigate();
   const { completeSetup } = useSettingsStore();
 
@@ -28,7 +30,10 @@ export function WizardSummary({ llmProfile, embeddingProfile, ruleSet, workspace
         初始配置完成！以下是你的配置摘要：
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <SummaryRow label="LLM 模型" value={llmProfile?.name ?? null} skipped={!llmProfile} />
+        <SummaryRow label="LLM 供应商" value={llmProfile?.name ?? null} skipped={!llmProfile} />
+        {llmProfile && llmSuggestedModel && (
+          <SummaryRow label="默认模型" value={llmSuggestedModel} skipped={false} />
+        )}
         <SummaryRow label="Embedding 模型" value={embeddingProfile?.name ?? null} skipped={!embeddingProfile} />
         <SummaryRow label="规则集" value={ruleSet?.name ?? null} skipped={!ruleSet} />
         <SummaryRow label="工作空间" value={workspace?.name ?? null} skipped={!workspace} />
