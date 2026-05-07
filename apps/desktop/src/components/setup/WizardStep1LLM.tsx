@@ -1,25 +1,19 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
-import type { LLMProfile, CreateLLMProfileRequest, ProbeModelsResponse } from "@trpg-workbench/shared-schema";
+import type { LLMProfile, CreateLLMProfileRequest } from "@trpg-workbench/shared-schema";
 import { ModelNameInput } from "../ModelNameInput";
+import { useModelList } from "../../hooks/useModelList";
 
 const LLM_PROVIDERS = ["openai", "google", "openrouter", "openai_compatible"] as const;
 type LLMProviderType = typeof LLM_PROVIDERS[number];
 
 const PROVIDER_DISPLAY: Record<string, string> = {
-  openai: "OpenAI", google: "Google",
-  openrouter: "OpenRouter", openai_compatible: "OpenAI Compatible（含本地模型）",
+  openai: "OpenAI",
+  google: "Google",
+  openrouter: "OpenRouter",
+  openai_compatible: "OpenAI Compatible（含本地模型）",
 };
-
-function suggestProfileName(provider: string, model: string): string {
-  const labels: Record<string, string> = {
-    google: "Gemini", openai: "OpenAI", anthropic: "Claude",
-    openrouter: "OpenRouter", openai_compatible: "本地",
-  };
-  const shortModel = model.split("/").pop() ?? model;
-  return `${labels[provider] ?? provider} ${shortModel}`;
-}
 
 const EMPTY_FORM: CreateLLMProfileRequest = {
   name: "", provider_type: "google",
@@ -27,7 +21,6 @@ const EMPTY_FORM: CreateLLMProfileRequest = {
 };
 
 interface Props {
-  // A7: onComplete now optionally passes back the selected model name
   onComplete: (profile: LLMProfile, suggestedModel?: string) => void;
   onSkip: () => void;
 }
@@ -36,13 +29,11 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CreateLLMProfileRequest>(EMPTY_FORM);
   const [memoryGb, setMemoryGb] = useState<number | null>(null);
-
-  // A4/A7: inline verify state
-  type VerifyState = "idle" | "verifying" | "ok" | "error";
-  const [verifyState, setVerifyState] = useState<VerifyState>("idle");
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [verifiedModels, setVerifiedModels] = useState<string[]>([]);
+  // Phase: "new" = fill credentials, "pick" = profile saved, pick model
+  const [phase, setPhase] = useState<"new" | "pick">("new");
+  const [savedProfile, setSavedProfile] = useState<LLMProfile | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -50,7 +41,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
         const { invoke } = await import("@tauri-apps/api/core");
         const gb = await invoke<number>("get_system_memory_gb");
         setMemoryGb(gb);
-      } catch { /* not in Tauri context */ }
+      } catch { /* browser mode */ }
     })();
   }, []);
 
@@ -59,218 +50,202 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
       apiFetch<LLMProfile>("/settings/llm-profiles", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: (profile) => {
       queryClient.invalidateQueries({ queryKey: ["llm-profiles"] });
-      onComplete(profile, selectedModel || undefined);
+      setSavedProfile(profile);
+      setPhase("pick");
     },
+    onError: (e) => setFormError((e as Error).message),
   });
 
+  // Probe models once the profile is saved
+  const { models: probedModels, isLoading: probingModels, error: probeError } =
+    useModelList(savedProfile ? { llmProfileId: savedProfile.id } : {});
+
+  // Auto-select sole model
+  useEffect(() => {
+    if (probedModels.length === 1 && !selectedModel) {
+      setSelectedModel(probedModels[0]!);
+    }
+  }, [probedModels, selectedModel]);
+
   function handleProviderChange(prov: LLMProviderType) {
-    setForm((f) => ({
-      ...f,
-      provider_type: prov,
-      strict_compatible: prov === "openai_compatible" ? (f.strict_compatible ?? false) : false,
-    }));
-    resetVerify();
+    setForm(f => ({ ...f, provider_type: prov, strict_compatible: false }));
+    setFormError(null);
   }
 
-  function resetVerify() {
-    setVerifyState("idle"); setVerifyError(null); setVerifiedModels([]); setSelectedModel("");
-  }
-
-  // A4: inline key verify (no save required)
-  async function handleVerifyKey() {
-    setVerifyState("verifying"); setVerifyError(null); setVerifiedModels([]);
-    try {
-      const params = new URLSearchParams();
-      if (form.base_url) params.set("base_url", form.base_url);
-      if (form.api_key) params.set("api_key", form.api_key);
-      const result = await apiFetch<ProbeModelsResponse>(
-        `/settings/model-catalog/probe-models?${params.toString()}`
-      );
-      if (result.error) {
-        setVerifyState("error"); setVerifyError(result.error);
-      } else {
-        setVerifiedModels(result.models);
-        setVerifyState("ok");
-      }
-    } catch (e) {
-      setVerifyState("error"); setVerifyError((e as Error).message);
-    }
-  }
-
-  // Auto-suggest name when model is chosen
-  function handleModelChange(model: string) {
-    setSelectedModel(model);
-    if (model && !form.name) {
-      setForm(f => ({ ...f, name: suggestProfileName(f.provider_type, model) }));
-    }
-  }
-
-  function handleSubmit(e: React.FormEvent) {
+  function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    setFormError(null);
+    const isLocal = form.provider_type === "openai_compatible";
+    if (!isLocal && !form.api_key?.trim()) {
+      setFormError("请填写 API Key");
+      return;
+    }
     const body = { ...form };
     if (!body.base_url) delete (body as Record<string, unknown>).base_url;
     if (!body.api_key) body.api_key = "local";
     createMutation.mutate(body);
   }
 
-  const isLocalProvider = form.provider_type === "openai_compatible";
-  const showBaseUrl = form.provider_type === "openrouter" || isLocalProvider;
-  const apiKeyRequired = !isLocalProvider;
-  const canVerify = isLocalProvider ? !!form.base_url : !!form.api_key?.trim();
-  const canSubmit = !!form.name && (!apiKeyRequired || !!form.api_key) && !createMutation.isPending;
+  function handleConfirm() {
+    if (savedProfile) onComplete(savedProfile, selectedModel || undefined);
+  }
 
-  return (
-    <div>
-      {/* Preset hints */}
-      <div style={{ marginBottom: 10, padding: "10px 14px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐云端：Google Gemini，长上下文，适合 TRPG 创作</span>
-        <button
-          type="button"
-          style={presetBtnStyle}
-          onClick={() => { setForm((f) => ({ ...f, provider_type: "google", base_url: "" })); resetVerify(); }}
-        >
-          填入 Gemini 推荐值
-        </button>
-      </div>
+  function refreshModels() {
+    if (!savedProfile) return;
+    queryClient.invalidateQueries({ queryKey: ["model-list", "llm", savedProfile.id] });
+  }
 
-      <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          {memoryGb !== null
-            ? `检测到内存 ${memoryGb} GB — 本地推荐使用 LM Studio，数据不离本机`
-            : "推荐本地：LM Studio + 本地大模型，数据不离本机，无需 API Key"}
-        </span>
-        <button
-          type="button"
-          style={{ ...presetBtnStyle, background: "rgba(34,197,94,0.12)", color: "#22c55e", borderColor: "rgba(34,197,94,0.3)" }}
-          onClick={() => {
-            setForm((f) => ({
-              ...f,
-              provider_type: "openai_compatible",
-              base_url: "http://localhost:1234/v1",
-              api_key: "lm-studio",
-              strict_compatible: false,
-            }));
-            resetVerify();
-          }}
-        >
-          填入 LM Studio 推荐值
-        </button>
-      </div>
+  const isLocal = form.provider_type === "openai_compatible";
+  const showBaseUrl = form.provider_type === "openrouter" || isLocal;
 
-      <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: -4 }}>
-        此步骤只配置供应商凭据。<strong>模型名称在工作空间设置中单独选择</strong>，支持随时切换。
-      </p>
-
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* A3: provider first */}
-        <label style={labelStyle}>
-          供应商 *
-          <select style={inputStyle} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as LLMProviderType)}>
-            {LLM_PROVIDERS.map((p) => <option key={p} value={p}>{PROVIDER_DISPLAY[p]}</option>)}
-          </select>
-        </label>
-        {showBaseUrl && (
-          <label style={labelStyle}>
-            Base URL {isLocalProvider && <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: "normal" }}>（LM Studio: localhost:1234/v1 · Ollama: localhost:11434/v1）</span>}
-            <input
-              style={inputStyle}
-              value={form.base_url ?? ""}
-              onChange={(e) => { setForm({ ...form, base_url: e.target.value }); resetVerify(); }}
-              placeholder={isLocalProvider ? "http://localhost:1234/v1" : "https://..."}
-            />
-          </label>
-        )}
-        {/* A5: strict_compatible collapsed */}
-        {isLocalProvider && (
-          <details style={{ marginTop: -4 }}>
-            <summary style={{ fontSize: 12, color: "var(--text-muted)", cursor: "pointer", userSelect: "none" }}>
-              高级设置（遇到角色兼容问题时展开）
-            </summary>
-            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 400 }}>
-                <input
-                  type="checkbox"
-                  checked={!!form.strict_compatible}
-                  onChange={(e) => setForm((f) => ({ ...f, strict_compatible: e.target.checked }))}
-                />
-                strict_compatible（将 `developer` / `latest_reminder` 映射为 `system`）
-              </label>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                默认关闭（native_roles）。遇到 DeepSeek 等端点报 role 不支持时再开启。
-              </span>
-            </div>
-          </details>
-        )}
-        {/* A4: API Key + inline verify */}
-        <label style={labelStyle}>
-          API Key {isLocalProvider ? <span style={{ fontSize: 11, color: "#22c55e", fontWeight: "normal" }}>（本地模型可选，填任意字符即可）</span> : "*"}
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <input
-              style={{ ...inputStyle, flex: 1 }}
-              type="password"
-              value={form.api_key ?? ""}
-              onChange={(e) => { setForm({ ...form, api_key: e.target.value }); resetVerify(); }}
-              placeholder={isLocalProvider ? "留空或填 'ollama' / 'lm-studio'" : "AIza..."}
-            />
-            <button
-              type="button"
-              style={{
-                ...presetBtnStyle, minWidth: 72,
-                ...(verifyState === "ok" ? { background: "rgba(82,201,126,0.12)", color: "#52c97e", borderColor: "rgba(82,201,126,0.4)" } : {}),
-                ...(verifyState === "error" ? { background: "rgba(224,82,82,0.1)", color: "#e05252", borderColor: "rgba(224,82,82,0.3)" } : {}),
-              }}
-              onClick={handleVerifyKey}
-              disabled={!canVerify || verifyState === "verifying"}
-            >
-              {verifyState === "verifying" ? "验证中…" : verifyState === "ok" ? "✓ 已验证" : "验证 Key"}
-            </button>
-          </div>
-          {verifyState === "error" && verifyError && (
-            <span style={{ fontSize: 11, color: "#e05252" }}>✗ {verifyError}</span>
-          )}
-        </label>
-        {/* A7: model picker shown after successful verify */}
-        {verifyState === "ok" && (
-          <label style={labelStyle}>
-            选择默认模型（可选，将预填到工作空间配置）
-            <ModelNameInput
-              catalog="llm"
-              providerType={form.provider_type}
-              value={selectedModel}
-              onChange={handleModelChange}
-              catalogEntries={[]}
-              fetchedModels={verifiedModels}
-              placeholder="例：gemini-2.0-flash"
-              className=""
-              style={inputStyle}
-            />
-            {verifiedModels.length > 0 && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                已从供应商获取 {verifiedModels.length} 个模型 · 选择后将在工作空间中预填
-              </span>
-            )}
-          </label>
-        )}
-        {/* A3: name at bottom, auto-suggested */}
-        <label style={labelStyle}>
-          配置名称 *
-          <input
-            style={inputStyle}
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder={selectedModel ? suggestProfileName(form.provider_type, selectedModel) : "例：Gemini 2.0 Flash"}
-          />
-        </label>
-        {createMutation.isError && (
-          <p style={{ fontSize: 12, color: "var(--error, #f55)" }}>{(createMutation.error as Error).message}</p>
-        )}
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-          <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后配置</button>
-          <button type="submit" style={btnPrimaryStyle} disabled={!canSubmit}>
-            {createMutation.isPending ? "保存中..." : "保存并继续"}
+  // ── Phase: fill credentials ───────────────────────────────────────────────
+  if (phase === "new") {
+    return (
+      <div>
+        {/* Preset hints */}
+        <div style={{ marginBottom: 10, padding: "10px 14px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐云端：Google Gemini，长上下文，适合 TRPG 创作</span>
+          <button type="button" style={presetBtnPurple}
+            onClick={() => setForm(f => ({ ...f, provider_type: "google", base_url: "", name: f.name || "Gemini 2.5 Flash" }))}>
+            填入 Gemini 推荐值
           </button>
         </div>
-      </form>
+        <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {memoryGb !== null ? `检测到内存 ${memoryGb} GB — 推荐 LM Studio 本地模型` : "推荐本地：LM Studio，数据不离本机，无需 API Key"}
+          </span>
+          <button type="button" style={{ ...presetBtnPurple, background: "rgba(34,197,94,0.12)", color: "#22c55e", borderColor: "rgba(34,197,94,0.3)" }}
+            onClick={() => setForm(f => ({ ...f, provider_type: "openai_compatible", base_url: "http://localhost:1234/v1", api_key: "lm-studio", name: f.name || "LM Studio" }))}>
+            填入 LM Studio 推荐值
+          </button>
+        </div>
+
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: -4 }}>
+          保存后将自动获取可用模型列表，然后选择默认模型。
+        </p>
+
+        <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* 1. Provider */}
+          <label style={labelStyle}>
+            供应商 *
+            <select style={inputStyle} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as LLMProviderType)}>
+              {LLM_PROVIDERS.map((p) => <option key={p} value={p}>{PROVIDER_DISPLAY[p]}</option>)}
+            </select>
+          </label>
+
+          {/* 2. Base URL */}
+          {showBaseUrl && (
+            <label style={labelStyle}>
+              Base URL {isLocal && <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: "normal" }}>（LM Studio: localhost:1234/v1 · Ollama: localhost:11434/v1）</span>}
+              <input style={inputStyle} value={form.base_url ?? ""}
+                onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                placeholder={isLocal ? "http://localhost:1234/v1" : "https://..."} />
+            </label>
+          )}
+
+          {/* 3. strict_compatible (hidden by default) */}
+          {isLocal && (
+            <details style={{ marginTop: -4 }}>
+              <summary style={{ fontSize: 12, color: "var(--text-muted)", cursor: "pointer", userSelect: "none" }}>
+                高级设置（遇到角色兼容问题时展开）
+              </summary>
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 400 }}>
+                  <input type="checkbox" checked={!!form.strict_compatible}
+                    onChange={(e) => setForm(f => ({ ...f, strict_compatible: e.target.checked }))} />
+                  strict_compatible（将 developer / latest_reminder 映射为 system）
+                </label>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  默认关闭。遇到 DeepSeek 等端点报 role 不支持时再开启。
+                </span>
+              </div>
+            </details>
+          )}
+
+          {/* 4. API Key */}
+          <label style={labelStyle}>
+            API Key {isLocal ? <span style={{ fontSize: 11, color: "#22c55e", fontWeight: "normal" }}>（本地模型可选）</span> : "*"}
+            <input style={inputStyle} type="password" value={form.api_key ?? ""}
+              onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+              placeholder={isLocal ? "留空或填 'ollama' / 'lm-studio'" : "AIza... / sk-..."} />
+          </label>
+
+          {/* 5. Profile name */}
+          <label style={labelStyle}>
+            配置名称 *
+            <input style={inputStyle} value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="例：Gemini 2.5 Flash" />
+          </label>
+
+          {formError && <p style={{ fontSize: 12, color: "var(--error, #f55)", margin: 0 }}>{formError}</p>}
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+            <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后配置</button>
+            <button type="submit" style={btnPrimaryStyle} disabled={!form.name || createMutation.isPending}>
+              {createMutation.isPending ? "保存中..." : "保存并选择模型 →"}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  // ── Phase: pick model ────────────────────────────────────────────────────
+  return (
+    <div>
+      <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(82,201,126,0.08)", border: "1px solid rgba(82,201,126,0.25)", borderRadius: 6 }}>
+        <p style={{ fontSize: 13, color: "#52c97e", margin: 0, fontWeight: 500 }}>
+          ✓ 供应商配置「{savedProfile?.name}」已保存
+        </p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>
+          现在选择默认使用的模型（也可跳过，稍后在工作空间设置中选择）
+        </p>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <label style={labelStyle}>
+          选择默认模型
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+            <div style={{ flex: 1 }}>
+              <ModelNameInput
+                catalog="llm"
+                providerType={savedProfile?.provider_type ?? ""}
+                value={selectedModel}
+                onChange={setSelectedModel}
+                catalogEntries={[]}
+                fetchedModels={probedModels}
+                placeholder="例：gemini-2.5-flash / deepseek-v4-flash"
+                style={inputStyle}
+              />
+            </div>
+            <button type="button" style={{ ...btnSecondaryStyle, fontSize: 11, whiteSpace: "nowrap", marginTop: 2 }}
+              onClick={refreshModels} disabled={probingModels}>
+              {probingModels ? "获取中…" : "刷新列表"}
+            </button>
+          </div>
+          {probingModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>正在从供应商获取模型列表…</span>}
+          {!probingModels && probeError && <span style={{ fontSize: 11, color: "var(--error, #f55)" }}>✗ {probeError}</span>}
+          {!probingModels && !probeError && probedModels.length > 0 && (
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>✓ 已获取 {probedModels.length} 个模型 · 点击输入框展开选择</span>
+          )}
+          {!probingModels && !probeError && probedModels.length === 0 && (
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可直接输入模型名称，或点「刷新列表」重试</span>
+          )}
+        </label>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+          <button type="button" style={btnSecondaryStyle}
+            onClick={() => { if (savedProfile) onComplete(savedProfile); }}>
+            跳过，稍后选择
+          </button>
+          <button type="button" style={btnPrimaryStyle}
+            onClick={handleConfirm}
+            disabled={!selectedModel}>
+            确认并继续 →
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -279,4 +254,4 @@ const labelStyle: React.CSSProperties = { display: "flex", flexDirection: "colum
 const inputStyle: React.CSSProperties = { padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", fontSize: 13, color: "var(--text)" };
 const btnPrimaryStyle: React.CSSProperties = { padding: "8px 20px", borderRadius: 6, background: "var(--accent, #7c6aff)", color: "#fff", fontSize: 13, cursor: "pointer", border: "none" };
 const btnSecondaryStyle: React.CSSProperties = { padding: "8px 16px", borderRadius: 6, background: "transparent", color: "var(--text-muted)", fontSize: 13, cursor: "pointer", border: "1px solid var(--border)" };
-const presetBtnStyle: React.CSSProperties = { fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" };
+const presetBtnPurple: React.CSSProperties = { fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" };

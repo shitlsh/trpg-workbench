@@ -1,12 +1,13 @@
 /**
  * useModelList
  *
- * Fetches the list of available model names for a given LLM profile.
- * Supports all provider types: anthropic, openai, google, openrouter,
- * openai_compatible (and any future providers handled by probe-models).
+ * Fetches the list of available model names for a saved profile.
+ * Supports llm, embedding, and rerank profile types.
  *
  * Usage:
- *   const { models, isLoading, error } = useModelList(profileId);
+ *   const { models, isLoading, error } = useModelList({ llmProfileId: id });
+ *   const { models, isLoading, error } = useModelList({ embeddingProfileId: id });
+ *   const { models, isLoading, error } = useModelList({ rerankProfileId: id });
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -17,33 +18,62 @@ interface ProbeModelsResponse {
   error?: string | null;
 }
 
+interface UseModelListOptions {
+  llmProfileId?: string | null;
+  embeddingProfileId?: string | null;
+  rerankProfileId?: string | null;
+}
+
 interface UseModelListResult {
   models: string[];
   isLoading: boolean;
   error: string | null;
 }
 
-/**
- * Fetch available models for the given LLM profile ID.
- * Returns an empty list when no profileId is provided.
- */
-export function useModelList(profileId: string | null | undefined): UseModelListResult {
+function buildQueryKey(opts: UseModelListOptions): unknown[] {
+  if (opts.llmProfileId) return ["model-list", "llm", opts.llmProfileId];
+  if (opts.embeddingProfileId) return ["model-list", "embedding", opts.embeddingProfileId];
+  if (opts.rerankProfileId) return ["model-list", "rerank", opts.rerankProfileId];
+  return ["model-list", null];
+}
+
+function buildQueryParams(opts: UseModelListOptions): string {
+  const params = new URLSearchParams();
+  if (opts.llmProfileId) params.set("llm_profile_id", opts.llmProfileId);
+  if (opts.embeddingProfileId) params.set("embedding_profile_id", opts.embeddingProfileId);
+  if (opts.rerankProfileId) params.set("rerank_profile_id", opts.rerankProfileId);
+  return params.toString();
+}
+
+function isEnabled(opts: UseModelListOptions): boolean {
+  return !!(opts.llmProfileId || opts.embeddingProfileId || opts.rerankProfileId);
+}
+
+export function useModelList(opts: UseModelListOptions | string | null | undefined): UseModelListResult {
+  // Support legacy string call: useModelList(profileId) → treated as llmProfileId
+  const normalized: UseModelListOptions =
+    typeof opts === "string" ? { llmProfileId: opts }
+    : opts == null ? {}
+    : opts;
+
+  const enabled = isEnabled(normalized);
+  const queryKey = buildQueryKey(normalized);
+  const queryParams = buildQueryParams(normalized);
+
   const { data, isLoading } = useQuery<ProbeModelsResponse>({
-    queryKey: ["model-list", profileId],
-    queryFn: async () => {
-      const params = new URLSearchParams({ llm_profile_id: profileId! });
-      return apiFetch<ProbeModelsResponse>(
-        `/settings/model-catalog/probe-models?${params.toString()}`
-      );
-    },
-    enabled: !!profileId,
-    staleTime: 5 * 60 * 1000, // 5 min – don't hammer the upstream APIs
+    queryKey,
+    queryFn: async () =>
+      apiFetch<ProbeModelsResponse>(
+        `/settings/model-catalog/probe-models?${queryParams}`
+      ),
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 min
     retry: false,
   });
 
   return {
     models: data?.models ?? [],
-    isLoading: !!profileId && isLoading,
+    isLoading: enabled && isLoading,
     error: data?.error ?? null,
   };
 }

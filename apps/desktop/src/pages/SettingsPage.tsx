@@ -8,13 +8,12 @@ import type {
   LLMTestResult, EmbeddingTestResult,
   RerankProfile, CreateRerankProfileRequest, UpdateRerankProfileRequest,
   RerankProviderType, RerankTestResult,
-  ProbeModelsResponse,
 } from "@trpg-workbench/shared-schema";
 import styles from "./SettingsPage.module.css";
 import { ModelNameInput } from "../components/ModelNameInput";
 import { HelpButton } from "../components/HelpButton";
 import { useModelList } from "../hooks/useModelList";
-import { KNOWN_RERANK_MODELS } from "../lib/modelCatalog";
+import { KNOWN_EMBEDDING_MODELS, KNOWN_RERANK_MODELS } from "../lib/modelCatalog";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -24,42 +23,45 @@ const EMBEDDING_PROVIDERS = ["openai", "openai_compatible"] as const;
 type LLMProviderType = typeof LLM_PROVIDERS[number];
 type EmbeddingProviderType = typeof EMBEDDING_PROVIDERS[number];
 
-const EMPTY_LLM: CreateLLMProfileRequest = {
-  name: "", provider_type: "openai",
-  base_url: "", api_key: "", strict_compatible: false,
-};
-
-const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
-  name: "", provider_type: "openai", model_name: "",
-  base_url: "", api_key: "", dimensions: undefined,
-};
-
-const GEMINI_PRESET: Partial<CreateLLMProfileRequest> = {
-  provider_type: "google",
-  base_url: "",
-};
-
-const JINA_EMBEDDING_PRESET: Partial<CreateEmbeddingProfileRequest> = {
-  provider_type: "openai_compatible",
-  model_name: "jina-embeddings-v3",
-  base_url: "https://api.jina.ai/v1",
-};
-
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 const PROVIDER_DISPLAY: Record<string, string> = {
   openai: "OpenAI", google: "Google", anthropic: "Anthropic",
-  openrouter: "OpenRouter", openai_compatible: "OpenAI Compatible",
+  openrouter: "OpenRouter", openai_compatible: "OpenAI Compatible（含本地）",
+  jina: "Jina AI", cohere: "Cohere",
 };
 
-function suggestProfileName(provider: string, model: string): string {
-  const labels: Record<string, string> = {
-    google: "Gemini", openai: "OpenAI", anthropic: "Claude",
-    openrouter: "OpenRouter", openai_compatible: "本地",
-  };
-  const shortModel = model.split("/").pop() ?? model;
-  return `${labels[provider] ?? provider} ${shortModel}`;
+const EMPTY_LLM: CreateLLMProfileRequest = {
+  name: "", provider_type: "openai", base_url: "", api_key: "", strict_compatible: false,
+};
+const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
+  name: "", provider_type: "openai", model_name: "", base_url: "", api_key: "", dimensions: undefined,
+};
+const EMPTY_RERANK: CreateRerankProfileRequest = {
+  name: "", provider_type: "jina", model: "jina-reranker-v3", api_key: "", base_url: "",
+};
+
+// ─── Shared UI helpers ────────────────────────────────────────────────────────
+
+/** Small inline hint about model list status below the combobox */
+function ModelListHint({ isLoading, count, error }: { isLoading: boolean; count: number; error: string | null }) {
+  if (isLoading) return <span style={{ fontSize: 11, color: "var(--text-muted)" }}>正在获取模型列表…</span>;
+  if (error) return <span style={{ fontSize: 11, color: "var(--danger, #e05252)" }}>✗ {error}</span>;
+  if (count > 0) return <span style={{ fontSize: 11, color: "var(--text-muted)" }}>✓ 已获取 {count} 个可用模型 · 点击输入框选择</span>;
+  return <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可直接输入模型名称</span>;
+}
+
+/** Refresh button next to model combobox in edit modals */
+function RefreshBtn({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  return (
+    <button
+      type="button"
+      className={styles.btnSecondary}
+      style={{ whiteSpace: "nowrap", fontSize: 11, marginTop: 2 }}
+      onClick={onClick}
+      disabled={loading}
+    >
+      {loading ? "获取中…" : "刷新模型列表"}
+    </button>
+  );
 }
 
 // ─── LLM Section ──────────────────────────────────────────────────────────────
@@ -72,28 +74,21 @@ function LLMSection() {
   const [deleteTarget, setDeleteTarget] = useState<LLMProfile | null>(null);
   const [testResult, setTestResult] = useState<LLMTestResult | null>(null);
   const [testing, setTesting] = useState(false);
-  const [testModelName, setTestModelName] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  // New-profile inline key verification state (A4)
-  type VerifyState = "idle" | "verifying" | "ok" | "error";
-  const [verifyState, setVerifyState] = useState<VerifyState>("idle");
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [verifiedModels, setVerifiedModels] = useState<string[]>([]);
+  const apiKeyRequired = !editTarget && form.provider_type !== "openai_compatible";
+  const showBaseUrl = form.provider_type === "openrouter" || form.provider_type === "openai_compatible";
 
-  /** 云端供应商新建时必须填 API Key；本地兼容可留空 */
-  const apiKeyRequiredForCreate = !editTarget && form.provider_type !== "openai_compatible";
+  // Models for edit mode — probe via saved profile id
+  const { models: profileModels, isLoading: loadingModels, error: modelError } =
+    useModelList(editTarget ? { llmProfileId: editTarget.id } : {});
 
-  // When editing an existing profile, auto-fetch its available models
-  const { models: profileModels, isLoading: fetchingProfileModels } = useModelList(editTarget?.id ?? null);
-
-  // Auto-fill test model when only one is available
+  // Auto-select sole model
   useEffect(() => {
-    if (!editTarget) return;
-    if (profileModels.length !== 1) return;
-    if (testModelName.trim() !== "") return;
-    setTestModelName(profileModels[0]!);
-  }, [editTarget?.id, profileModels, testModelName]);
+    if (!editTarget || profileModels.length !== 1 || selectedModel) return;
+    setSelectedModel(profileModels[0]!);
+  }, [editTarget?.id, profileModels, selectedModel]);
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["llm-profiles"],
@@ -103,7 +98,11 @@ function LLMSection() {
   const createMutation = useMutation({
     mutationFn: (body: CreateLLMProfileRequest) =>
       apiFetch<LLMProfile>("/settings/llm-profiles", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["llm-profiles"] }); closeForm(); },
+    onSuccess: (newProfile) => {
+      queryClient.invalidateQueries({ queryKey: ["llm-profiles"] });
+      // After creating, immediately open edit so user can pick a model
+      openEdit(newProfile);
+    },
   });
 
   const updateMutation = useMutation({
@@ -117,69 +116,23 @@ function LLMSection() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["llm-profiles"] }); setDeleteTarget(null); },
   });
 
-  function resetVerify() {
-    setVerifyState("idle"); setVerifyError(null); setVerifiedModels([]);
-  }
-
   function openNew() {
-    setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null);
-    setTestModelName(""); setFormError(null); resetVerify(); setShowForm(true);
+    setEditTarget(null); setForm(EMPTY_LLM); setSelectedModel(""); setTestResult(null); setFormError(null); setShowForm(true);
   }
   function openEdit(p: LLMProfile) {
     setEditTarget(p);
-    setForm({
-      name: p.name, provider_type: p.provider_type as LLMProviderType,
-      base_url: p.base_url ?? "", api_key: "", strict_compatible: p.strict_compatible ?? false,
-    });
-    setTestResult(null); setTestModelName(""); setFormError(null); resetVerify(); setShowForm(true);
+    setForm({ name: p.name, provider_type: p.provider_type as LLMProviderType, base_url: p.base_url ?? "", api_key: "", strict_compatible: p.strict_compatible ?? false });
+    setSelectedModel(""); setTestResult(null); setFormError(null); setShowForm(true);
   }
   function closeForm() {
-    setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setTestResult(null);
-    setTestModelName(""); setFormError(null); resetVerify();
-  }
-  function handleProviderChange(prov: LLMProviderType) {
-    setForm((f) => ({ ...f, provider_type: prov, strict_compatible: prov === "openai_compatible" ? (f.strict_compatible ?? false) : false }));
-    resetVerify(); setTestModelName("");
-  }
-
-  // A4: Inline key verification (new profile only)
-  async function handleVerifyKey() {
-    setVerifyState("verifying"); setVerifyError(null); setVerifiedModels([]);
-    try {
-      const params = new URLSearchParams();
-      if (form.base_url) params.set("base_url", form.base_url);
-      if (form.api_key) params.set("api_key", form.api_key);
-      const result = await apiFetch<ProbeModelsResponse>(
-        `/settings/model-catalog/probe-models?${params.toString()}`
-      );
-      if (result.error) {
-        setVerifyState("error"); setVerifyError(result.error);
-      } else {
-        setVerifiedModels(result.models);
-        setVerifyState("ok");
-        // Auto-suggest profile name if still empty
-        if (!form.name && testModelName) {
-          setForm(f => ({ ...f, name: suggestProfileName(f.provider_type, testModelName) }));
-        }
-      }
-    } catch (e) {
-      setVerifyState("error"); setVerifyError((e as Error).message);
-    }
-  }
-
-  // Auto-suggest profile name when model is selected after verify
-  function handleNewModelChange(model: string) {
-    setTestModelName(model);
-    if (model && !form.name) {
-      setForm(f => ({ ...f, name: suggestProfileName(f.provider_type, model) }));
-    }
+    setShowForm(false); setEditTarget(null); setForm(EMPTY_LLM); setSelectedModel(""); setTestResult(null); setFormError(null);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
-    if (apiKeyRequiredForCreate && !form.api_key?.trim()) {
-      setFormError("请填写 API Key（OpenAI / Google / OpenRouter 新建时必填）");
+    if (apiKeyRequired && !form.api_key?.trim()) {
+      setFormError("请填写 API Key（OpenAI / Google / OpenRouter 必填）");
       return;
     }
     const body = { ...form };
@@ -193,22 +146,16 @@ function LLMSection() {
       createMutation.mutate(body);
     }
   }
-  function handleRefreshModelList() {
-    if (!editTarget) return;
-    void queryClient.invalidateQueries({ queryKey: ["model-list", editTarget.id] });
-  }
 
   async function handleTest() {
-    if (!editTarget) return;
-    const model = testModelName.trim();
-    if (!model) {
-      setTestResult({ success: false, error: "请先选择或输入模型名称，再点测试连接" });
+    if (!editTarget || !selectedModel.trim()) {
+      setTestResult({ success: false, error: "请先选择或输入模型名称" });
       return;
     }
     setTesting(true); setTestResult(null);
     try {
       const result = await apiFetch<LLMTestResult>(
-        `/settings/llm-profiles/${editTarget.id}/test?model_name=${encodeURIComponent(model)}`,
+        `/settings/llm-profiles/${editTarget.id}/test?model_name=${encodeURIComponent(selectedModel.trim())}`,
         { method: "POST" }
       );
       setTestResult(result);
@@ -219,18 +166,13 @@ function LLMSection() {
     }
   }
 
+  function refreshModels() {
+    if (!editTarget) return;
+    queryClient.invalidateQueries({ queryKey: ["model-list", "llm", editTarget.id] });
+  }
+
   const isPending = createMutation.isPending || updateMutation.isPending;
-  const showBaseUrl = form.provider_type === "openrouter" || form.provider_type === "openai_compatible";
-  // For new profiles, can verify if: (cloud) api_key filled, or (local) base_url filled
-  const canVerify = !editTarget && (
-    form.provider_type === "openai_compatible"
-      ? !!form.base_url
-      : !!form.api_key?.trim()
-  );
-  const saveDisabled =
-    isPending ||
-    !form.name.trim() ||
-    (apiKeyRequiredForCreate && !form.api_key?.trim());
+  const saveDisabled = isPending || !form.name.trim() || (apiKeyRequired && !form.api_key?.trim());
 
   return (
     <div>
@@ -265,41 +207,49 @@ function LLMSection() {
         <div className={styles.overlay} onClick={closeForm}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>{editTarget ? "编辑 LLM 配置" : "新增 LLM 配置"}</h2>
+
+            {/* New-profile Gemini hint */}
             {!editTarget && (
               <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐：Google Gemini，支持长上下文，适合 TRPG 创作场景</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐：Google Gemini，长上下文，适合 TRPG 创作</span>
                 <button
                   type="button"
                   style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
-                  onClick={() => {
-                    setForm((f) => ({ ...f, ...GEMINI_PRESET }));
-                    resetVerify(); setTestModelName("");
-                  }}
+                  onClick={() => setForm(f => ({ ...f, provider_type: "google", base_url: "", name: f.name || "Gemini 2.5 Flash" }))}
                 >
-                  一键填入 Gemini 推荐值
+                  一键填入 Gemini
                 </button>
               </div>
             )}
+
+            {/* New-profile tip */}
+            {!editTarget && (
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12, marginTop: 0 }}>
+                保存后将自动获取可用模型列表供选择。
+              </p>
+            )}
+
             <form onSubmit={handleSubmit} className={styles.form}>
-              {/* A3: provider first */}
+              {/* 1. Provider */}
               <label className={styles.label}>
                 供应商 *
-                <select className={styles.select} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as LLMProviderType)}>
+                <select className={styles.select} value={form.provider_type}
+                  onChange={(e) => setForm(f => ({ ...f, provider_type: e.target.value as LLMProviderType, strict_compatible: false }))}>
                   {LLM_PROVIDERS.map((p) => <option key={p} value={p}>{PROVIDER_DISPLAY[p] ?? p}</option>)}
                 </select>
               </label>
+
+              {/* 2. Base URL (compat/openrouter only) */}
               {showBaseUrl && (
                 <label className={styles.label}>
                   Base URL {form.provider_type === "openai_compatible" ? "*" : ""}
-                  <input
-                    className={styles.input}
-                    value={form.base_url ?? ""}
-                    onChange={(e) => { setForm({ ...form, base_url: e.target.value }); resetVerify(); setTestModelName(""); }}
-                    placeholder={form.provider_type === "openai_compatible" ? "http://localhost:1234/v1" : "https://..."}
-                  />
+                  <input className={styles.input} value={form.base_url ?? ""}
+                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                    placeholder={form.provider_type === "openai_compatible" ? "http://localhost:1234/v1" : "https://openrouter.ai/api/v1"} />
                 </label>
               )}
-              {/* A5: strict_compatible collapsed */}
+
+              {/* 3. strict_compatible (advanced, hidden by default) */}
               {form.provider_type === "openai_compatible" && (
                 <details style={{ marginTop: -4 }}>
                   <summary style={{ fontSize: 12, color: "var(--text-muted)", cursor: "pointer", userSelect: "none" }}>
@@ -307,133 +257,76 @@ function LLMSection() {
                   </summary>
                   <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 400 }}>
-                      <input
-                        type="checkbox"
-                        checked={!!form.strict_compatible}
-                        onChange={(e) => setForm((f) => ({ ...f, strict_compatible: e.target.checked }))}
-                      />
-                      strict_compatible（将 `developer` / `latest_reminder` 映射为 `system`）
+                      <input type="checkbox" checked={!!form.strict_compatible}
+                        onChange={(e) => setForm(f => ({ ...f, strict_compatible: e.target.checked }))} />
+                      strict_compatible（将 developer / latest_reminder 映射为 system）
                     </label>
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      默认关闭（native_roles）。仅当供应商不接受 `developer` 角色（如部分 DeepSeek/OpenAI-Compatible 网关）时再开启。
+                      默认关闭。仅当 DeepSeek 等端点报 role 错误时开启。
                     </span>
                   </div>
                 </details>
               )}
-              {/* A4: API Key + inline verify (new only) */}
+
+              {/* 4. API Key */}
               <label className={styles.label}>
                 API Key{" "}
-                {apiKeyRequiredForCreate ? <span style={{ color: "var(--error, #e05252)" }}>*</span> : null}
+                {apiKeyRequired ? <span style={{ color: "var(--error, #e05252)" }}>*</span> : null}
                 {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    className={styles.input}
-                    style={{ flex: 1 }}
-                    type="password"
-                    value={form.api_key ?? ""}
-                    onChange={(e) => { setForm({ ...form, api_key: e.target.value }); resetVerify(); setTestModelName(""); }}
-                    placeholder={form.provider_type === "openai_compatible" ? "留空或填 'ollama' / 'lm-studio'" : "sk-..."}
-                  />
-                  {!editTarget && (
-                    <button
-                      type="button"
-                      className={styles.btnSecondary}
-                      style={{ whiteSpace: "nowrap", fontSize: 12, minWidth: 72,
-                        ...(verifyState === "ok" ? { borderColor: "#52c97e", color: "#52c97e" } : {}),
-                        ...(verifyState === "error" ? { borderColor: "var(--danger)", color: "var(--danger)" } : {}),
-                      }}
-                      onClick={handleVerifyKey}
-                      disabled={!canVerify || verifyState === "verifying"}
-                    >
-                      {verifyState === "verifying" ? "验证中…" : verifyState === "ok" ? "✓ 已验证" : "验证 Key"}
-                    </button>
-                  )}
-                </div>
-                {!editTarget && apiKeyRequiredForCreate && verifyState === "idle" && (
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>填写后点「验证 Key」加载可用模型列表</span>
-                )}
-                {verifyState === "error" && verifyError && (
-                  <span style={{ fontSize: 11, color: "var(--danger, #e05252)" }}>✗ {verifyError}</span>
+                <input className={styles.input} type="password" value={form.api_key ?? ""}
+                  onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+                  placeholder={form.provider_type === "openai_compatible" ? "留空或填 'ollama' / 'lm-studio'" : "sk-..."} />
+                {apiKeyRequired && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    OpenAI / Google / OpenRouter 必填；OpenAI 兼容可留空
+                  </span>
                 )}
               </label>
-              {/* A4: model picker shown after successful verify (new) or always (edit) */}
-              {(!editTarget && verifyState === "ok") && (
-                <label className={styles.label}>
-                  选择模型
-                  <ModelNameInput
-                    catalog="llm"
-                    providerType={form.provider_type}
-                    value={testModelName}
-                    onChange={handleNewModelChange}
-                    catalogEntries={[]}
-                    fetchedModels={verifiedModels}
-                    placeholder="例：gemini-2.0-flash"
-                    className={styles.input}
-                  />
-                  {verifiedModels.length > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      已从供应商获取 {verifiedModels.length} 个模型 · 选择后配置名称将自动建议
-                    </span>
-                  )}
-                </label>
-              )}
+
+              {/* 5. Model picker (edit only — probe result from saved profile) */}
               {editTarget && (
                 <label className={styles.label}>
-                  选择模型（测试 / 默认）
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-                    <div style={{ flex: 1, minWidth: 200 }}>
+                  选择模型（用于测试 / 工作空间默认）
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
                       <ModelNameInput
                         catalog="llm"
                         providerType={form.provider_type}
-                        value={testModelName}
-                        onChange={setTestModelName}
+                        value={selectedModel}
+                        onChange={setSelectedModel}
                         catalogEntries={[]}
                         fetchedModels={profileModels}
-                        placeholder="例：claude-sonnet-4-5 / gemini-2.0-flash"
+                        placeholder="例：gemini-2.5-flash / deepseek-v4-flash"
                         className={styles.input}
                       />
                     </div>
-                    <button
-                      type="button"
-                      className={styles.btnSecondary}
-                      style={{ whiteSpace: "nowrap", fontSize: 11, marginTop: 2 }}
-                      onClick={handleRefreshModelList}
-                      disabled={fetchingProfileModels}
-                    >
-                      {fetchingProfileModels ? "刷新中…" : "刷新列表"}
-                    </button>
+                    <RefreshBtn onClick={refreshModels} loading={loadingModels} />
                   </div>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginTop: 4 }}>
-                    {fetchingProfileModels
-                      ? "正在从供应商拉取模型列表…"
-                      : profileModels.length > 0
-                        ? `✓ 已从供应商获取 ${profileModels.length} 个模型`
-                        : "若列表为空，可点「刷新列表」或直接输入模型名称"}
-                  </span>
+                  <ModelListHint isLoading={loadingModels} count={profileModels.length} error={modelError} />
                 </label>
               )}
-              {/* A3: profile name moved to bottom, auto-suggested */}
+
+              {/* 6. Profile name */}
               <label className={styles.label}>
                 配置名称 *
-                <input
-                  className={styles.input}
-                  value={form.name}
+                <input className={styles.input} value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder={editTarget ? form.name : "选择模型后自动建议，可自定义"}
-                  autoFocus={!!editTarget}
-                />
+                  placeholder="例：Gemini 2.5 Flash"
+                  autoFocus={!!editTarget} />
               </label>
+
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={closeForm}>取消</button>
                 {editTarget && (
-                  <button type="button" className={styles.btnSecondary} onClick={handleTest} disabled={testing}>
+                  <button type="button" className={styles.btnSecondary} onClick={handleTest} disabled={testing || !selectedModel.trim()}>
                     {testing ? "测试中..." : "测试连接"}
                   </button>
                 )}
                 <button type="submit" className={styles.btnPrimary} disabled={saveDisabled}>
-                  {isPending ? "保存中..." : "保存"}
+                  {isPending ? "保存中..." : editTarget ? "保存" : "保存并选择模型 →"}
                 </button>
               </div>
+
               {formError && <p className={styles.error}>{formError}</p>}
               {testResult && (
                 <div style={{ fontSize: 12, padding: "8px 10px", borderRadius: 4, background: testResult.success ? "rgba(82,201,126,0.1)" : "rgba(224,82,82,0.1)", color: testResult.success ? "#52c97e" : "#e05252" }}>
@@ -478,14 +371,15 @@ function EmbeddingSection() {
   const [testResult, setTestResult] = useState<EmbeddingTestResult | null>(null);
   const [testing, setTesting] = useState(false);
 
-  // A8: inline verify state for new profiles
-  type EmbVerifyState = "idle" | "verifying" | "ok" | "error";
-  const [verifyState, setVerifyState] = useState<EmbVerifyState>("idle");
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [verifiedModels, setVerifiedModels] = useState<string[]>([]);
+  const showBaseUrl = form.provider_type === "openai_compatible";
 
-  // When editing an existing profile, auto-fetch its available models
-  const { models: profileModels, isLoading: fetchingProfileModels } = useModelList(editTarget?.id ?? null);
+  // Probe from saved profile (edit mode only)
+  const { models: profileModels, isLoading: loadingModels, error: modelError } =
+    useModelList(editTarget ? { embeddingProfileId: editTarget.id } : {});
+
+  // Fallback static hints for pre-probe state
+  const staticHints = KNOWN_EMBEDDING_MODELS[form.provider_type] ?? [];
+  const effectiveModels = profileModels.length > 0 ? profileModels : (editTarget ? [] : staticHints);
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["embedding-profiles"],
@@ -495,7 +389,10 @@ function EmbeddingSection() {
   const createMutation = useMutation({
     mutationFn: (body: CreateEmbeddingProfileRequest) =>
       apiFetch<EmbeddingProfile>("/settings/embedding-profiles", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["embedding-profiles"] }); closeForm(); },
+    onSuccess: (newProfile) => {
+      queryClient.invalidateQueries({ queryKey: ["embedding-profiles"] });
+      openEdit(newProfile);
+    },
   });
 
   const updateMutation = useMutation({
@@ -509,41 +406,15 @@ function EmbeddingSection() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["embedding-profiles"] }); setDeleteTarget(null); },
   });
 
-  function resetVerify() { setVerifyState("idle"); setVerifyError(null); setVerifiedModels([]); }
-
   function openNew() {
-    setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); resetVerify(); setShowForm(true);
+    setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); setShowForm(true);
   }
   function openEdit(p: EmbeddingProfile) {
     setEditTarget(p);
     setForm({ name: p.name, provider_type: p.provider_type as EmbeddingProviderType, model_name: p.model_name, base_url: p.base_url ?? "", api_key: "", dimensions: p.dimensions ?? undefined });
-    setTestResult(null); resetVerify(); setShowForm(true);
+    setTestResult(null); setShowForm(true);
   }
-  function closeForm() { setShowForm(false); setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); resetVerify(); }
-
-  // A8: inline verify
-  async function handleVerify() {
-    setVerifyState("verifying"); setVerifyError(null); setVerifiedModels([]);
-    try {
-      const params = new URLSearchParams();
-      if (form.base_url) params.set("base_url", form.base_url);
-      if (form.api_key) params.set("api_key", form.api_key);
-      const result = await apiFetch<ProbeModelsResponse>(
-        `/settings/model-catalog/probe-models?${params.toString()}`
-      );
-      if (result.error) {
-        setVerifyState("error"); setVerifyError(result.error);
-      } else {
-        setVerifiedModels(result.models);
-        setVerifyState("ok");
-        if (result.models.length > 0 && !form.model_name) {
-          setForm(f => ({ ...f, model_name: result.models[0]! }));
-        }
-      }
-    } catch (e) {
-      setVerifyState("error"); setVerifyError((e as Error).message);
-    }
-  }
+  function closeForm() { setShowForm(false); setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -558,6 +429,7 @@ function EmbeddingSection() {
       createMutation.mutate(body);
     }
   }
+
   async function handleTest() {
     if (!editTarget) return;
     setTesting(true); setTestResult(null);
@@ -571,14 +443,12 @@ function EmbeddingSection() {
     }
   }
 
+  function refreshModels() {
+    if (!editTarget) return;
+    queryClient.invalidateQueries({ queryKey: ["model-list", "embedding", editTarget.id] });
+  }
+
   const isPending = createMutation.isPending || updateMutation.isPending;
-  const showBaseUrl = form.provider_type === "openai_compatible";
-  // Can verify when: for openai_compatible, need base_url; for openai, need api_key
-  const canVerify = !editTarget && (form.provider_type === "openai_compatible" ? !!form.base_url : !!form.api_key?.trim());
-  // Effective model list for the picker
-  const effectiveModels = editTarget
-    ? profileModels
-    : (verifyState === "ok" ? verifiedModels : []);
 
   return (
     <div>
@@ -615,115 +485,97 @@ function EmbeddingSection() {
         <div className={styles.overlay} onClick={closeForm}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>{editTarget ? "编辑 Embedding 配置" : "新增 Embedding 配置"}</h2>
+
             {!editTarget && (
-              <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ padding: "8px 12px", background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐本地：LM Studio + jina-embeddings-v5，数据不离本机，无需 API Key</span>
-                  <button
-                    type="button"
-                    style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
-                    onClick={() => { setForm((f) => ({ ...f, provider_type: "openai_compatible", model_name: "jina-embeddings-v5-text-small-retrieval", base_url: "http://localhost:1234/v1", api_key: "lm-studio", name: f.name || "LM Studio Jina v5" })); resetVerify(); }}
-                  >
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐本地：LM Studio + jina-embeddings-v5，数据不离本机</span>
+                  <button type="button" style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
+                    onClick={() => setForm(f => ({ ...f, provider_type: "openai_compatible", model_name: "jina-embeddings-v5-text-small-retrieval", base_url: "http://localhost:1234/v1", api_key: "lm-studio", name: f.name || "LM Studio Embedding" }))}>
                     LM Studio 本地推荐
                   </button>
                 </div>
                 <div style={{ padding: "8px 12px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐云端：Jina Embeddings v3，多语言支持，适合中文规则书检索</span>
-                  <button
-                    type="button"
-                    style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
-                    onClick={() => { setForm((f) => ({ ...f, ...JINA_EMBEDDING_PRESET, name: f.name || "Jina Embeddings v3" })); resetVerify(); }}
-                  >
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐云端：Jina Embeddings v3，适合中文规则书检索</span>
+                  <button type="button" style={{ fontSize: 12, padding: "4px 10px", borderRadius: 5, background: "rgba(124,106,247,0.15)", color: "var(--accent)", border: "1px solid rgba(124,106,247,0.3)", cursor: "pointer", whiteSpace: "nowrap" }}
+                    onClick={() => setForm(f => ({ ...f, provider_type: "openai_compatible", model_name: "jina-embeddings-v3", base_url: "https://api.jina.ai/v1", api_key: "", name: f.name || "Jina Embeddings v3" }))}>
                     一键填入 Jina 推荐值
                   </button>
                 </div>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                  保存后将自动获取可用模型列表。
+                </p>
               </div>
             )}
+
             <form onSubmit={handleSubmit} className={styles.form}>
+              {/* 1. Provider */}
               <label className={styles.label}>
                 供应商 *
-                <select className={styles.select} value={form.provider_type} onChange={(e) => { setForm({ ...form, provider_type: e.target.value as EmbeddingProviderType, model_name: "" }); resetVerify(); }}>
+                <select className={styles.select} value={form.provider_type}
+                  onChange={(e) => setForm({ ...form, provider_type: e.target.value as EmbeddingProviderType, model_name: "" })}>
                   {EMBEDDING_PROVIDERS.map((p) => <option key={p} value={p}>{PROVIDER_DISPLAY[p] ?? p}</option>)}
                 </select>
               </label>
+
+              {/* 2. Base URL */}
               {showBaseUrl && (
                 <label className={styles.label}>
                   Base URL *
-                  <input
-                    className={styles.input}
-                    value={form.base_url ?? ""}
-                    onChange={(e) => { setForm({ ...form, base_url: e.target.value }); resetVerify(); }}
-                    placeholder="http://localhost:1234/v1"
-                  />
+                  <input className={styles.input} value={form.base_url ?? ""}
+                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                    placeholder="http://localhost:1234/v1" />
                 </label>
               )}
-              {/* A8: API Key + verify button */}
+
+              {/* 3. API Key */}
               <label className={styles.label}>
                 API Key {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    className={styles.input}
-                    style={{ flex: 1 }}
-                    type="password"
-                    value={form.api_key ?? ""}
-                    onChange={(e) => { setForm({ ...form, api_key: e.target.value }); resetVerify(); }}
-                    placeholder={form.provider_type === "openai_compatible" ? "留空或填任意字符" : "sk-..."}
-                  />
-                  {!editTarget && (
-                    <button
-                      type="button"
-                      className={styles.btnSecondary}
-                      style={{ whiteSpace: "nowrap", fontSize: 12, minWidth: 72,
-                        ...(verifyState === "ok" ? { borderColor: "#52c97e", color: "#52c97e" } : {}),
-                        ...(verifyState === "error" ? { borderColor: "var(--danger)", color: "var(--danger)" } : {}),
-                      }}
-                      onClick={handleVerify}
-                      disabled={!canVerify || verifyState === "verifying"}
-                    >
-                      {verifyState === "verifying" ? "验证中…" : verifyState === "ok" ? "✓ 已验证" : "验证"}
-                    </button>
-                  )}
-                </div>
-                {verifyState === "error" && verifyError && (
-                  <span style={{ fontSize: 11, color: "var(--danger, #e05252)" }}>✗ {verifyError}</span>
-                )}
+                <input className={styles.input} type="password" value={form.api_key ?? ""}
+                  onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+                  placeholder={form.provider_type === "openai_compatible" ? "留空或填任意字符" : "sk-..."} />
               </label>
-              {/* Model picker — always visible; verify button loads candidate list */}
+
+              {/* 4. Model name — always visible */}
               <label className={styles.label}>
                 模型名称 *
-                <ModelNameInput
-                  catalog="embedding"
-                  providerType={form.provider_type}
-                  value={form.model_name}
-                  onChange={(v) => setForm({ ...form, model_name: v })}
-                  fetchedModels={effectiveModels}
-                  placeholder="例：jina-embeddings-v3"
-                  className={styles.input}
-                />
-                {editTarget && fetchingProfileModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>正在获取模型列表...</span>}
-                {editTarget && !fetchingProfileModels && profileModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 已获取 {profileModels.length} 个模型</span>}
-                {!editTarget && verifyState === "ok" && verifiedModels.length > 0 && (
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>已从供应商获取 {verifiedModels.length} 个模型 · 可从下拉选择</span>
-                )}
-                {!editTarget && verifyState === "idle" && (
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可直接输入，或点「验证」后从下拉选择</span>
-                )}
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <div style={{ flex: 1 }}>
+                    <ModelNameInput
+                      catalog="embedding"
+                      providerType={form.provider_type}
+                      value={form.model_name}
+                      onChange={(v) => setForm({ ...form, model_name: v })}
+                      fetchedModels={effectiveModels}
+                      placeholder="例：jina-embeddings-v3"
+                      className={styles.input}
+                    />
+                  </div>
+                  {editTarget && <RefreshBtn onClick={refreshModels} loading={loadingModels} />}
+                </div>
+                {editTarget
+                  ? <ModelListHint isLoading={loadingModels} count={profileModels.length} error={modelError} />
+                  : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可直接输入，或保存后自动拉取下拉列表</span>
+                }
               </label>
+
+              {/* 5. Dimensions */}
               <label className={styles.label}>
                 向量维度（可选，留空自动）
-                <input className={styles.input} type="number" min="64" max="65536" value={form.dimensions ?? ""} onChange={(e) => setForm({ ...form, dimensions: e.target.value ? parseInt(e.target.value) : undefined })} placeholder="例：1536" />
+                <input className={styles.input} type="number" min="64" max="65536" value={form.dimensions ?? ""}
+                  onChange={(e) => setForm({ ...form, dimensions: e.target.value ? parseInt(e.target.value) : undefined })}
+                  placeholder="例：1536" />
               </label>
-              {/* A3: name at bottom */}
+
+              {/* 6. Profile name */}
               <label className={styles.label}>
                 配置名称 *
-                <input
-                  className={styles.input}
-                  value={form.name}
+                <input className={styles.input} value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder={editTarget ? "" : "例：Jina Embeddings v3"}
-                  autoFocus={!!editTarget}
-                />
+                  placeholder="例：Jina Embeddings v3"
+                  autoFocus={!!editTarget} />
               </label>
+
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={closeForm}>取消</button>
                 {editTarget && (
@@ -732,7 +584,7 @@ function EmbeddingSection() {
                   </button>
                 )}
                 <button type="submit" className={styles.btnPrimary} disabled={isPending || !form.name || !form.model_name}>
-                  {isPending ? "保存中..." : "保存"}
+                  {isPending ? "保存中..." : editTarget ? "保存" : "保存并选择模型 →"}
                 </button>
               </div>
               {testResult && (
@@ -767,7 +619,6 @@ function EmbeddingSection() {
   );
 }
 
-
 // ─── Rerank Section ───────────────────────────────────────────────────────────
 
 const RERANK_PROVIDERS: { value: RerankProviderType; label: string }[] = [
@@ -777,14 +628,9 @@ const RERANK_PROVIDERS: { value: RerankProviderType; label: string }[] = [
 ];
 
 const RERANK_DEFAULT_MODELS: Record<RerankProviderType, string> = {
-  jina: "jina-reranker-v2-base-multilingual",
-  cohere: "rerank-multilingual-v3.0",
+  jina: "jina-reranker-v3",
+  cohere: "rerank-v4.0-pro",
   openai_compatible: "",
-};
-
-const EMPTY_RERANK: CreateRerankProfileRequest = {
-  name: "", provider_type: "jina", model: "jina-reranker-v2-base-multilingual",
-  api_key: "", base_url: "",
 };
 
 function RerankSection() {
@@ -796,6 +642,16 @@ function RerankSection() {
   const [testResult, setTestResult] = useState<RerankTestResult | null>(null);
   const [testing, setTesting] = useState(false);
 
+  const showBaseUrl = form.provider_type === "openai_compatible";
+
+  // Probe from saved profile (edit mode only)
+  const { models: profileModels, isLoading: loadingModels, error: modelError } =
+    useModelList(editTarget ? { rerankProfileId: editTarget.id } : {});
+
+  // Fallback static hints
+  const staticHints = KNOWN_RERANK_MODELS[form.provider_type] ?? [];
+  const effectiveModels = profileModels.length > 0 ? profileModels : (editTarget ? [] : staticHints);
+
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["rerank-profiles"],
     queryFn: () => apiFetch<RerankProfile[]>("/settings/rerank-profiles"),
@@ -804,7 +660,10 @@ function RerankSection() {
   const createMutation = useMutation({
     mutationFn: (body: CreateRerankProfileRequest) =>
       apiFetch<RerankProfile>("/settings/rerank-profiles", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["rerank-profiles"] }); closeForm(); },
+    onSuccess: (newProfile) => {
+      queryClient.invalidateQueries({ queryKey: ["rerank-profiles"] });
+      openEdit(newProfile);
+    },
   });
 
   const updateMutation = useMutation({
@@ -819,23 +678,17 @@ function RerankSection() {
   });
 
   function openNew() {
-    setEditTarget(null);
-    setForm({ ...EMPTY_RERANK });
-    setTestResult(null);
-    setShowForm(true);
+    setEditTarget(null); setForm({ ...EMPTY_RERANK }); setTestResult(null); setShowForm(true);
   }
-
   function openEdit(p: RerankProfile) {
     setEditTarget(p);
     setForm({ name: p.name, provider_type: p.provider_type, model: p.model, api_key: "", base_url: p.base_url ?? "" });
-    setTestResult(null);
-    setShowForm(true);
+    setTestResult(null); setShowForm(true);
   }
-
   function closeForm() { setShowForm(false); setEditTarget(null); setTestResult(null); }
 
   function handleProviderChange(provider: RerankProviderType) {
-    setForm((f) => ({ ...f, provider_type: provider, model: RERANK_DEFAULT_MODELS[provider] }));
+    setForm(f => ({ ...f, provider_type: provider, model: RERANK_DEFAULT_MODELS[provider] }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -865,18 +718,20 @@ function RerankSection() {
     }
   }
 
+  function refreshModels() {
+    if (!editTarget) return;
+    queryClient.invalidateQueries({ queryKey: ["model-list", "rerank", editTarget.id] });
+  }
+
   const isPending = createMutation.isPending || updateMutation.isPending;
-  const showBaseUrl = form.provider_type === "openai_compatible";
 
   return (
     <div>
       <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(255,200,50,0.06)", border: "1px solid rgba(255,200,50,0.2)", borderRadius: 6, fontSize: 12, color: "var(--text-muted)" }}>
-        Rerank 为<strong style={{ color: "var(--text)" }}>可选功能，默认不启用</strong>。仅在需要更精准的知识库检索时配置，不影响基础 AI 功能。
+        Rerank 为<strong style={{ color: "var(--text)" }}>可选功能，默认不启用</strong>。仅在需要更精准的知识库检索时配置。
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
-          配置 Rerank 重排序供应商（默认推荐：Jina jina-reranker-v2-base-multilingual）
-        </span>
+        <span style={{ fontSize: 14, color: "var(--text-muted)" }}>配置 Rerank 重排序供应商</span>
         <button className={styles.btnPrimary} onClick={openNew}>新增 Rerank 配置</button>
       </div>
       {isLoading && <p className={styles.muted}>加载中...</p>}
@@ -891,7 +746,7 @@ function RerankSection() {
           <div key={p.id} className={styles.item}>
             <div className={styles.itemInfo}>
               <span className={styles.itemName}>{p.name}</span>
-              <span className={styles.tag}>{RERANK_PROVIDERS.find((r) => r.value === p.provider_type)?.label ?? p.provider_type}</span>
+              <span className={styles.tag}>{RERANK_PROVIDERS.find(r => r.value === p.provider_type)?.label ?? p.provider_type}</span>
               <span className={styles.itemModel}>{p.model}</span>
               {p.has_api_key && <span style={{ fontSize: 11, color: "#52c97e" }}>● Key 已配置</span>}
             </div>
@@ -907,42 +762,73 @@ function RerankSection() {
         <div className={styles.overlay} onClick={closeForm}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>{editTarget ? "编辑 Rerank 配置" : "新增 Rerank 配置"}</h2>
+
+            {!editTarget && (
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12, marginTop: 0 }}>
+                推荐：Jina AI jina-reranker-v3（最新，多语言）。保存后自动获取可用模型列表。
+              </p>
+            )}
+
             <form onSubmit={handleSubmit} className={styles.form}>
+              {/* 1. Provider */}
               <label className={styles.label}>
                 供应商 *
-                <select className={styles.select} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as RerankProviderType)}>
+                <select className={styles.select} value={form.provider_type}
+                  onChange={(e) => handleProviderChange(e.target.value as RerankProviderType)}>
                   {RERANK_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </label>
+
+              {/* 2. Base URL (openai_compatible only) */}
               {showBaseUrl && (
                 <label className={styles.label}>
                   Base URL *
-                  <input className={styles.input} value={form.base_url ?? ""} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://..." />
+                  <input className={styles.input} value={form.base_url ?? ""}
+                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                    placeholder="https://..." />
                 </label>
               )}
-              <label className={styles.label}>
-                模型名称 *
-                <ModelNameInput
-                  catalog="embedding"
-                  providerType={form.provider_type}
-                  value={form.model}
-                  onChange={(v) => setForm({ ...form, model: v })}
-                  fetchedModels={KNOWN_RERANK_MODELS[form.provider_type] ?? []}
-                  placeholder="例：jina-reranker-v2-base-multilingual"
-                  className={styles.input}
-                />
-                {form.provider_type !== "openai_compatible" && (
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可从下拉选择常用型号，或直接输入</span>
-                )}
-              </label>
+
+              {/* 3. API Key */}
               <label className={styles.label}>
                 API Key {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
-                <input className={styles.input} type="password" value={form.api_key ?? ""} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder={form.provider_type === "jina" ? "jina_..." : "sk-..."} />
+                <input className={styles.input} type="password" value={form.api_key ?? ""}
+                  onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+                  placeholder={form.provider_type === "jina" ? "jina_..." : form.provider_type === "cohere" ? "sk-..." : "sk-..."} />
               </label>
+
+              {/* 4. Model — combobox with live probe (edit) or static hints (new) */}
+              <label className={styles.label}>
+                模型名称 *
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <div style={{ flex: 1 }}>
+                    <ModelNameInput
+                      catalog="embedding"
+                      providerType={form.provider_type}
+                      value={form.model}
+                      onChange={(v) => setForm({ ...form, model: v })}
+                      fetchedModels={effectiveModels}
+                      placeholder="例：jina-reranker-v3"
+                      className={styles.input}
+                    />
+                  </div>
+                  {editTarget && <RefreshBtn onClick={refreshModels} loading={loadingModels} />}
+                </div>
+                {editTarget
+                  ? <ModelListHint isLoading={loadingModels} count={profileModels.length} error={modelError} />
+                  : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可直接输入，或保存后自动拉取供应商模型列表</span>
+                }
+              </label>
+
+              {/* 5. Profile name */}
               <label className={styles.label}>
                 配置名称 *
-                <input className={styles.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：Jina Reranker" autoFocus={!!editTarget} />
+                <input className={styles.input} value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="例：Jina Reranker"
+                  autoFocus={!!editTarget} />
               </label>
+
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={closeForm}>取消</button>
                 {editTarget && (
@@ -951,7 +837,7 @@ function RerankSection() {
                   </button>
                 )}
                 <button type="submit" className={styles.btnPrimary} disabled={isPending || !form.name || !form.model}>
-                  {isPending ? "保存中..." : "保存"}
+                  {isPending ? "保存中..." : editTarget ? "保存" : "保存并选择模型 →"}
                 </button>
               </div>
               {testResult && (
@@ -1016,13 +902,11 @@ export default function SettingsPage() {
         <button style={tabStyle(tab === "llm")} onClick={() => setTab("llm")}>LLM 语言模型</button>
         <button style={tabStyle(tab === "embedding")} onClick={() => setTab("embedding")}>Embedding 向量模型</button>
         <button style={tabStyle(tab === "rerank")} onClick={() => setTab("rerank")}>Rerank 重排序</button>
-
       </div>
       <main className={styles.main}>
         {tab === "llm" && <LLMSection />}
         {tab === "embedding" && <EmbeddingSection />}
         {tab === "rerank" && <RerankSection />}
-
       </main>
     </div>
   );
