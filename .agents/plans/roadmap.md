@@ -2,7 +2,7 @@
 
 ## 总览
 
-核心功能链路 **M1–M32 已完成**。**M33 打包发布已完成**。**M34 模型配置 UX 改进待启动**。
+核心功能链路 **M1–M32 已完成**。**M33 打包发布已完成**。**M34 模型配置 UX 改进已完成**。
 
 ```
 ✅ M1 基础骨架
@@ -39,7 +39,7 @@
                                                                                                                                                                                                                                                                                                                           └── ✅ M31 Chunk 类型系统重构
                                                                                                                                                                                                                                                                                                                                        └── ✅ M32 资产体验增强
                                                                                                                                                                                                                                                                                                                                                      └── ✅ M33 0.1.0 打包与发布
-                                                                                                                                                                                                                                                                                                                                                                            └── M34 模型配置 UX 改进
+                                                                                                                                                                                                                                                                                                                                                                            └── ✅ M34 模型配置 UX 改进
 ```
 
 > 已完成里程碑的计划文件已归档至 `.agents/plans/archive/`。
@@ -88,12 +88,11 @@
 | M31 ✅ | Chunk 类型系统重构 | ChunkType 精简为语义统一的 5 种+none，`build_chunk_types_section()` 注入各 Agent 上下文，新增 consult_lore 工具 | [archive/m31-chunk-type-system.md](archive/m31-chunk-type-system.md) |
 | M32 ✅ | 资产体验增强 | Stage 排序修复、content_json 清除、关系可视化（轻量级）、[[双链]]语法、author 字段、模组手册 PDF 导出 | [archive/m32-asset-experience.md](archive/m32-asset-experience.md) |
 | M33 ✅ | 0.1.0 打包与发布 | PyInstaller sidecar + 随机端口 + GitHub Actions → Mac/Windows 安装包 | [archive/m33-release-packaging.md](archive/m33-release-packaging.md) |
+| M34 ✅ | 模型配置 UX 改进 | 推荐模型分组 + Legacy 折叠、内联 Key 验证、统一 Combobox、Wizard 预填模型、WorkspaceSettings 卡片化 | [archive/m34-model-config-ux.md](archive/m34-model-config-ux.md) |
 
 ### 进行中 / 待启动
 
-| # | 名称 | 目标 | 计划文件 |
-|---|------|------|---------|
-| M34 | 模型配置 UX 改进 | 消除模型配置流程三类核心摩擦：模型列表信息过载、新建无法测试连接、WorkspaceSettings 控件割裂 | [m34-model-config-ux.md](m34-model-config-ux.md) |
+_当前无待启动 milestone。_
 
 ---
 

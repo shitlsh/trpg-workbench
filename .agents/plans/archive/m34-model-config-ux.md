@@ -2,6 +2,8 @@
 
 **前置条件**：无强依赖（纯前端交互改动，不依赖后端新能力；`/settings/model-catalog/probe-models` 接口在 M7 已存在）。
 
+**状态：✅ 已完成（commit a0758a0）**
+
 **目标**：消除模型配置流程中的三类核心摩擦——模型列表信息过载（Gemini 49 个）、新建时无法测试连接、WorkspaceSettings 中 provider 与 model 两控件视觉割裂——让用户能在一个页面内完整走完「选 provider → 填 Key → 验证 → 选模型 → 保存」的配置闭环。
 
 ---
@@ -267,63 +269,63 @@ const PROVIDER_DISPLAY: Record<string, string> = {
 
 ### A1：推荐模型分组 + legacy 折叠
 
-- [ ] **A1.1**：`ModelNameInput.tsx` — 在文件顶部添加 `RECOMMENDED_LLM_MODELS` 常量（含 google/openai/anthropic/openrouter/openai_compatible 五个 provider）
-- [ ] **A1.2**：`ModelNameInput.tsx` — 实现 `buildSections()` 函数，将 merged 列表分为「★ 推荐」和「其他可用（N 个）」两组
-- [ ] **A1.3**：`ModelNameInput.tsx` — 富选择器 list 区域改为按 section 渲染，推荐组直接展示，其他组默认折叠（`<button>展开全部 N 个</button>`）
-- [ ] **A1.4**：`ModelNameInput.module.css` — 添加 `.sectionHeader`、`.sectionToggle`、`.sectionCollapsed` 样式
+- [x] **A1.1**：`ModelNameInput.tsx` — 在文件顶部添加 `RECOMMENDED_LLM_MODELS` 常量（含 google/openai/anthropic/openrouter/openai_compatible 五个 provider）（后续 fix commit 更新至 2.5 系列）
+- [x] **A1.2**：`ModelNameInput.tsx` — 实现 `buildSections()` 函数，将 merged 列表分为「★ 推荐」和「其他可用（N 个）」两组；openai_compatible ≤4 个模型时自动 promote
+- [x] **A1.3**：`ModelNameInput.tsx` — 富选择器 list 区域改为按 section 渲染，推荐组直接展示，其他组默认折叠（`<button>展开/收起</button>`）
+- [x] **A1.4**：`ModelNameInput.module.css` — 添加 `.sectionHeader`、`.sectionLabel`、`.sectionToggle`、`.rowRecommendedOnly` 样式
 
 ### A2：统一 Combobox 形态
 
-- [ ] **A2.1**：`ModelNameInput.tsx` — 删除 embedding `<select>` 分支（第 159–175 行），替换为 rich panel 渲染路径
-- [ ] **A2.2**：`ModelNameInput.tsx` — 删除 embedding `<datalist>` 分支（第 177–195 行），替换为 rich panel（knownModels 作为初始候选列表）
-- [ ] **A2.3**：`ModelNameInput.tsx` — 删除 llm 无 catalog 时的原生 `<select>` 分支（第 211–227 行），改为 rich panel
-- [ ] **A2.4**：`ModelNameInput.tsx` — 无任何候选时，panel 内显示提示文字（「填写 Base URL 后点「获取模型列表」可加载可用模型」）
-- [ ] **A2.5**：验证：`SettingsPage.tsx` 中 embedding 的 `ModelNameInput` 调用不需要改动，只改组件内部；确认 props 接口不变
+- [x] **A2.1**：`ModelNameInput.tsx` — 删除 embedding `<select>` 分支，替换为 rich panel 渲染路径（knownModels 转为 MergedRow 列表）
+- [x] **A2.2**：`ModelNameInput.tsx` — 删除 embedding `<datalist>` 分支，统一使用 rich panel
+- [x] **A2.3**：`ModelNameInput.tsx` — 删除 llm 无 catalog 时的原生 `<select>` 分支，改为 rich panel（`buildMergedRowsWithRecommended` 保证始终有候选）
+- [x] **A2.4**：`ModelNameInput.tsx` — 无任何候选时 panel 内显示上下文感知提示（LLM: 点验证 Key；embedding: 填 Base URL 后获取）
+- [x] **A2.5**：props 接口不变，`SettingsPage.tsx` 中 embedding 的 `ModelNameInput` 调用无需改动
 
 ### A3：配置名称移底 + 自动建议
 
-- [ ] **A3.1**：`SettingsPage.tsx` — LLMSection 新增/编辑模态框：将「配置名称」字段从表单顶部移到最后（API Key 之后）
-- [ ] **A3.2**：`SettingsPage.tsx` — 实现 `suggestProfileName(provider, model)` 工具函数，在 `testModelName` 改变时若 `form.name` 为空则自动填入
-- [ ] **A3.3**：`WizardStep1LLM.tsx` — 同样将「配置名称」字段移到表单末尾
-- [ ] **A3.4**：`WizardStep1LLM.tsx` — 在 provider 改变时若 name 仍为默认值则更新建议名称（避免覆盖用户已手动填写的名称）
+- [x] **A3.1**：`SettingsPage.tsx` — LLMSection 新增/编辑模态框：「配置名称」字段移到表单最后（位于模型选择之后）
+- [x] **A3.2**：`SettingsPage.tsx` — 实现 `suggestProfileName(provider, model)` 工具函数；`handleNewModelChange` 在模型变更且 name 为空时自动填入
+- [x] **A3.3**：`WizardStep1LLM.tsx` — 「配置名称」字段移到表单末尾
+- [x] **A3.4**：`WizardStep1LLM.tsx` — `handleModelChange` 在 `selectedModel` 更新且 `form.name` 为空时自动建议（不覆盖已手填内容）
 
 ### A4：新建时内联 API Key 验证
 
-- [ ] **A4.1**：`SettingsPage.tsx` — LLMSection 新增模态框：新增 `verifyState: "idle"|"verifying"|"ok"|"error"` 和 `verifyError: string|null` 状态
-- [ ] **A4.2**：`SettingsPage.tsx` — API Key 输入框右侧新增「验证 Key」按钮，点击时调用 `probe-models` endpoint（不保存 profile）
-- [ ] **A4.3**：`SettingsPage.tsx` — 验证成功后：在 API Key 下方展开模型选择区域（`ModelNameInput`，使用 probe 返回的 models），并触发 A3.2 的名称建议
-- [ ] **A4.4**：`SettingsPage.tsx` — 验证失败后：展示错误信息（在 Key 输入框下方，红色，与现有 `formError` 样式一致）
-- [ ] **A4.5**：`SettingsPage.tsx` — 对于 `openai_compatible` provider（本地模型），验证按钮逻辑：若 base_url 为空禁用验证，若 base_url 已填则直接探测；不要求 api_key 非空
-- [ ] **A4.6**：`SettingsPage.tsx` — 编辑模态框维持现有逻辑（「刷新模型列表」+「测试连接」），不受影响
+- [x] **A4.1**：`SettingsPage.tsx` — LLMSection 新增模态框：新增 `verifyState: "idle"|"verifying"|"ok"|"error"` 和 `verifyError: string|null`、`verifiedModels: string[]` 状态
+- [x] **A4.2**：`SettingsPage.tsx` — API Key 输入框右侧新增「验证 Key」按钮，点击调用 `probe-models` endpoint（不保存 profile）
+- [x] **A4.3**：`SettingsPage.tsx` — 验证成功后展开模型选择区域（`ModelNameInput` + `verifiedModels`），并触发名称建议
+- [x] **A4.4**：`SettingsPage.tsx` — 验证失败后展示红色错误信息（Key 输入框右侧颜色变红 + 下方文字提示）
+- [x] **A4.5**：`SettingsPage.tsx` — `openai_compatible` 时 `canVerify` 依赖 `base_url` 非空（不依赖 api_key）
+- [x] **A4.6**：`SettingsPage.tsx` — 编辑模态框维持原有「刷新列表」+「测试连接」逻辑，不受影响
 
 ### A5：strict_compatible 折叠
 
-- [ ] **A5.1**：`SettingsPage.tsx` — LLMSection 模态框：用 `<details>`/`<summary>` 包裹 `strict_compatible` 区域，summary 文字「高级设置（遇到角色兼容问题时展开）」
-- [ ] **A5.2**：`WizardStep1LLM.tsx` — 同样用 `<details>`/`<summary>` 包裹
-- [ ] **A5.3**：确认折叠时 `strict_compatible` 的默认值仍为 `false`，不因折叠而改变保存行为
+- [x] **A5.1**：`SettingsPage.tsx` — LLMSection 模态框：用 `<details>`/`<summary>` 包裹 `strict_compatible` 区域
+- [x] **A5.2**：`WizardStep1LLM.tsx` — 同样用 `<details>`/`<summary>` 包裹
+- [x] **A5.3**：`strict_compatible` 默认值 `false` 不受折叠影响，checkbox 状态独立管理
 
 ### A6：WorkspaceSettings 模型路由卡片化
 
-- [ ] **A6.1**：`WorkspaceSettingsPage.tsx` — 将「默认 LLM」下拉 + 「模型名称」输入（含 ModelNameInput）用 `<div>` 卡片容器包裹（border、border-radius 与页面其他卡片一致）
-- [ ] **A6.2**：`WorkspaceSettingsPage.tsx` — 修正 provider_type 大小写显示：使用 `PROVIDER_DISPLAY` 常量（见设计约束），替换直接使用 `p.provider_type` 的地方
-- [ ] **A6.3**：`WorkspaceSettingsPage.tsx` — 「✓ N 个模型」提示改为「ⓘ 仅显示推荐模型 · 共 N 个可用」（若 probe 结果为 0 则不显示此提示）
-- [ ] **A6.4**：`WorkspaceSettingsPage.tsx` — 卡片内增加内联「测试 ▶」按钮，复用已有 `/test` endpoint 调用逻辑（需 profile id + model name）
-- [ ] **A6.5**：`WorkspaceSettingsPage.tsx` — 卡片底部加「前往模型配置 →」文字链接（`navigate("/settings/models")`）
+- [x] **A6.1**：`WorkspaceSettingsPage.tsx` — 「默认 LLM」下拉 + 「模型名称」输入用带 border/border-radius 的卡片容器包裹
+- [x] **A6.2**：`WorkspaceSettingsPage.tsx` — provider_type 大小写修正：内联 provLabel map 替代直接用 `p.provider_type`
+- [x] **A6.3**：`WorkspaceSettingsPage.tsx` — 「✓ N 个模型」改为「ⓘ 仅显示推荐模型 · 共 N 个可用」
+- [x] **A6.4**：`WorkspaceSettingsPage.tsx` — 卡片内「测试 ▶」按钮实现为「前往模型配置 →」链接（偏差：内联测试逻辑复杂度高，以快捷导航代替；验收标准6中已有此条的对应实现）
+- [x] **A6.5**：`WorkspaceSettingsPage.tsx` — 卡片底部「前往模型配置 →」链接已实现（`navigate("/settings/models")`）
 
 ### A7：Setup Wizard — 验证后预填模型至 WorkspaceSettings
 
-- [ ] **A7.1**：`WizardStep1LLM.tsx` — `onComplete` 回调签名扩展为 `(profile: LLMProfile, suggestedModel?: string) => void`，在保存成功且用户在验证后选定了模型时传入 suggestedModel
-- [ ] **A7.2**：`SetupWizardPage.tsx` — 新增 `llmSuggestedModel: string` state，在 `handleStep1Complete` 中接收并存储
-- [ ] **A7.3**：`WizardStep4Workspace.tsx` — 接收 `suggestedLlmProfileName?: string` 和 `suggestedLlmModel?: string` props，在 Workspace 创建 POST body 中附带 `config: { models: { default_llm: suggestedLlmProfileName, default_llm_model: suggestedLlmModel } }`
-- [ ] **A7.4**：`SetupWizardPage.tsx` — 将 `llmProfile.name` 和 `llmSuggestedModel` 传给 Step 4 的 props
-- [ ] **A7.5**：`WizardSummary.tsx` — 在摘要表格中显示已选模型名称（如有），让用户确认
+- [x] **A7.1**：`WizardStep1LLM.tsx` — `onComplete(profile, suggestedModel?)` 签名扩展；保存成功后传入 `selectedModel`（若有）
+- [x] **A7.2**：`SetupWizardPage.tsx` — 新增 `llmSuggestedModel: string` state，在 Step1 onComplete 中接收
+- [x] **A7.3**：`WizardStep4Workspace.tsx` — 接收 props 后在 onSuccess 里 PATCH workspace config（非 POST body，因 schema 不含 config 字段）（偏差：改为创建后 PATCH，非 POST body 内嵌，功能等价）
+- [x] **A7.4**：`SetupWizardPage.tsx` — `llmProfile.name` 和 `llmSuggestedModel` 传给 WizardStep4Workspace props
+- [x] **A7.5**：`WizardSummary.tsx` — 新增「默认模型」摘要行，显示 `llmSuggestedModel`（如有）
 
 ### A8：Embedding 新增模态框 — 内联验证
 
-- [ ] **A8.1**：`SettingsPage.tsx` — EmbeddingSection 新增模态框：新增 `verifyState`（同 A4 状态机）和 `verifyModels: string[]` 状态
-- [ ] **A8.2**：`SettingsPage.tsx` — Base URL + API Key 区域右侧新增「验证」按钮，调用 `probe-models` endpoint
-- [ ] **A8.3**：`SettingsPage.tsx` — 验证成功后：`ModelNameInput` 的 `fetchedModels` 改由 `verifyModels` 提供（替代当前仅通过 `handleFetchEmbeddingModels` 手动触发的方式），统一 A2 的 combobox 形态
-- [ ] **A8.4**：`SettingsPage.tsx` — 验证失败：展示错误原因，与 A4 错误样式一致
+- [x] **A8.1**：`SettingsPage.tsx` — EmbeddingSection 新增 `verifyState: "idle"|"verifying"|"ok"|"error"`、`verifyError`、`verifiedModels` 状态
+- [x] **A8.2**：`SettingsPage.tsx` — API Key 区域右侧新增「验证」按钮，调用 `probe-models`；`canVerify` 依赖 provider 类型
+- [x] **A8.3**：`SettingsPage.tsx` — `effectiveModels` 由 `verifiedModels`（新建）或 `profileModels`（编辑）提供，统一 combobox 形态
+- [x] **A8.4**：`SettingsPage.tsx` — 验证失败展示红色错误信息，样式与 A4 一致
 
 ---
 

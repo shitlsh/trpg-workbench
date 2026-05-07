@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: completed
 date: 2026-05-07
 source: OpenPawz / OpenCode Desktop
 theme: 模型配置与 provider 抽象 — UX 全面改进
