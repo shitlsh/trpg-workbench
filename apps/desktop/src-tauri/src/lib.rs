@@ -208,16 +208,20 @@ pub fn run() {
                         log::info!("[backend] sidecar killed on window destroy");
                         // On Windows, child.kill() may not reliably terminate the
                         // Python backend process. Use taskkill as a follow-up guarantee.
+                        // Run in a separate thread to avoid blocking the main thread
+                        // during app shutdown.
                         #[cfg(target_os = "windows")]
                         {
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                            let _ = std::process::Command::new("taskkill")
-                                .args(["/F", "/IM", "trpg-backend.exe"])
-                                .stdout(std::process::Stdio::null())
-                                .stderr(std::process::Stdio::null())
-                                .spawn();
+                            std::thread::spawn(|| {
+                                std::thread::sleep(std::time::Duration::from_millis(500));
+                                let _ = std::process::Command::new("taskkill")
+                                    .args(["/F", "/IM", "trpg-backend.exe"])
+                                    .stdout(std::process::Stdio::null())
+                                    .stderr(std::process::Stdio::null())
+                                    .spawn();
+                            });
                             log::info!(
-                                "[backend] taskkill fallback executed for trpg-backend.exe"
+                                "[backend] taskkill fallback scheduled for trpg-backend.exe"
                             );
                         }
                     };
