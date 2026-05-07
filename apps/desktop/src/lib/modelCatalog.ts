@@ -1,10 +1,10 @@
 /**
- * 嵌入模型：无 probe 结果时仍可用 `<datalist>` 给常见 id 做补全。
+ * 嵌入模型：无 probe 结果时仍可用 combobox 给常见 id 做补全。
+ * Rerank 模型：各供应商已知型号的静态列表，用于 combobox 候选。
  *
- * LLM 模型名由「模型发现」目录 + 供应商 probe 提供，不再维护静态 LLM 列表，
- * 避免与线上一致性冲突、出现已废弃型号。
+ * LLM 模型名由供应商 probe 提供，不再维护静态 LLM 列表。
  *
- * Last updated: 2026-04
+ * Last updated: 2026-05
  */
 
 export const KNOWN_EMBEDDING_MODELS: Record<string, string[]> = {
@@ -19,4 +19,20 @@ export const KNOWN_EMBEDDING_MODELS: Record<string, string[]> = {
     "embedding-001",
   ],
   openai_compatible: [], // probe via base_url
+};
+
+export const KNOWN_RERANK_MODELS: Record<string, string[]> = {
+  jina: [
+    "jina-reranker-v2-base-multilingual",
+    "jina-reranker-v1-base-en",
+    "jina-reranker-v1-turbo-en",
+    "jina-reranker-v1-tiny-en",
+  ],
+  cohere: [
+    "rerank-multilingual-v3.0",
+    "rerank-english-v3.0",
+    "rerank-multilingual-v2.0",
+    "rerank-english-v2.0",
+  ],
+  openai_compatible: [], // manual input
 };

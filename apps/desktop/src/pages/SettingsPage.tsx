@@ -14,6 +14,7 @@ import styles from "./SettingsPage.module.css";
 import { ModelNameInput } from "../components/ModelNameInput";
 import { HelpButton } from "../components/HelpButton";
 import { useModelList } from "../hooks/useModelList";
+import { KNOWN_RERANK_MODELS } from "../lib/modelCatalog";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -687,40 +688,27 @@ function EmbeddingSection() {
                   <span style={{ fontSize: 11, color: "var(--danger, #e05252)" }}>✗ {verifyError}</span>
                 )}
               </label>
-              {/* Model picker — always shown for edit; shown after verify for new */}
-              {(editTarget || verifyState === "ok" || form.model_name) && (
-                <label className={styles.label}>
-                  模型名称 *
-                  <ModelNameInput
-                    catalog="embedding"
-                    providerType={form.provider_type}
-                    value={form.model_name}
-                    onChange={(v) => setForm({ ...form, model_name: v })}
-                    fetchedModels={effectiveModels}
-                    placeholder="例：jina-embeddings-v3"
-                    className={styles.input}
-                  />
-                  {editTarget && fetchingProfileModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>正在获取模型列表...</span>}
-                  {editTarget && !fetchingProfileModels && profileModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 已获取 {profileModels.length} 个模型</span>}
-                  {!editTarget && verifyState === "ok" && verifiedModels.length > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>已从供应商获取 {verifiedModels.length} 个模型</span>
-                  )}
-                </label>
-              )}
-              {!editTarget && verifyState !== "ok" && !form.model_name && (
-                <label className={styles.label}>
-                  模型名称 *
-                  <ModelNameInput
-                    catalog="embedding"
-                    providerType={form.provider_type}
-                    value={form.model_name}
-                    onChange={(v) => setForm({ ...form, model_name: v })}
-                    fetchedModels={[]}
-                    placeholder="填写后点「验证」加载可用模型列表"
-                    className={styles.input}
-                  />
-                </label>
-              )}
+              {/* Model picker — always visible; verify button loads candidate list */}
+              <label className={styles.label}>
+                模型名称 *
+                <ModelNameInput
+                  catalog="embedding"
+                  providerType={form.provider_type}
+                  value={form.model_name}
+                  onChange={(v) => setForm({ ...form, model_name: v })}
+                  fetchedModels={effectiveModels}
+                  placeholder="例：jina-embeddings-v3"
+                  className={styles.input}
+                />
+                {editTarget && fetchingProfileModels && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>正在获取模型列表...</span>}
+                {editTarget && !fetchingProfileModels && profileModels.length > 0 && <span style={{ fontSize: 11, color: "#52c97e" }}>✓ 已获取 {profileModels.length} 个模型</span>}
+                {!editTarget && verifyState === "ok" && verifiedModels.length > 0 && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>已从供应商获取 {verifiedModels.length} 个模型 · 可从下拉选择</span>
+                )}
+                {!editTarget && verifyState === "idle" && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可直接输入，或点「验证」后从下拉选择</span>
+                )}
+              </label>
               <label className={styles.label}>
                 向量维度（可选，留空自动）
                 <input className={styles.input} type="number" min="64" max="65536" value={form.dimensions ?? ""} onChange={(e) => setForm({ ...form, dimensions: e.target.value ? parseInt(e.target.value) : undefined })} placeholder="例：1536" />
@@ -921,18 +909,10 @@ function RerankSection() {
             <h2 className={styles.modalTitle}>{editTarget ? "编辑 Rerank 配置" : "新增 Rerank 配置"}</h2>
             <form onSubmit={handleSubmit} className={styles.form}>
               <label className={styles.label}>
-                配置名称 *
-                <input className={styles.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：Jina Reranker" autoFocus />
-              </label>
-              <label className={styles.label}>
                 供应商 *
                 <select className={styles.select} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as RerankProviderType)}>
                   {RERANK_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
-              </label>
-              <label className={styles.label}>
-                模型名称 *
-                <input className={styles.input} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="例：jina-reranker-v2-base-multilingual" />
               </label>
               {showBaseUrl && (
                 <label className={styles.label}>
@@ -941,8 +921,27 @@ function RerankSection() {
                 </label>
               )}
               <label className={styles.label}>
+                模型名称 *
+                <ModelNameInput
+                  catalog="embedding"
+                  providerType={form.provider_type}
+                  value={form.model}
+                  onChange={(v) => setForm({ ...form, model: v })}
+                  fetchedModels={KNOWN_RERANK_MODELS[form.provider_type] ?? []}
+                  placeholder="例：jina-reranker-v2-base-multilingual"
+                  className={styles.input}
+                />
+                {form.provider_type !== "openai_compatible" && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>可从下拉选择常用型号，或直接输入</span>
+                )}
+              </label>
+              <label className={styles.label}>
                 API Key {editTarget ? `（留空保留，当前：${editTarget.has_api_key ? "已配置" : "未配置"}）` : ""}
-                <input className={styles.input} type="password" value={form.api_key ?? ""} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="jina_..." />
+                <input className={styles.input} type="password" value={form.api_key ?? ""} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder={form.provider_type === "jina" ? "jina_..." : "sk-..."} />
+              </label>
+              <label className={styles.label}>
+                配置名称 *
+                <input className={styles.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：Jina Reranker" autoFocus={!!editTarget} />
               </label>
               <div className={styles.formActions}>
                 <button type="button" className={styles.btnSecondary} onClick={closeForm}>取消</button>

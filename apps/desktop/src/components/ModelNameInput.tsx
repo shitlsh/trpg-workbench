@@ -325,7 +325,7 @@ export function ModelNameInput({
           className={className ? `${className} ${styles.input}` : styles.input}
           style={style}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => { onChange(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
           disabled={disabled}
