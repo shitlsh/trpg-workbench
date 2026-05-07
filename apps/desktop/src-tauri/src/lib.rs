@@ -138,6 +138,17 @@ pub fn run() {
             {
                 drop(port_listener);
 
+                // Purge any stale backend processes from previous sessions before spawning.
+                #[cfg(target_os = "windows")]
+                {
+                    log::info!("[backend] purging stale trpg-backend processes before startup");
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/IM", "trpg-backend.exe", "/T"])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                }
+
                 let spawn_result = shell
                     .sidecar("trpg-backend")
                     .expect("Failed to create sidecar command")
@@ -200,21 +211,17 @@ pub fn run() {
                         let _ = child.kill();
                         log::info!("[backend] sidecar killed on window destroy");
                         // On Windows, child.kill() may not reliably terminate the
-                        // Python backend process. Use taskkill as a follow-up guarantee.
-                        // Run in a separate thread to avoid blocking the main thread
-                        // during app shutdown.
+                        // Python backend process. Use taskkill with /T (process tree)
+                        // as a follow-up guarantee.
                         #[cfg(target_os = "windows")]
                         {
-                            std::thread::spawn(|| {
-                                std::thread::sleep(std::time::Duration::from_millis(500));
-                                let _ = std::process::Command::new("taskkill")
-                                    .args(["/F", "/IM", "trpg-backend.exe"])
-                                    .stdout(std::process::Stdio::null())
-                                    .stderr(std::process::Stdio::null())
-                                    .spawn();
-                            });
+                            let _ = std::process::Command::new("taskkill")
+                                .args(["/F", "/IM", "trpg-backend.exe", "/T"])
+                                .stdout(std::process::Stdio::null())
+                                .stderr(std::process::Stdio::null())
+                                .status();
                             log::info!(
-                                "[backend] taskkill fallback scheduled for trpg-backend.exe"
+                                "[backend] taskkill fallback completed for trpg-backend.exe"
                             );
                         }
                     };
