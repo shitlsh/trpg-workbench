@@ -104,6 +104,30 @@ VIEWPORT = {"width": 1280, "height": 800}
 NETWORK_IDLE_TIMEOUT = 15_000   # ms
 NAV_TIMEOUT = 20_000            # ms
 
+# Injected into every page before scripts run.
+# Mocks the minimal Tauri internals so that:
+#   • attachConsole() does not throw (isTauri check in main.tsx guards it)
+#   • invoke("get_backend_port") resolves immediately to 7821, bypassing the
+#     30 × 100 ms retry loop that otherwise delays every page navigation by ~3 s
+#     in headless Chromium (no real Tauri runtime present).
+# Without this mock the app shows "正在启动服务..." on every goto() call and
+# screenshots capture the loading screen instead of real content.
+_TAURI_MOCK_JS = """
+window.__TAURI_INTERNALS__ = {
+  transformCallback: function(cb, once) {
+    var id = Math.floor(Math.random() * 1e9);
+    window['_cb_' + id] = cb;
+    return id;
+  },
+  invoke: function(cmd, args) {
+    if (cmd === 'get_backend_port') return Promise.resolve(7821);
+    return Promise.reject(new Error('tauri-mock: unknown command ' + cmd));
+  },
+  postMessage: function() {},
+};
+window.__TAURI__ = {};
+"""
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def today_cst() -> str:
@@ -127,6 +151,37 @@ def discover_workspace(backend_url: str) -> str | None:
     except Exception:
         pass
     return None
+
+
+def discover_first_asset_name(backend_url: str, workspace_id: str) -> str | None:
+    """Return the name of the first asset in the workspace, or None."""
+    import urllib.request
+    try:
+        url = f"{backend_url}/workspaces/{workspace_id}/assets"
+        with urllib.request.urlopen(url, timeout=5) as r:
+            data = json.loads(r.read())
+            if isinstance(data, list) and data:
+                return data[0].get("name")
+    except Exception:
+        pass
+    return None
+
+
+def wait_for_ready(page, timeout: int = 10_000) -> None:
+    """Block until the app has passed the startup / health-check screen.
+
+    With the Tauri mock injected, the health check resolves instantly and this
+    function typically returns in < 500 ms.  Without the mock it acts as a
+    safety net capped at *timeout* ms.
+    """
+    try:
+        page.wait_for_function(
+            "() => !document.body.innerText.includes('正在启动服务') && "
+            "document.getElementById('root')?.innerText?.trim().length > 0",
+            timeout=timeout,
+        )
+    except Exception:
+        pass  # proceed; screenshot may show partial content
 
 
 # ── Core runner ───────────────────────────────────────────────────────────────
@@ -168,6 +223,7 @@ def smoke_and_screenshot(
         browser = pw.chromium.launch(headless=True)
         try:
             context = browser.new_context(viewport=VIEWPORT)
+            context.add_init_script(_TAURI_MOCK_JS)
             page = context.new_page()
 
             for slug, url, assertions, priority in pages:
@@ -178,6 +234,7 @@ def smoke_and_screenshot(
                 try:
                     page.goto(url, timeout=NAV_TIMEOUT)
                     page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
+                    wait_for_ready(page)
                 except PWTimeout:
                     result["status"] = "fail"
                     result["errors"].append("Navigation or networkidle timed out")
@@ -365,17 +422,19 @@ def generate_help_images(frontend_url: str, backend_url: str):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     workspace_id = discover_workspace(backend_url)
+    first_asset_name = discover_first_asset_name(backend_url, workspace_id) if workspace_id else None
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         try:
             ctx = browser.new_context(viewport=VIEWPORT)
+            ctx.add_init_script(_TAURI_MOCK_JS)
             page = ctx.new_page()
 
             # ── Step 1: check if we land on setup wizard ──
             page.goto(frontend_url, timeout=NAV_TIMEOUT)
             page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
-            page.wait_for_timeout(1000)
+            wait_for_ready(page)
 
             if "/setup" in page.url:
                 # Capture the wizard (step 1)
@@ -387,7 +446,7 @@ def generate_help_images(frontend_url: str, backend_url: str):
                 # Click through all wizard steps to reach real home page
                 # Step 1: LLM config  → "稍后配置"
                 # Step 2: Embedding   → "稍后配置"
-                # Step 3: Rule set    → "跳过此步骤"
+                # Step 3: Rule set    → "稍后创建"
                 # Step 4: Workspace   → "稍后创建"
                 # Summary             → "开始使用 →"
                 wizard_steps = [
@@ -400,8 +459,7 @@ def generate_help_images(frontend_url: str, backend_url: str):
                 for btn_text, step_name in wizard_steps:
                     _click_wizard_skip(page, btn_text, step_name)
 
-                page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
-                page.wait_for_timeout(1000)
+                wait_for_ready(page)
                 print(f"    → landed on: {page.url}")
             else:
                 print("  — setup wizard already completed, skipping wizard screenshot")
@@ -412,7 +470,7 @@ def generate_help_images(frontend_url: str, backend_url: str):
                     continue  # already handled above
                 page.goto(frontend_url + route, timeout=NAV_TIMEOUT)
                 page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
-                page.wait_for_timeout(1500)
+                wait_for_ready(page)
 
                 # Rule set page: click first rule set to show detail with knowledge section
                 if filename == "ruleset.png":
@@ -430,7 +488,7 @@ def generate_help_images(frontend_url: str, backend_url: str):
                     edit_btns = page.get_by_text("编辑", exact=True).all()
                     if edit_btns:
                         edit_btns[0].click()
-                        page.wait_for_timeout(1000)
+                        page.wait_for_timeout(800)
                         page.screenshot(
                             path=str(out_dir / "settings-llm.png"), full_page=True
                         )
@@ -450,7 +508,18 @@ def generate_help_images(frontend_url: str, backend_url: str):
                     timeout=NAV_TIMEOUT,
                 )
                 page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_TIMEOUT)
-                page.wait_for_timeout(2000)
+                wait_for_ready(page)
+                # Wait for the asset tree to actually render data (not the empty-state placeholder).
+                # We look for the first asset's name (fetched from the API before opening the browser)
+                # rather than a CSS selector, because the asset rows only appear after the query resolves.
+                if first_asset_name:
+                    try:
+                        page.wait_for_function(
+                            f"() => document.body.innerText.includes({json.dumps(first_asset_name)})",
+                            timeout=8000,
+                        )
+                    except Exception:
+                        pass  # asset tree may still be loading; screenshot will show current state
 
                 # Try to click the first asset row in the asset tree to open it in the editor.
                 # Asset rows are rendered as divs with inline style cursor:pointer (no stable className).
@@ -460,7 +529,7 @@ def generate_help_images(frontend_url: str, backend_url: str):
                     ).all()
                     if asset_rows:
                         asset_rows[0].click()
-                        page.wait_for_timeout(1500)
+                        page.wait_for_timeout(1000)
                         first_text = asset_rows[0].inner_text()[:30].strip()
                         print(f"    → opened asset row: '{first_text}'")
                     else:
