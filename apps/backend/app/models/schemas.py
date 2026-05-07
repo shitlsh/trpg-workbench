@@ -99,7 +99,6 @@ class EmbeddingProfileSchema(BaseModel):
     provider_type: str
     base_url: str | None
     model_name: str
-    dimensions: int | None
     has_api_key: bool = False
     created_at: datetime
     updated_at: datetime
@@ -111,7 +110,6 @@ class EmbeddingProfileCreate(BaseModel):
     model_name: str
     base_url: str | None = None
     api_key: str | None = None
-    dimensions: int | None = None
 
 
 class EmbeddingProfileUpdate(BaseModel):
@@ -121,12 +119,10 @@ class EmbeddingProfileUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     clear_api_key: bool = False
-    dimensions: int | None = None
 
 
 class EmbeddingTestResult(BaseModel):
     success: bool
-    dimensions: int | None = None
     latency_ms: int | None = None
     error: str | None = None
 

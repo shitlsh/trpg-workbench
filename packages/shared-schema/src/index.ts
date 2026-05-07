@@ -161,7 +161,6 @@ export interface EmbeddingProfile {
   provider_type: EmbeddingProviderType;
   base_url: string | null;
   model_name: string;
-  dimensions: number | null;
   has_api_key: boolean;
   created_at: string;
   updated_at: string;
@@ -173,7 +172,6 @@ export interface CreateEmbeddingProfileRequest {
   model_name: string;
   base_url?: string;
   api_key?: string;
-  dimensions?: number;
 }
 
 export interface UpdateEmbeddingProfileRequest {
@@ -183,12 +181,10 @@ export interface UpdateEmbeddingProfileRequest {
   base_url?: string;
   api_key?: string;
   clear_api_key?: boolean;
-  dimensions?: number;
 }
 
 export interface EmbeddingTestResult {
   success: boolean;
-  dimensions?: number;
   latency_ms?: number;
   error?: string;
 }

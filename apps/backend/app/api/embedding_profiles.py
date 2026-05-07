@@ -122,6 +122,6 @@ def test_embedding_profile(profile_id: str, db: Session = Depends(get_db)):
         start = time.monotonic()
         vec = embedder.embed_one("test")
         latency_ms = int((time.monotonic() - start) * 1000)
-        return EmbeddingTestResult(success=True, dimensions=len(vec), latency_ms=latency_ms)
+        return EmbeddingTestResult(success=True, latency_ms=latency_ms)
     except Exception as exc:
         return EmbeddingTestResult(success=False, error=str(exc))

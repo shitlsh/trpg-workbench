@@ -33,7 +33,7 @@ const EMPTY_LLM: CreateLLMProfileRequest = {
   name: "", provider_type: "openai", base_url: "", api_key: "", strict_compatible: false,
 };
 const EMPTY_EMBEDDING: CreateEmbeddingProfileRequest = {
-  name: "", provider_type: "openai", model_name: "", base_url: "", api_key: "", dimensions: undefined,
+  name: "", provider_type: "openai", model_name: "", base_url: "", api_key: "",
 };
 const EMPTY_RERANK: CreateRerankProfileRequest = {
   name: "", provider_type: "jina", model_name: "jina-reranker-v3", api_key: "", base_url: "",
@@ -411,7 +411,7 @@ function EmbeddingSection() {
   }
   function openEdit(p: EmbeddingProfile) {
     setEditTarget(p);
-    setForm({ name: p.name, provider_type: p.provider_type as EmbeddingProviderType, model_name: p.model_name, base_url: p.base_url ?? "", api_key: "", dimensions: p.dimensions ?? undefined });
+    setForm({ name: p.name, provider_type: p.provider_type as EmbeddingProviderType, model_name: p.model_name, base_url: p.base_url ?? "", api_key: "" });
     setTestResult(null); setShowForm(true);
   }
   function closeForm() { setShowForm(false); setEditTarget(null); setForm(EMPTY_EMBEDDING); setTestResult(null); }
@@ -470,7 +470,6 @@ function EmbeddingSection() {
               <span className={styles.itemName}>{p.name}</span>
               <span className={styles.tag}>{PROVIDER_DISPLAY[p.provider_type] ?? p.provider_type}</span>
               <span className={styles.itemModel}>{p.model_name}</span>
-              {p.dimensions && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.dimensions}d</span>}
               {p.has_api_key && <span style={{ fontSize: 11, color: "#52c97e" }}>● Key 已配置</span>}
             </div>
             <div className={styles.itemActions}>
@@ -559,15 +558,7 @@ function EmbeddingSection() {
                 }
               </label>
 
-              {/* 5. Dimensions */}
-              <label className={styles.label}>
-                向量维度（可选，留空自动）
-                <input className={styles.input} type="number" min="64" max="65536" value={form.dimensions ?? ""}
-                  onChange={(e) => setForm({ ...form, dimensions: e.target.value ? parseInt(e.target.value) : undefined })}
-                  placeholder="例：1536" />
-              </label>
-
-              {/* 6. Profile name */}
+              {/* 5. Profile name */}
               <label className={styles.label}>
                 配置名称 *
                 <input className={styles.input} value={form.name}
@@ -589,7 +580,7 @@ function EmbeddingSection() {
               </div>
               {testResult && (
                 <div style={{ fontSize: 12, padding: "8px 10px", borderRadius: 4, background: testResult.success ? "rgba(82,201,126,0.1)" : "rgba(224,82,82,0.1)", color: testResult.success ? "#52c97e" : "#e05252" }}>
-                  {testResult.success ? `✓ 连接成功，向量维度 ${testResult.dimensions}d (${testResult.latency_ms}ms)` : `✗ ${testResult.error}`}
+                  {testResult.success ? `✓ 连接成功 (${testResult.latency_ms}ms)` : `✗ ${testResult.error}`}
                 </div>
               )}
               {(createMutation.isError || updateMutation.isError) && (
