@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
-import type { LLMProfile, CreateLLMProfileRequest } from "@trpg-workbench/shared-schema";
+import type { LLMProfile, CreateLLMProfileRequest, ProbeModelsResponse } from "@trpg-workbench/shared-schema";
 
 const LLM_PROVIDERS = ["openai", "google", "openrouter", "openai_compatible"] as const;
 type LLMProviderType = typeof LLM_PROVIDERS[number];
@@ -28,6 +28,8 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   const [form, setForm] = useState<CreateLLMProfileRequest>(EMPTY_FORM);
   const [memoryGb, setMemoryGb] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // "saving" = POST in flight; "verifying" = probe in flight after save
+  const [phase, setPhase] = useState<"idle" | "saving" | "verifying">("idle");
 
   useEffect(() => {
     (async () => {
@@ -42,11 +44,41 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
   const createMutation = useMutation({
     mutationFn: (body: CreateLLMProfileRequest) =>
       apiFetch<LLMProfile>("/settings/llm-profiles", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: (profile) => {
+    onSuccess: async (profile) => {
       queryClient.invalidateQueries({ queryKey: ["llm-profiles"] });
+      // Immediately probe to verify the key works
+      setPhase("verifying");
+      try {
+        const params = new URLSearchParams({ llm_profile_id: profile.id });
+        const result = await apiFetch<ProbeModelsResponse>(
+          `/settings/model-catalog/probe-models?${params.toString()}`
+        );
+        if (result.error) {
+          // Key is invalid — stay on Step 1 with error, but profile is saved
+          // so user can edit and re-verify (delete would be cleaner but complex)
+          setFormError(`API Key 验证失败：${result.error}。请检查 Key 是否正确后修改配置。`);
+          setPhase("idle");
+          return;
+        }
+        // Populate the cache so Step 4 doesn't need to re-probe
+        queryClient.setQueryData(
+          ["model-list", "llm", profile.id],
+          { models: result.models, error: null }
+        );
+      } catch (e) {
+        // Network error during probe — warn but still proceed
+        // (local models like LM Studio may not be running yet)
+        setFormError(`连接验证失败（${(e as Error).message}）。如果你使用本地模型，请确认服务已启动；否则请检查 API Key。`);
+        setPhase("idle");
+        return;
+      }
+      setPhase("idle");
       onComplete(profile);
     },
-    onError: (e) => setFormError((e as Error).message),
+    onError: (e) => {
+      setFormError((e as Error).message);
+      setPhase("idle");
+    },
   });
 
   function handleProviderChange(prov: LLMProviderType) {
@@ -68,11 +100,18 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
     const body = { ...form };
     if (!body.base_url) delete (body as Record<string, unknown>).base_url;
     if (!body.api_key) body.api_key = "local";
+    setPhase("saving");
     createMutation.mutate(body);
   }
 
   const isLocal = form.provider_type === "openai_compatible";
   const showBaseUrl = form.provider_type === "openrouter" || isLocal;
+  const isBusy = phase !== "idle";
+
+  const submitLabel =
+    phase === "saving" ? "保存中..." :
+    phase === "verifying" ? "验证连接中..." :
+    "保存并继续 →";
 
   return (
     <div>
@@ -80,7 +119,7 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
       <div style={{ marginBottom: 10, padding: "10px 14px", background: "rgba(124,106,247,0.06)", border: "1px solid rgba(124,106,247,0.2)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>推荐云端：Google Gemini，长上下文，适合 TRPG 创作</span>
         <button type="button" style={presetBtnPurple}
-          onClick={() => setForm(f => ({ ...f, provider_type: "google", base_url: "", name: f.name || "Gemini 2.5 Flash" }))}>
+          onClick={() => { setForm(f => ({ ...f, provider_type: "google", base_url: "", name: f.name || "Gemini 2.5 Flash" })); setFormError(null); }}>
           填入 Gemini 推荐值
         </button>
       </div>
@@ -89,20 +128,20 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
           {memoryGb !== null ? `检测到内存 ${memoryGb} GB — 推荐 LM Studio 本地模型` : "推荐本地：LM Studio，数据不离本机，无需 API Key"}
         </span>
         <button type="button" style={{ ...presetBtnPurple, background: "rgba(34,197,94,0.12)", color: "#22c55e", borderColor: "rgba(34,197,94,0.3)" }}
-          onClick={() => setForm(f => ({ ...f, provider_type: "openai_compatible", base_url: "http://localhost:1234/v1", api_key: "lm-studio", name: f.name || "LM Studio" }))}>
+          onClick={() => { setForm(f => ({ ...f, provider_type: "openai_compatible", base_url: "http://localhost:1234/v1", api_key: "lm-studio", name: f.name || "LM Studio" })); setFormError(null); }}>
           填入 LM Studio 推荐值
         </button>
       </div>
 
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: -4 }}>
-        此步骤配置供应商凭据。保存后可在工作空间设置中选择具体模型。
+        此步骤配置供应商凭据，保存后会自动验证连接是否正常。
       </p>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {/* 1. Provider */}
         <label style={labelStyle}>
           供应商 *
-          <select style={inputStyle} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as LLMProviderType)}>
+          <select style={inputStyle} value={form.provider_type} onChange={(e) => handleProviderChange(e.target.value as LLMProviderType)} disabled={isBusy}>
             {LLM_PROVIDERS.map((p) => <option key={p} value={p}>{PROVIDER_DISPLAY[p]}</option>)}
           </select>
         </label>
@@ -113,7 +152,8 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
             Base URL {isLocal && <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: "normal" }}>（LM Studio: localhost:1234/v1 · Ollama: localhost:11434/v1）</span>}
             <input style={inputStyle} value={form.base_url ?? ""}
               onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-              placeholder={isLocal ? "http://localhost:1234/v1" : "https://..."} />
+              placeholder={isLocal ? "http://localhost:1234/v1" : "https://..."}
+              disabled={isBusy} />
           </label>
         )}
 
@@ -126,7 +166,8 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
             <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 400 }}>
                 <input type="checkbox" checked={!!form.strict_compatible}
-                  onChange={(e) => setForm(f => ({ ...f, strict_compatible: e.target.checked }))} />
+                  onChange={(e) => setForm(f => ({ ...f, strict_compatible: e.target.checked }))}
+                  disabled={isBusy} />
                 strict_compatible（将 developer / latest_reminder 映射为 system）
               </label>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -141,7 +182,8 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
           API Key {isLocal ? <span style={{ fontSize: 11, color: "#22c55e", fontWeight: "normal" }}>（本地模型可选）</span> : "*"}
           <input style={inputStyle} type="password" value={form.api_key ?? ""}
             onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-            placeholder={isLocal ? "留空或填 'ollama' / 'lm-studio'" : "AIza... / sk-..."} />
+            placeholder={isLocal ? "留空或填 'ollama' / 'lm-studio'" : "AIza... / sk-..."}
+            disabled={isBusy} />
         </label>
 
         {/* 5. Profile name */}
@@ -149,15 +191,20 @@ export function WizardStep1LLM({ onComplete, onSkip }: Props) {
           配置名称 *
           <input style={inputStyle} value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="例：Gemini 2.5 Flash" />
+            placeholder="例：Gemini 2.5 Flash"
+            disabled={isBusy} />
         </label>
 
-        {formError && <p style={{ fontSize: 12, color: "var(--error, #f55)", margin: 0 }}>{formError}</p>}
+        {formError && (
+          <div style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(224,82,82,0.08)", border: "1px solid rgba(224,82,82,0.25)", fontSize: 12, color: "var(--error, #e05252)" }}>
+            ✗ {formError}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-          <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后配置</button>
-          <button type="submit" style={btnPrimaryStyle} disabled={createMutation.isPending}>
-            {createMutation.isPending ? "保存中..." : "保存并继续 →"}
+          <button type="button" style={btnSecondaryStyle} onClick={onSkip} disabled={isBusy}>稍后配置</button>
+          <button type="submit" style={btnPrimaryStyle} disabled={isBusy}>
+            {submitLabel}
           </button>
         </div>
       </form>
