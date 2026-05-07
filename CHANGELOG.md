@@ -4,6 +4,14 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
+## v0.1.5 — 2026-05-07
+
+### Bug Fixes
+
+- **Windows taskkill 不再闪烁控制台窗口**：`taskkill` 调用加 `CREATE_NO_WINDOW` flag，启动和关闭时不再出现一闪而过的黑色终端窗口。
+- **CHM 目录提取增强（Windows）**：新增 `hh.exe` 的 `Sysnative` 路径 fallback（32-bit Python on 64-bit Windows）、`.hhk` 文件 fallback、decompile 产出文件诊断日志，以及 `<param>` 单引号 value 支持。
+- **CHM 目录解析失败时给出明确错误提示**：原来 TOC 返回空列表时前端会静默跳过目录直接进入 embedding；现在检测到空结果时会显示错误信息并提示查看 `backend.log`，不再静默失败。
+
 ## v0.1.4 — 2026-05-07
 
 ### Bug Fixes

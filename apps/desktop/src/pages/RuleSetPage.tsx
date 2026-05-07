@@ -1331,7 +1331,7 @@ function LibraryDetailPanel({
         { method: "POST", body: JSON.stringify({}) },
       );
 
-      if (detectRes.is_structural && detectRes.sections) {
+      if (detectRes.is_structural && detectRes.sections && detectRes.sections.length > 0) {
         // CHM: keep the same LLM selection step as PDF, then run CHM-specific classify API.
         setWizard({
           step: "select_llm",
@@ -1341,6 +1341,11 @@ function LibraryDetailPanel({
           llmModelName: "",
           pageOffset: 0, // CHM 无物理页码概念，固定为 0
         });
+      } else if (detectRes.is_structural) {
+        // CHM TOC extraction returned empty — hh.exe failed or .hhc had no entries.
+        // Surface a clear error rather than silently falling through to PDF flow.
+        setUploadError("CHM 目录解析失败：未能从文件中提取到任何目录条目。请检查 backend.log 获取详细信息。");
+        setWizard({ step: "idle" });
       } else {
         setWizard({
           step: "toc_preview",
