@@ -4,6 +4,18 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
+## v0.1.6 — 2026-05-08
+
+### Features
+
+- **模型配置向导全面升级**：新增供应商推荐卡片（Google Gemini / LM Studio 一键填入）、API Key 在线验证、模型列表自动拉取、配置名称智能建议，向导完成后自动预填工作空间模型路由
+- **Embedding 配置简化**：移除无实际作用的「向量维度」字段，降低配置心智负担
+
+### Bug Fixes
+
+- **向导流程修复**：工作空间步骤不再强制要求规则集，LLM 配置保存后立即验证连通性
+- **Windows CHM 支持增强**：hh.exe 查找路径增加 `C:\Windows` 直接路径，提升 CHM 导入在 Windows 上的成功率
+
 ## v0.1.5 — 2026-05-07
 
 ### Bug Fixes
