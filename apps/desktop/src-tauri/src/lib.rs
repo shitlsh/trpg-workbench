@@ -8,6 +8,13 @@ use tauri_plugin_shell::ShellExt;
 #[cfg(not(debug_assertions))]
 use tauri_plugin_shell::process::CommandEvent;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+/// CREATE_NO_WINDOW flag — prevents a console window from flashing
+/// when spawning child processes (taskkill) on Windows.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 use tauri_plugin_shell::process::CommandChild;
 
 struct BackendPort(u16);
@@ -146,6 +153,7 @@ pub fn run() {
                         .args(["/F", "/IM", "trpg-backend.exe", "/T"])
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())
+                        .creation_flags(CREATE_NO_WINDOW)
                         .status();
                 }
 
@@ -219,6 +227,7 @@ pub fn run() {
                                 .args(["/F", "/IM", "trpg-backend.exe", "/T"])
                                 .stdout(std::process::Stdio::null())
                                 .stderr(std::process::Stdio::null())
+                                .creation_flags(CREATE_NO_WINDOW)
                                 .status();
                             log::info!(
                                 "[backend] taskkill fallback completed for trpg-backend.exe"
