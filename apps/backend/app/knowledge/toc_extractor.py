@@ -10,12 +10,15 @@ CHM:  read the .hhc (HTML Help Contents) file that is embedded in every
 from __future__ import annotations
 
 import html
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
+
+logger = logging.getLogger(__name__)
 
 
 # ─── PDF ──────────────────────────────────────────────────────────────────────
@@ -324,18 +327,27 @@ def _parse_hhc_xml(hhc_text: str) -> list[dict]:
 
     for tok in tokens:
         tok_stripped = tok.strip()
+        if not tok_stripped:
+            continue
         lower = tok_stripped.lower()
         if lower.startswith("<ul"):
             depth += 1
         elif lower.startswith("</ul"):
             depth = max(0, depth - 1)
         elif lower.startswith("<param") and 'name="name"' in lower:
+            # Standard: value="..."
             m = re.search(r'value="([^"]*)"', tok_stripped, re.IGNORECASE)
+            if not m:
+                # Also accept single-quoted values
+                m = re.search(r"value='([^']*)'", tok_stripped, re.IGNORECASE)
             if m:
                 current_title = html.unescape(m.group(1)).strip()
         elif lower.startswith("</object") and current_title:
             sections.append({"title": current_title, "depth": max(1, depth)})
             current_title = None
+
+    if not sections:
+        logger.warning("[CHM] _parse_hhc_xml produced 0 sections from %d chars", len(hhc_text))
 
     return sections
 
@@ -404,23 +416,56 @@ def _extract_hhc_windows(chm_path: Path) -> bytes | None:
     import subprocess
     import tempfile
 
+    if not chm_path.is_file():
+        logger.warning("[CHM] File not found: %s", chm_path)
+        return None
+
     hh_exe = Path(r"C:\Windows\System32\hh.exe")
     if not hh_exe.exists():
-        return None
+        # WOW64 SysWOW64 fallback — on 32-bit Python on 64-bit Windows,
+        # System32 may be redirected to SysWOW64 which lacks hh.exe.
+        hh_alt = Path(r"C:\Windows\Sysnative\hh.exe")
+        if hh_alt.exists():
+            hh_exe = hh_alt
+        else:
+            logger.warning("[CHM] hh.exe not found at %s or %s", hh_exe, hh_alt)
+            return None
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         out_dir = Path(tmp_dir) / "chm_toc"
         out_dir.mkdir()
-        subprocess.run(
+        result = subprocess.run(
             [str(hh_exe), "-decompile", str(out_dir), str(chm_path)],
             capture_output=True,
             timeout=60,
         )
-        # Find .hhc file
+        # hh.exe often returns non-zero even on success; check output instead.
+        if result.stderr:
+            stderr_text = result.stderr.decode("utf-8", errors="replace").strip()
+            if stderr_text:
+                logger.warning("[CHM] hh.exe stderr: %s", stderr_text[:500])
+
+        # Find .hhc (table of contents) — the primary TOC source.
         hhc_files = list(out_dir.rglob("*.hhc"))
-        if not hhc_files:
-            return None
-        return hhc_files[0].read_bytes()
+        if hhc_files:
+            logger.info("[CHM] found .hhc file: %s", hhc_files[0].name)
+            return hhc_files[0].read_bytes()
+
+        # Fallback: some CHMs use .hhk (index) with a similar structure.
+        hhk_files = list(out_dir.rglob("*.hhk"))
+        if hhk_files:
+            logger.info("[CHM] no .hhc found, trying .hhk: %s", hhk_files[0].name)
+            return hhk_files[0].read_bytes()
+
+        # Diagnostic: list what files were produced
+        all_files = list(out_dir.rglob("*"))
+        file_names = [f.name for f in all_files if f.is_file()]
+        logger.warning(
+            "[CHM] no .hhc or .hhk found; decompile produced %d files: %s",
+            len(file_names),
+            ", ".join(file_names[:30]),
+        )
+        return None
 
 
 def extract_chm_toc_sync(chm_path: Path) -> list[dict]:
@@ -437,9 +482,12 @@ def extract_chm_toc_sync(chm_path: Path) -> list[dict]:
     if is_windows_platform():
         hhc_raw = _extract_hhc_windows(chm_path)
         if not hhc_raw:
+            logger.warning("[CHM] TOC extraction failed for %s", chm_path.name)
             return []
         hhc_text = _decode_hhc_file(hhc_raw, "utf-8")
-        return _parse_hhc_xml(hhc_text)
+        sections = _parse_hhc_xml(hhc_text)
+        logger.info("[CHM] extracted %d TOC entries from %s", len(sections), chm_path.name)
+        return sections
 
     from app.knowledge.pychm_loader import import_pychm
 
