@@ -522,18 +522,28 @@ def generate_help_images(frontend_url: str, backend_url: str):
                         pass  # asset tree may still be loading; screenshot will show current state
 
                 # Try to click the first asset row in the asset tree to open it in the editor.
-                # Asset rows are rendered as divs with inline style cursor:pointer (no stable className).
+                # Use get_by_text with the API-fetched asset name — more reliable than
+                # CSS cursor:pointer which may not be in the DOM at the exact moment we check.
                 try:
-                    asset_rows = page.locator(
-                        "div[style*='cursor: pointer'], div[style*='cursor:pointer']"
-                    ).all()
-                    if asset_rows:
-                        asset_rows[0].click()
-                        page.wait_for_timeout(1000)
-                        first_text = asset_rows[0].inner_text()[:30].strip()
-                        print(f"    → opened asset row: '{first_text}'")
+                    if first_asset_name:
+                        asset_el = page.get_by_text(first_asset_name, exact=True).first
+                        if asset_el.count() > 0:
+                            asset_el.click()
+                            # Wait for editor panel to load (content area becomes non-empty)
+                            try:
+                                page.wait_for_function(
+                                    "() => document.querySelector('[class*=\"editor\"], [class*=\"content\"], "
+                                    "[data-testid=\"editor\"]')?.innerText?.trim().length > 0 || "
+                                    "document.body.innerText.includes('修订历史')",
+                                    timeout=5000,
+                                )
+                            except Exception:
+                                page.wait_for_timeout(1500)
+                            print(f"    → opened asset row: '{first_asset_name}'")
+                        else:
+                            print("  — asset name not found in page, skipping asset open")
                     else:
-                        print("  — no asset rows found, skipping asset open")
+                        print("  — no assets in workspace, skipping asset open")
                 except Exception as exc:
                     print(f"  — could not open asset before screenshot: {exc}")
 
