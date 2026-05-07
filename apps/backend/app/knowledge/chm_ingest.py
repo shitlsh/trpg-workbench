@@ -21,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import html
 import json
-import os
 import re
 import shutil
 import uuid
@@ -128,28 +127,6 @@ def _decode_chm_html(raw: bytes, chm_suggested_codec: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def _find_hh_exe() -> Path | None:
-    """Locate hh.exe on Windows dynamically.
-
-    First tries PATH (shutil.which), then searches known install directories
-    that may not be on PATH (varies by Windows version and edition).
-    """
-
-    # 1) PATH — works when hh.exe is in a directory listed in %PATH%.
-    path = shutil.which("hh.exe")
-    if path:
-        return Path(path)
-
-    # 2) Well-known directories that are not always on PATH.
-    for root in (r"C:\Windows", os.environ.get("SystemRoot", r"C:\Windows")):
-        for sub in ("", "System32", "Sysnative"):
-            p = Path(root) / sub / "hh.exe"
-            if p.is_file():
-                return p
-
-    return None
-
-
 def _extract_chm_pages_windows(chm_path: Path) -> list[dict]:
     """Windows-native CHM extraction using hh.exe -decompile.
 
@@ -159,6 +136,7 @@ def _extract_chm_pages_windows(chm_path: Path) -> list[dict]:
     """
     import subprocess
     import tempfile
+    from app.knowledge.toc_extractor import _find_hh_exe
 
     hh_exe = _find_hh_exe()
     if hh_exe is None:

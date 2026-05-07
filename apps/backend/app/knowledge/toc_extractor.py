@@ -411,11 +411,40 @@ def _decode_hhc_file(raw: bytes, chm_suggested_codec: str) -> str:
     return best[1] if best else raw.decode("utf-8", errors="replace")
 
 
+def _find_hh_exe() -> Path | None:
+    """Locate hh.exe on Windows dynamically.
+
+    First tries PATH (shutil.which), then searches well-known directories
+    that may not be on PATH (varies by Windows version and edition).
+
+    On 32-bit Python on 64-bit Windows, System32 may be redirected to
+    SysWOW64 (which lacks hh.exe); Sysnative bypasses that redirect.
+    Some Windows installations place hh.exe directly in %SystemRoot%.
+    """
+    import os
+    import shutil
+
+    # 1) PATH — works when hh.exe is in a directory listed in %PATH%.
+    found = shutil.which("hh.exe")
+    if found:
+        return Path(found)
+
+    # 2) Well-known directories that are not always on PATH.
+    #    Use %SystemRoot% so the search respects the actual Windows root
+    #    rather than assuming C:\Windows on non-standard installations.
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    for sub in ("", "System32", "Sysnative"):
+        p = Path(system_root) / sub / "hh.exe"
+        if p.is_file():
+            return p
+
+    return None
+
+
 def _extract_hhc_windows(chm_path: Path) -> bytes | None:
     """Windows-native: decompile CHM with hh.exe and find the .hhc file."""
     import subprocess
     import tempfile
-    from app.knowledge.chm_ingest import _find_hh_exe
 
     if not chm_path.is_file():
         logger.warning("[CHM] File not found: %s", chm_path)
