@@ -23,13 +23,37 @@ export type ModelCatalogType = "llm" | "embedding";
 // ── Recommended models per LLM provider ──────────────────────────────────────
 // These are always shown at the top of the picker (even before probing),
 // greyed-out when not yet confirmed by a probe, normal when probe returns them.
+// Last updated: 2026-05-07
 const RECOMMENDED_LLM_MODELS: Record<string, string[]> = {
-  google:            ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite"],
-  openai:            ["gpt-4o", "gpt-4o-mini", "o3-mini"],
-  anthropic:         ["claude-sonnet-4-5", "claude-3-5-haiku-20241022"],
-  openrouter:        [],  // dynamic, no preset
-  openai_compatible: [],  // local models, no preset
+  // Google Gemini — current stable models (2.5 series preferred for new projects)
+  google: [
+    "gemini-2.5-pro",        // 旗舰，最强推理，长上下文
+    "gemini-2.5-flash",      // 性价比最佳，推荐日常使用
+    "gemini-2.5-flash-lite", // 轻量快速，成本最低
+    "gemini-2.0-flash",      // 稳定生产版本
+  ],
+  // OpenAI — gpt-4.1 series is the current recommended generation
+  openai: [
+    "gpt-4.1",           // 当前旗舰，推理+代码
+    "gpt-4.1-mini",      // 轻量版，性价比好
+    "gpt-4o",            // 广泛使用的稳定版本
+    "gpt-4o-mini",       // 快速低成本
+  ],
+  // Anthropic Claude
+  anthropic: [
+    "claude-sonnet-4-5",           // 当前主力
+    "claude-3-5-haiku-20241022",   // 快速轻量
+  ],
+  // OpenRouter — too diverse for static presets, all shown flat
+  openrouter: [],
+  // OpenAI-compatible — no global presets; buildSections handles auto-promote
+  // for small model lists (e.g. DeepSeek: 2 models → both shown as ★)
+  openai_compatible: [],
 };
+
+// When an openai_compatible endpoint returns ≤ this many models, treat them
+// all as "recommended" (avoids empty ★ section for services like DeepSeek).
+const OPENAI_COMPAT_AUTO_PROMOTE_THRESHOLD = 4;
 
 interface ModelNameInputProps {
   catalog: ModelCatalogType;
@@ -167,7 +191,21 @@ function buildSections(
     return [{ label: "", rows, collapsible: false }];
   }
 
-  const recSet = new Set(RECOMMENDED_LLM_MODELS[providerType] ?? []);
+  const staticRec = RECOMMENDED_LLM_MODELS[providerType] ?? [];
+
+  // Special case for openai_compatible: if the provider returns only a small
+  // number of models (e.g. DeepSeek returns 2), treat all of them as
+  // recommended so the user sees them in the ★ group instead of a blank one.
+  const probedNames = merged
+    .filter(r => r.source === "probe_only")
+    .map(r => r.model_name);
+  const effectiveRec: string[] =
+    providerType === "openai_compatible" && staticRec.length === 0 && probedNames.length > 0
+      && probedNames.length <= OPENAI_COMPAT_AUTO_PROMOTE_THRESHOLD
+      ? probedNames
+      : staticRec;
+
+  const recSet = new Set(effectiveRec);
   const recRows = merged.filter(
     r => recSet.has(r.model_name) && rowPassesFilters(r, search, onlyTools, onlyJson),
   );
