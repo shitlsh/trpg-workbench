@@ -424,12 +424,14 @@ def _extract_hhc_windows(chm_path: Path) -> bytes | None:
     if not hh_exe.exists():
         # WOW64 SysWOW64 fallback — on 32-bit Python on 64-bit Windows,
         # System32 may be redirected to SysWOW64 which lacks hh.exe.
+        hh_exe = Path(r"C:\Windows\Sysnative\hh.exe")
+    if not hh_exe.exists():
+        # Some Windows installations place hh.exe directly in C:\Windows.
+        hh_exe = Path(r"C:\Windows\hh.exe")
+    if not hh_exe.exists():
         hh_alt = Path(r"C:\Windows\Sysnative\hh.exe")
-        if hh_alt.exists():
-            hh_exe = hh_alt
-        else:
-            logger.warning("[CHM] hh.exe not found at %s or %s", hh_exe, hh_alt)
-            return None
+        logger.warning("[CHM] hh.exe not found at C:\\Windows\\System32, C:\\Windows, or Sysnative")
+        return None
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         out_dir = Path(tmp_dir) / "chm_toc"
