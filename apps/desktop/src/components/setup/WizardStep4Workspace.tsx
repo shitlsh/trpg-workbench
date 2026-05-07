@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
-import type { LLMProfile, RuleSet, Workspace, CreateWorkspaceRequest, WorkspaceConfigResponse } from "@trpg-workbench/shared-schema";
+import type { LLMProfile, RuleSet, Workspace, CreateWorkspaceRequest } from "@trpg-workbench/shared-schema";
 import { ModelNameInput } from "../ModelNameInput";
 import { useModelList } from "../../hooks/useModelList";
 
@@ -39,15 +39,14 @@ export function WizardStep4Workspace({ onComplete, onSkip, llmProfile }: Props) 
       // If user chose a model, write it into workspace config
       if (llmProfile && selectedModel) {
         try {
-          const { config } = await apiFetch<WorkspaceConfigResponse>(`/workspaces/${workspace.id}/config`);
           await apiFetch(`/workspaces/${workspace.id}/config`, {
             method: "PATCH",
             body: JSON.stringify({
-              ...config,
-              models: {
-                ...(config.models ?? {}),
-                default_llm: llmProfile.name,
-                default_llm_model: selectedModel,
+              updates: {
+                models: {
+                  default_llm: llmProfile.name,
+                  default_llm_model: selectedModel,
+                },
               },
             }),
           });
