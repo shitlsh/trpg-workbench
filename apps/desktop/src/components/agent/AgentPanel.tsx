@@ -17,7 +17,7 @@ import { PlanCard } from "./PlanCard";
 import { ToolCallCard, GroupedToolCallCard } from "./ToolCallCard";
 import { MentionInput } from "./MentionInput";
 import { SessionDrawer } from "./SessionDrawer";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, resolveBackendUrl } from "@/lib/api";
 
 /** Infer display tool name from parsed write-result JSON when there was no `tool_call_start`. */
 function toolNameFromWriteResultPayload(data: { action?: string; asset_type?: string }): string {
@@ -536,8 +536,7 @@ function LogEntry({ entry }: { entry: Record<string, unknown> }) {
 
 // ─── AgentPanel ───────────────────────────────────────────────────────────────
 
-const BACKEND_URL = (import.meta as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL
-  ?? "http://127.0.0.1:7821";
+// The send path uses resolveBackendUrl for the dynamic port.
 
 export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const qc = useQueryClient();
@@ -719,7 +718,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     let textCarry = "";
 
     try {
-      const resp = await fetch(`${BACKEND_URL}/chat/sessions/${session.id}/messages`, {
+      const baseUrl = await resolveBackendUrl();
+      const resp = await fetch(`${baseUrl}/chat/sessions/${session.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

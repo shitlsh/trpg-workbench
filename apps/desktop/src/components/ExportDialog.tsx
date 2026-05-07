@@ -11,7 +11,7 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
-import { apiFetch, BACKEND_URL } from "../lib/api";
+import { apiFetch, resolveBackendUrl } from "../lib/api";
 import type { ExportValidateResult } from "@trpg-workbench/shared-schema";
 
 interface Props {
@@ -47,7 +47,8 @@ export function ExportDialog({ workspaceId, onClose }: Props) {
       // Open the backend-rendered print-ready HTML directly in the system browser.
       // The system browser supports window.print() / Cmd+P natively; Tauri's
       // embedded WebView (WKWebView on macOS) silently ignores print() calls.
-      const exportUrl = `${BACKEND_URL}/workspaces/${workspaceId}/export/html`;
+      const baseUrl = await resolveBackendUrl();
+      const exportUrl = `${baseUrl}/workspaces/${workspaceId}/export/html`;
       await shellOpen(exportUrl);
       setPhase("done");
     } catch (err) {

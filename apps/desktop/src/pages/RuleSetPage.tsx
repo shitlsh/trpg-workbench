@@ -6,7 +6,7 @@ import {
   BookOpen, Plus, Trash2, Edit2, Library, MessageSquare, X,
   Upload, Search, ChevronDown, ChevronRight, FileText, AlertTriangle, Layers, Tag, Sparkles, Pencil, Check, RotateCcw, Hourglass,
 } from "lucide-react";
-import { apiFetch, apiPostSSEWithHandlers, apiFetchWithTotalCount, BACKEND_URL, type SSEProgressPayload } from "../lib/api";
+import { apiFetch, apiPostSSEWithHandlers, apiFetchWithTotalCount, resolveBackendUrl, type SSEProgressPayload } from "../lib/api";
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useModelList } from "../hooks/useModelList";
 import { useCustomAssetTypes } from "../hooks/useCustomAssetTypes";
@@ -1315,7 +1315,8 @@ function LibraryDetailPanel({
       // Step 1: upload to preview endpoint
       const form = new FormData();
       form.append("file", file);
-      const uploadRes = await fetch(`${BACKEND_URL}/knowledge/documents/upload-preview`, { method: "POST", body: form });
+      const baseUrl = await resolveBackendUrl();
+      const uploadRes = await fetch(`${baseUrl}/knowledge/documents/upload-preview`, { method: "POST", body: form });
       if (!uploadRes.ok) {
         let detail = "上传失败";
         try { const b = await uploadRes.json(); detail = b?.detail ?? detail; } catch {}

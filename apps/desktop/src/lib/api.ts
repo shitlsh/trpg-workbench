@@ -29,9 +29,12 @@ const BASE_URL_PROMISE: Promise<string> = (async () => {
   return BASE_URL_FALLBACK;
 })();
 
-/** @deprecated Use the async fetch helpers directly; they await the URL internally. */
+/** Resolve the actual backend origin (dynamic port). Use for raw fetch() calls that need the correct URL. */
+export const resolveBackendUrl = (): Promise<string> => BASE_URL_PROMISE;
+
+/** @deprecated Use resolveBackendUrl() instead. */
 export const getBackendUrl = () => BASE_URL_FALLBACK;
-/** @deprecated legacy alias */
+/** @deprecated Use resolveBackendUrl(). Always resolves to fallback port 7821. */
 export const BACKEND_URL = BASE_URL_FALLBACK;
 
 /**
