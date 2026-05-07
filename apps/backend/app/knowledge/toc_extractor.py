@@ -415,21 +415,14 @@ def _extract_hhc_windows(chm_path: Path) -> bytes | None:
     """Windows-native: decompile CHM with hh.exe and find the .hhc file."""
     import subprocess
     import tempfile
+    from app.knowledge.chm_ingest import _find_hh_exe
 
     if not chm_path.is_file():
         logger.warning("[CHM] File not found: %s", chm_path)
         return None
 
-    hh_exe = Path(r"C:\Windows\System32\hh.exe")
-    if not hh_exe.exists():
-        # WOW64 SysWOW64 fallback — on 32-bit Python on 64-bit Windows,
-        # System32 may be redirected to SysWOW64 which lacks hh.exe.
-        hh_exe = Path(r"C:\Windows\Sysnative\hh.exe")
-    if not hh_exe.exists():
-        # Some Windows installations place hh.exe directly in C:\Windows.
-        hh_exe = Path(r"C:\Windows\hh.exe")
-    if not hh_exe.exists():
-        hh_alt = Path(r"C:\Windows\Sysnative\hh.exe")
+    hh_exe = _find_hh_exe()
+    if not hh_exe:
         logger.warning("[CHM] hh.exe not found at C:\\Windows\\System32, C:\\Windows, or Sysnative")
         return None
 

@@ -127,20 +127,39 @@ def _decode_chm_html(raw: bytes, chm_suggested_codec: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+def _find_hh_exe() -> Path | None:
+    """Locate hh.exe on Windows. Tries several known locations.
+
+    On 32-bit Python on 64-bit Windows, System32 may be redirected to
+    SysWOW64 (which lacks hh.exe); Sysnative bypasses the redirect.
+    Some Windows installations place hh.exe directly in C:\\Windows.
+    """
+    candidates = [
+        Path(r"C:\Windows\System32\hh.exe"),
+        Path(r"C:\Windows\Sysnative\hh.exe"),
+        Path(r"C:\Windows\hh.exe"),
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
+    return None
+
+
 def _extract_chm_pages_windows(chm_path: Path) -> list[dict]:
     """Windows-native CHM extraction using hh.exe -decompile.
 
-    hh.exe is built into every Windows install (system32/hh.exe).
+    hh.exe is built into every Windows install since XP, but its location
+    varies: typically C:\\Windows\\System32 or C:\\Windows.
     It decompiles the CHM into a folder of HTML files which we then parse.
     """
     import subprocess
     import tempfile
 
-    hh_exe = Path(r"C:\Windows\System32\hh.exe")
-    if not hh_exe.exists():
+    hh_exe = _find_hh_exe()
+    if hh_exe is None:
         raise RuntimeError(
-            "hh.exe not found at C:\\Windows\\System32\\hh.exe. "
-            "This is a built-in Windows tool that should always be present."
+            "hh.exe not found. It should be in C:\\Windows\\System32 or C:\\Windows. "
+            "This is a built-in Windows tool."
         )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
