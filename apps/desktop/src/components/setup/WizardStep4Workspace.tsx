@@ -85,15 +85,15 @@ export function WizardStep4Workspace({ onComplete, onSkip, llmProfile }: Props) 
             placeholder="简单描述这个工作空间的内容..." />
         </label>
         <label style={labelStyle}>
-          规则集 *
+          规则集
           {ruleSets.length === 0 ? (
             <div style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-subtle, var(--bg))", fontSize: 12, color: "var(--text-muted)" }}>
-              暂无规则集，请先在「规则集」页面创建
+              暂无规则集，可跳过稍后在「规则集」页面创建并绑定
             </div>
           ) : (
             <select style={inputStyle} value={form.rule_set ?? ""}
               onChange={(e) => setForm({ ...form, rule_set: e.target.value })}>
-              <option value="">请选择规则集...</option>
+              <option value="">不指定（稍后绑定）</option>
               {ruleSets.map((rs) => <option key={rs.id} value={rs.name}>{rs.name}</option>)}
             </select>
           )}
@@ -141,7 +141,7 @@ export function WizardStep4Workspace({ onComplete, onSkip, llmProfile }: Props) 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
           <button type="button" style={btnSecondaryStyle} onClick={onSkip}>稍后创建</button>
           <button type="submit" style={btnPrimaryStyle}
-            disabled={!form.name || !form.rule_set || createMutation.isPending}>
+            disabled={!form.name || createMutation.isPending}>
             {createMutation.isPending ? "创建中..." : "创建并继续"}
           </button>
         </div>
