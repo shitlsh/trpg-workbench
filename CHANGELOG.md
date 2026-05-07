@@ -4,6 +4,15 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
+## v0.1.3 — 2026-05-07
+
+### Bug Fixes
+
+- **Windows 无法启动根因修复（CORS）**：Windows 上 Tauri WebView2 使用 `https://tauri.localhost` 作为请求 origin，而后端 CORS 只允许 `tauri://localhost`（macOS），导致所有跨域请求被拒绝，前端健康检查始终失败。新增 `https://tauri.localhost` 和 `http://tauri.localhost` 到允许列表。
+- **Windows 后台进程残留强化**：`child.kill()` 在 Windows 上对 PyInstaller 进程不可靠，新增 `taskkill /F /IM trpg-backend.exe` 作为兜底，在独立线程中执行避免阻塞主线程。
+- **app.log 日志去重**：后端 stdout/stderr 已由 Python 侧 `backend.log` 完整记录，`app.log` 不再重复收录，只保留 Error 和 Terminated 事件。
+- **`attachConsole()` 改为 await**：React mount 前等待 console→app.log 桥接就绪，确保前端日志完整捕获。
+
 ## v0.1.2 — 2026-05-07
 
 ### Bug Fixes

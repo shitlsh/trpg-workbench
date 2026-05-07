@@ -160,22 +160,13 @@ pub fn run() {
                         let backend_child = app.state::<BackendChild>();
                         *backend_child.0.lock().unwrap() = Some(child);
 
-                        log::info!("[backend] spawned successfully, port {port_str}");
-
                         tauri::async_runtime::spawn(async move {
                             while let Some(event) = rx.recv().await {
                                 match event {
-                                    CommandEvent::Stdout(line) => {
-                                        let text = String::from_utf8_lossy(&line);
-                                        log::debug!("[backend:stdout] {}", text.trim_end());
-                                    }
-                                    CommandEvent::Stderr(line) => {
-                                        // uvicorn logs everything (INFO/WARNING/ERROR)
-                                        // to stderr. Pipe at debug level so the
-                                        // authoritative backend.log stays the primary
-                                        // source; switch to debug to see it in app.log.
-                                        let text = String::from_utf8_lossy(&line);
-                                        log::debug!("[backend:stderr] {}", text.trim_end());
+                                    CommandEvent::Stdout(_) | CommandEvent::Stderr(_) => {
+                                        // Normal backend output is already captured in
+                                        // backend.log by Python's RotatingFileHandler.
+                                        // Suppress here to avoid duplication in app.log.
                                     }
                                     CommandEvent::Error(err) => {
                                         log::error!("[backend:error] {err}");
