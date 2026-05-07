@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import html
 import json
+import os
 import re
 import shutil
 import uuid
@@ -128,20 +129,24 @@ def _decode_chm_html(raw: bytes, chm_suggested_codec: str) -> str:
 
 
 def _find_hh_exe() -> Path | None:
-    """Locate hh.exe on Windows. Tries several known locations.
+    """Locate hh.exe on Windows dynamically.
 
-    On 32-bit Python on 64-bit Windows, System32 may be redirected to
-    SysWOW64 (which lacks hh.exe); Sysnative bypasses the redirect.
-    Some Windows installations place hh.exe directly in C:\\Windows.
+    First tries PATH (shutil.which), then searches known install directories
+    that may not be on PATH (varies by Windows version and edition).
     """
-    candidates = [
-        Path(r"C:\Windows\System32\hh.exe"),
-        Path(r"C:\Windows\Sysnative\hh.exe"),
-        Path(r"C:\Windows\hh.exe"),
-    ]
-    for p in candidates:
-        if p.is_file():
-            return p
+
+    # 1) PATH — works when hh.exe is in a directory listed in %PATH%.
+    path = shutil.which("hh.exe")
+    if path:
+        return Path(path)
+
+    # 2) Well-known directories that are not always on PATH.
+    for root in (r"C:\Windows", os.environ.get("SystemRoot", r"C:\Windows")):
+        for sub in ("", "System32", "Sysnative"):
+            p = Path(root) / sub / "hh.exe"
+            if p.is_file():
+                return p
+
     return None
 
 
