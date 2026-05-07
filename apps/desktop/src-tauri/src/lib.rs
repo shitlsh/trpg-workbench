@@ -160,20 +160,22 @@ pub fn run() {
                         let backend_child = app.state::<BackendChild>();
                         *backend_child.0.lock().unwrap() = Some(child);
 
+                        log::info!("[backend] spawned successfully, port {port_str}");
+
                         tauri::async_runtime::spawn(async move {
                             while let Some(event) = rx.recv().await {
                                 match event {
                                     CommandEvent::Stdout(line) => {
                                         let text = String::from_utf8_lossy(&line);
-                                        log::info!("[backend] {}", text.trim_end());
+                                        log::debug!("[backend:stdout] {}", text.trim_end());
                                     }
                                     CommandEvent::Stderr(line) => {
-                                        // uvicorn writes all its logs (INFO/WARNING/ERROR) to stderr.
-                                        // Log at info level here to avoid false ERROR noise in app.log.
-                                        // Genuine Python exceptions will still appear but without
-                                        // alarming log levels for normal uvicorn output.
+                                        // uvicorn logs everything (INFO/WARNING/ERROR)
+                                        // to stderr. Pipe at debug level so the
+                                        // authoritative backend.log stays the primary
+                                        // source; switch to debug to see it in app.log.
                                         let text = String::from_utf8_lossy(&line);
-                                        log::info!("[backend] {}", text.trim_end());
+                                        log::debug!("[backend:stderr] {}", text.trim_end());
                                     }
                                     CommandEvent::Error(err) => {
                                         log::error!("[backend:error] {err}");
