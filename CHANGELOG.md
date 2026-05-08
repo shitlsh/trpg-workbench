@@ -4,6 +4,16 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
+## v0.1.9 — 2026-05-08
+
+### Bug Fixes
+
+- **`ask_user` 工具稳定性提升**：修复模型调用提问工具时因参数格式不合法导致连续失败的问题，并补全参数结构定义以减少格式错误概率。
+
+### Features
+
+- **弹窗交互优化**：改善任务完成后的弹窗处理与清理逻辑。
+
 ## v0.1.8 — 2026-05-08
 
 ### Bug Fixes
