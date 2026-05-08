@@ -116,13 +116,13 @@ async def upload_document(
     tmp_path = Path(tmp.name)
 
     # Snapshot embedding profile info (id + model details) to persist on library after ingest
-     embedding_snapshot = {
+    embedding_snapshot = {
          "profile_id": embedding_profile.id,
          "provider_type": embedding_profile.provider_type,
          "model_name": embedding_profile.model_name,
-     }
- 
-     # Launch ingest in background (fire-and-forget)
+    }
+
+    # Launch ingest in background (fire-and-forget)
     asyncio.create_task(
         _run_ingest_background(
             document_id=doc.id,
