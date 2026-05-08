@@ -50,7 +50,11 @@ def _json_type_from_annotation(annotation: Any) -> dict[str, Any]:
 
 
 def build_openai_tool_specs(tools: list[Any]) -> list[dict[str, Any]]:
-    """Build OpenAI-compatible function-tool schema from Python callables."""
+    """Build OpenAI-compatible function-tool schema from Python callables.
+
+    Other provider backends in provider_runtime.py adapt this schema to their
+    own wire format (Anthropic input_schema, Gemini FunctionDeclaration, etc.).
+    """
     specs: list[dict[str, Any]] = []
     for fn in tools:
         sig = inspect.signature(fn)
@@ -61,7 +65,12 @@ def build_openai_tool_specs(tools: list[Any]) -> list[dict[str, Any]]:
             if param.default is inspect._empty:
                 required.append(name)
         doc = (inspect.getdoc(fn) or "").strip()
-        desc = doc.splitlines()[0].strip() if doc else f"Tool: {fn.__name__}"
+        # ask_user is a flow-control tool; its full docstring is needed so the
+        # model understands *when* to call it, not just *what* it does.
+        if fn.__name__ == "ask_user":
+            desc = doc[:1200] if doc else f"Tool: {fn.__name__}"
+        else:
+            desc = doc.splitlines()[0].strip() if doc else f"Tool: {fn.__name__}"
         specs.append(
             {
                 "type": "function",

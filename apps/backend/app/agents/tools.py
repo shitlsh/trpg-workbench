@@ -1347,11 +1347,24 @@ class AgentQuestionInterrupt(Exception):
 
 @tool
 def ask_user(questions: list[dict]) -> str:
-    """向用户提出结构化选择问题，在收到答复后继续当前任务。
+    """当新建/修改任务缺少最低必要信息，或存在高影响关键分叉时，必须在继续前向用户提出结构化选择问题。
 
-    当任务方向存在**关键分叉**且无法从现有上下文或对话历史推断时调用。
-    每次调用最多提 2 个问题，每个问题 2-4 个选项。
-    调用后当前推理流程将暂停，等待用户点选答复后在下一轮继续。
+    调用时机（满足任一即必须调用，调用后本轮不得再调用其他工具）：
+    - 用户只给了资产类型，没有内容方向（如"帮我创建一个 NPC""帮我设计一个怪物"）
+    - 用户只有动作没有操作对象（如"帮我扩展一下"未指定资产或章节）
+    - 新建资产时缺少该类型「创建前必须提供」的核心信息，且上下文无法补全
+    - 存在会显著影响资产身份/核心设定/关系定位/调查结构的关键方向分叉
+
+    重要：「创建前必须提供」的信息必须来自用户请求、对话历史或工作空间上下文；
+    不得由 Director 自行发明来绕过澄清。
+
+    每次最多 2 个问题，每个问题 2-4 个选项。调用后流程暂停，等用户选择后下一轮继续。
+
+    禁止调用场景：
+    - 仅为礼貌确认（"我准备创建 NPC，你确认吗？"）
+    - 对话历史或上下文已有足够信息可推断
+    - 局部机械修改（改年龄、改名称、润色措辞、调整格式）
+    - 假设错误不影响资产身份、核心设定、关系定位、调查结构、主要冲突或玩家体验
 
     questions 格式（list，每项为一个问题）：
     [
@@ -1361,15 +1374,9 @@ def ask_user(questions: list[dict]) -> str:
             "options": [
                 {"label": "选项标签（2-5 字）", "description": "一句话解释这个选项的含义"}
             ],
-            "multiple": false   // true 时允许多选，默认 false
+            "multiple": false
         }
     ]
-
-    禁止调用场景：
-    - 仅为"礼貌确认"（"我准备创建 NPC，你确认吗？"）
-    - 对话历史中已有足够信息可推断答案
-    - 规则集/工作空间配置已能决定方向
-    - 每次超过 2 个问题
     """
     if not questions or not isinstance(questions, list):
         return json.dumps({"error": "questions 必须是非空列表"}, ensure_ascii=False)
@@ -1384,6 +1391,7 @@ ALL_TOOLS = [
     grep_asset,
     read_asset_section,
     search_assets,
+    ask_user,           # 澄清工具：信息不足或关键分叉时必须优先调用
     search_knowledge,
     get_asset_type_spec,
     read_config,
@@ -1398,7 +1406,6 @@ ALL_TOOLS = [
     create_skill,
     web_search,
     web_fetch,
-    ask_user,
 ]
 
 # Explore 会话：只读 + 规则咨询；**不包含**任何写盘工具。
