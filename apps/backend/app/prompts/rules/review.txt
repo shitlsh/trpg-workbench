@@ -2,7 +2,7 @@
 
 {{include:_shared/citation_rules.txt}}
 
-仅输出一个合法 JSON 对象：
+输出结构如下（字段与键名严格遵守）：
 {
   "suggestions": [
     {
