@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, Fragment } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ModelNameInput } from "../components/ModelNameInput";
@@ -313,6 +312,7 @@ function SetPromptModal({
   const queryClient = useQueryClient();
   type Tab = "select" | "manual" | "ai";
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [deleteProfileTarget, setDeleteProfileTarget] = useState<PromptProfile | null>(null);
 
   // existing profiles for this rule set (shown in "已有" tab)
   const { data: profiles = [] } = useQuery({
@@ -490,7 +490,7 @@ function SetPromptModal({
                   <button
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "2px 4px", flexShrink: 0 }}
                     title="删除"
-                    onClick={async (e) => { e.stopPropagation(); if (await confirm(`确认删除「${p.name}」？`)) deleteMutation.mutate(p.id); }}
+                    onClick={(e) => { e.stopPropagation(); setDeleteProfileTarget(p); }}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -683,11 +683,35 @@ function SetPromptModal({
           </>
         )}
       </div>
+      {deleteProfileTarget && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 310, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setDeleteProfileTarget(null)}
+        >
+          <div
+            style={{ width: 400, borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: 20 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>确认删除</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+              确定要删除风格「<strong>{deleteProfileTarget.name}</strong>」？
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className={styles.btnSecondary} onClick={() => setDeleteProfileTarget(null)}>取消</button>
+              <button
+                className={styles.btnDanger}
+                disabled={deleteMutation.isPending}
+                onClick={() => { deleteMutation.mutate(deleteProfileTarget.id); setDeleteProfileTarget(null); }}
+              >
+                {deleteMutation.isPending ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// ─── Document Preview Panel ───────────────────────────────────────────────────
 
 function DocumentPreviewPanel({
   docId,
@@ -1087,7 +1111,7 @@ function DocumentRow({
         )}
         <button
           style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", color: "var(--text-muted)" }}
-          onClick={async (e) => { e.stopPropagation(); if (await confirm(`确认删除文档「${doc.filename}」？`)) onDelete(); }}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
           title="删除文档"
         >
           <Trash2 size={13} />
@@ -1161,6 +1185,8 @@ function LibraryDetailPanel({
   const [reindexDialog, setReindexDialog] = useState<{ docId: string; filename: string } | null>(null);
   const [reindexProfileId, setReindexProfileId] = useState<string>("");
   const [reindexModelName, setReindexModelName] = useState<string>("");
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<KnowledgeDocument | null>(null);
+  const [confirmDeleteLib, setConfirmDeleteLib] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── TOC-driven ingest wizard state ────────────────────────────────────────
@@ -1671,7 +1697,7 @@ function LibraryDetailPanel({
           </button>
           <button
             className={styles.btnDanger}
-            onClick={async () => { if (await confirm(`确认删除「${library.name}」？`)) deleteLibMutation.mutate(library.id); }}
+            onClick={() => setConfirmDeleteLib(true)}
           >
             <Trash2 size={14} />
           </button>
@@ -2129,7 +2155,7 @@ function LibraryDetailPanel({
             onToggle={() => toggleDocExpand(doc.id)}
             onPreview={() => setPreviewDocId(previewDocId === doc.id ? null : doc.id)}
             isPreviewing={previewDocId === doc.id}
-            onDelete={() => deleteDocMutation.mutate(doc.id)}
+            onDelete={() => setConfirmDeleteDoc(doc)}
             onReindex={() => {
               const defaultProfileId = selectedEmbeddingId || library.embedding_profile_id || embeddingProfiles[0]?.id || "";
               setReindexProfileId(defaultProfileId);
@@ -2199,6 +2225,58 @@ function LibraryDetailPanel({
           </div>
         </div>
       )}
+      {confirmDeleteDoc && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 220, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setConfirmDeleteDoc(null)}
+        >
+          <div
+            style={{ width: 420, borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: 20 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>确认删除文档</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+              确定要删除「<strong>{confirmDeleteDoc.filename}</strong>」？此操作不可撤销。
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className={styles.btnSecondary} onClick={() => setConfirmDeleteDoc(null)}>取消</button>
+              <button
+                className={styles.btnDanger}
+                disabled={deleteDocMutation.isPending}
+                onClick={() => { deleteDocMutation.mutate(confirmDeleteDoc.id); setConfirmDeleteDoc(null); }}
+              >
+                {deleteDocMutation.isPending ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmDeleteLib && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 220, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setConfirmDeleteLib(false)}
+        >
+          <div
+            style={{ width: 420, borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: 20 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>确认删除知识库</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+              确定要删除「<strong>{library.name}</strong>」？其下所有文档和索引将一并删除。
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className={styles.btnSecondary} onClick={() => setConfirmDeleteLib(false)}>取消</button>
+              <button
+                className={styles.btnDanger}
+                disabled={deleteLibMutation.isPending}
+                onClick={() => { deleteLibMutation.mutate(library.id); setConfirmDeleteLib(false); }}
+              >
+                {deleteLibMutation.isPending ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -2240,6 +2318,8 @@ export default function RuleSetPage() {
 
   // Library detail drill-down
   const [activeLibId, setActiveLibId] = useState<string | null>(null);
+  const [confirmDeleteLibId, setConfirmDeleteLibId] = useState<{ id: string; name: string } | null>(null);
+  const [confirmDeleteType, setConfirmDeleteType] = useState<CustomAssetTypeConfig | null>(null);
 
   // Custom asset type state (A5 + M30)
   const [editingType, setEditingType] = useState<CustomAssetTypeConfig | null>(null);
@@ -2716,9 +2796,7 @@ export default function RuleSetPage() {
                       </span>
                       <button
                         className={styles.btnGhost}
-                        onClick={async () => {
-                          if (await confirm(`确认删除知识库「${lib.name}」？`)) deleteLibMutation.mutate(lib.id);
-                        }}
+                        onClick={() => setConfirmDeleteLibId({ id: lib.id, name: lib.name })}
                         title="删除"
                       >
                         <Trash2 size={13} />
@@ -2799,11 +2877,7 @@ export default function RuleSetPage() {
                       </button>
                       <button
                         className={styles.btnGhost}
-                        onClick={async () => {
-                          if (await confirm(`确认删除类型「${ct.label}」？已有此类型的资产不受影响。`)) {
-                            deleteTypeMutation.mutate(ct.id);
-                          }
-                        }}
+                        onClick={() => setConfirmDeleteType(ct)}
                         title="删除"
                       >
                         <Trash2 size={13} />
@@ -2896,6 +2970,58 @@ export default function RuleSetPage() {
                 disabled={deleteMutation.isPending}
               >
                 {deleteMutation.isPending ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmDeleteLibId && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setConfirmDeleteLibId(null)}
+        >
+          <div
+            style={{ width: 420, borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: 20 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>确认删除知识库</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+              确定要删除「<strong>{confirmDeleteLibId.name}</strong>」？其下所有文档和索引将一并删除。
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className={styles.btnSecondary} onClick={() => setConfirmDeleteLibId(null)}>取消</button>
+              <button
+                className={styles.btnDanger}
+                disabled={deleteLibMutation.isPending}
+                onClick={() => { deleteLibMutation.mutate(confirmDeleteLibId.id); setConfirmDeleteLibId(null); }}
+              >
+                {deleteLibMutation.isPending ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmDeleteType && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setConfirmDeleteType(null)}
+        >
+          <div
+            style={{ width: 420, borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: 20 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>确认删除类型</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+              确定要删除类型「<strong>{confirmDeleteType.label}</strong>」？已有此类型的资产不受影响。
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className={styles.btnSecondary} onClick={() => setConfirmDeleteType(null)}>取消</button>
+              <button
+                className={styles.btnDanger}
+                disabled={deleteTypeMutation.isPending}
+                onClick={() => { deleteTypeMutation.mutate(confirmDeleteType.id); setConfirmDeleteType(null); }}
+              >
+                {deleteTypeMutation.isPending ? "删除中..." : "确认删除"}
               </button>
             </div>
           </div>

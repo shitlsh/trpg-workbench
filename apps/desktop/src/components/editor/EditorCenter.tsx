@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import Editor, { DiffEditor, type BeforeMount } from "@monaco-editor/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, History, Save, RotateCcw } from "lucide-react";
@@ -106,6 +105,7 @@ function RevisionSidebar({ tab }: { tab: EditorTab }) {
   const qc = useQueryClient();
   const { markSaved } = useEditorStore();
   const { activeWorkspaceId } = useWorkspaceStore();
+  const [confirmRollback, setConfirmRollback] = useState<number | null>(null);
 
   const { data: revisions = [] } = useQuery<AssetRevision[]>({
     queryKey: ["asset", tab.assetId, "revisions"],
@@ -148,9 +148,7 @@ function RevisionSidebar({ tab }: { tab: EditorTab }) {
           </div>
           <div style={{ fontSize: 12, marginTop: 2, color: "var(--text)" }}>{rev.change_summary}</div>
           <button
-            onClick={async () => {
-              if (await confirm(`回滚到版本 ${rev.version}？`)) rollbackMutation.mutate(rev.version);
-            }}
+            onClick={() => setConfirmRollback(rev.version)}
             style={{
               marginTop: 6, fontSize: 11, display: "flex", alignItems: "center", gap: 4,
               background: "none", color: "var(--accent)", padding: 0,
@@ -160,11 +158,38 @@ function RevisionSidebar({ tab }: { tab: EditorTab }) {
           </button>
         </div>
       ))}
+      {confirmRollback !== null && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 310, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setConfirmRollback(null)}
+        >
+          <div
+            style={{ width: 360, borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: 20 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>确认回滚</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+              确定要回滚到版本 <strong>v{confirmRollback}</strong>？当前未保存内容将丢失。
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                style={{ padding: "5px 14px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--text)", cursor: "pointer", fontSize: 13 }}
+                onClick={() => setConfirmRollback(null)}
+              >取消</button>
+              <button
+                style={{ padding: "5px 14px", borderRadius: 5, border: "none", background: "var(--danger, #e05050)", color: "#fff", cursor: "pointer", fontSize: 13 }}
+                disabled={rollbackMutation.isPending}
+                onClick={() => { rollbackMutation.mutate(confirmRollback); setConfirmRollback(null); }}
+              >
+                {rollbackMutation.isPending ? "回滚中..." : "确认回滚"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// ─── Asset Editor ─────────────────────────────────────────────────────────────
 
 function AssetEditor({ tab }: { tab: EditorTab }) {
   const qc = useQueryClient();
