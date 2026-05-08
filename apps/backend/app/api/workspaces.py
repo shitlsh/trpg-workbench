@@ -97,9 +97,9 @@ def open_workspace(body: WorkspaceOpen, db: Session = Depends(get_db)):
     """Open an existing workspace directory (register or re-register in app.db)."""
     ws_path = Path(body.workspace_path)
     if not ws_path.exists():
-        raise HTTPException(status_code=404, detail="Directory does not exist")
+        raise HTTPException(status_code=404, detail="目录不存在，请检查路径是否正确")
     if not is_valid_workspace(ws_path):
-        raise HTTPException(status_code=400, detail="Not a valid workspace (missing .trpg/config.yaml)")
+        raise HTTPException(status_code=400, detail="不是有效的工作空间：缺少 .trpg/config.yaml。请确认拷贝时包含了 .trpg 隐藏目录，或检查目录是否完整")
 
     # Check if already registered
     existing = db.query(WorkspaceORM).filter(

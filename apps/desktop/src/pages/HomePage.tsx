@@ -109,8 +109,12 @@ export default function HomePage() {
 
   async function handleOpenBrowse() {
     const selected = await openDialog({ directory: true, title: "选择工作空间目录" });
-    if (selected) {
-      openMutation.mutate(selected);
+    if (!selected) return;
+    try {
+      await openMutation.mutateAsync(selected);
+    } catch {
+      setOpenPathInput(selected);
+      setShowOpenForm(true);
     }
   }
 
