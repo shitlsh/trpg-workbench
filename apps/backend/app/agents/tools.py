@@ -1280,6 +1280,54 @@ def web_search(query: str = "", max_results: int = 5) -> str:
         return json.dumps({"error": str(e), "results": []}, ensure_ascii=False)
 
 
+@tool
+def web_fetch(url: str = "") -> str:
+    """Fetch the plain-text content of a web page explicitly provided by the user.
+
+    Use ONLY when the user's message contains a specific URL they want you to reference
+    (e.g. a game system wiki, TRPG product page, or setting/lore reference page).
+    Do NOT invent or guess URLs — only fetch what the user explicitly supplies.
+    Do NOT use for general internet searches — use web_search instead.
+
+    Args:
+        url: The exact URL provided by the user in their message.
+
+    Returns:
+        JSON object with {"url": ..., "content": "...", "char_count": N} on success,
+        or {"error": "..."} on failure. Content is plain text, truncated to ~6000 chars.
+    """
+    import logging
+    import re as _re
+    logger = logging.getLogger(__name__)
+    if not url or not url.strip():
+        return json.dumps({"error": "url 参数不能为空。"}, ensure_ascii=False)
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        return json.dumps({"error": "url 必须以 http:// 或 https:// 开头。"}, ensure_ascii=False)
+    try:
+        import httpx
+        from bs4 import BeautifulSoup
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; trpg-workbench/1.0)"}
+        resp = httpx.get(url, timeout=15, follow_redirects=True, headers=headers)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        # 移除无用标签
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+        # 压缩连续空行
+        text = _re.sub(r"\n{3,}", "\n\n", text)
+        text = text.strip()
+        truncated = text[:6000]
+        return json.dumps(
+            {"url": url, "content": truncated, "char_count": len(text)},
+            ensure_ascii=False,
+        )
+    except Exception as e:
+        logger.warning("web_fetch failed for url %r: %s", url, e)
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
 # ─── Tool list for Director ────────────────────────────────────────────────────
 
 # ─── Question Interrupt ───────────────────────────────────────────────────────
@@ -1349,6 +1397,7 @@ ALL_TOOLS = [
     consult_lore,
     create_skill,
     web_search,
+    web_fetch,
     ask_user,
 ]
 

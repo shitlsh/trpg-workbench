@@ -21,6 +21,7 @@ const TOOL_LABELS: Record<string, string> = {
   consult_lore: "世界观检索",
   create_skill: "新建 Skill",
   web_search: "网络搜索",
+  web_fetch: "抓取网页",
   ask_user: "向用户提问",
 };
 
@@ -157,6 +158,10 @@ function argsSummary(name: string, args: Record<string, unknown>): string | null
     const q = args.query as string;
     return q ? `"${q}"` : null;
   }
+  if (name === "web_fetch") {
+    const u = args.url as string;
+    return u ? u.replace(/^https?:\/\//, "").slice(0, 60) : null;
+  }
   if (name === "consult_rules" || name === "consult_lore") {
     const q = (args.question ?? args.query) as string;
     return q ? `"${q}"` : null;
@@ -290,6 +295,9 @@ function ToolInputView({ name, args }: { name: string; args: Record<string, unkn
     case "web_search":
     case "search_assets":
       add("查询", args.query as string | undefined);
+      break;
+    case "web_fetch":
+      add("URL", args.url as string | undefined);
       break;
     case "read_asset":
     case "read_asset_section":
@@ -532,6 +540,39 @@ function WebSearchResultView({ raw }: { raw: string }) {
   );
 }
 
+function WebFetchResultView({ raw }: { raw: string }) {
+  let content = "";
+  let url = "";
+  let charCount = 0;
+  let error = "";
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    content = data.content as string ?? "";
+    url = data.url as string ?? "";
+    charCount = data.char_count as number ?? 0;
+    error = data.error as string ?? "";
+  } catch {}
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={sectionHeaderStyle}>输出</div>
+      {error ? (
+        <div style={{ fontSize: 11, color: "var(--danger)" }}>{error}</div>
+      ) : (
+        <div style={{ fontSize: 10 }}>
+          {url && <div style={{ color: "var(--text-subtle)", fontSize: 9, wordBreak: "break-all", marginBottom: 4 }}>{url}</div>}
+          <div style={{ color: "var(--text-muted)", fontSize: 9, marginBottom: 4 }}>已抓取 {charCount} 字符{charCount > 6000 ? "（已截断至 6000）" : ""}</div>
+          {content && (
+            <div style={{ color: "var(--text)", maxHeight: 120, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.5 }}>
+              {content.slice(0, 300)}{content.length > 300 ? "…" : ""}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConsultRulesView({ raw }: { raw: string }) {
   let suggestions: Array<{ text?: string; citation?: { document?: string; page_from?: number; page_to?: number }; has_citation?: boolean }> = [];
   let summary = "";
@@ -745,6 +786,8 @@ function ToolOutputView({ name, resultSummary, args, consistencyReport }: {
       return <GrepResultView raw={resultSummary} />;
     case "web_search":
       return <WebSearchResultView raw={resultSummary} />;
+    case "web_fetch":
+      return <WebFetchResultView raw={resultSummary} />;
     case "consult_rules":
       return <ConsultRulesView raw={resultSummary} />;
     case "consult_lore":
