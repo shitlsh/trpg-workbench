@@ -1288,11 +1288,13 @@ function LibraryDetailPanel({
   });
 
   const activeTask = useTaskProgress(uploadingTaskId);
-  if (activeTask?.status === "completed" || activeTask?.status === "failed") {
-    if (uploadingTaskId) {
-      setTimeout(() => setUploadingTaskId(null), 2000);
+  useEffect(() => {
+    if ((activeTask?.status === "completed" || activeTask?.status === "failed") && uploadingTaskId) {
+      queryClient.invalidateQueries({ queryKey: ["knowledge", "documents", library.id] });
+      const t = setTimeout(() => setUploadingTaskId(null), 2000);
+      return () => clearTimeout(t);
     }
-  }
+  }, [activeTask?.status, uploadingTaskId]);
 
   const deleteLibMutation = useMutation({
     mutationFn: (id: string) => apiFetch(`/knowledge/libraries/${id}`, { method: "DELETE" }),
