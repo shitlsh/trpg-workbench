@@ -1379,7 +1379,9 @@ def ask_user(questions: list[dict]) -> str:
     ]
     """
     if not questions or not isinstance(questions, list):
-        return json.dumps({"error": "questions 必须是非空列表"}, ensure_ascii=False)
+        return json.dumps({
+            "error": "questions 格式不合法，请不要重试此工具，改用文本直接向用户提出你的问题并等待回答。"
+        }, ensure_ascii=False)
     if len(questions) > 2:
         questions = questions[:2]  # 强制限制，不报错
     raise AgentQuestionInterrupt(questions)

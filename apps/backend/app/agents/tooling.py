@@ -71,6 +71,57 @@ def build_openai_tool_specs(tools: list[Any]) -> list[dict[str, Any]]:
             desc = doc[:1200] if doc else f"Tool: {fn.__name__}"
         else:
             desc = doc.splitlines()[0].strip() if doc else f"Tool: {fn.__name__}"
+
+        # For ask_user, override the auto-generated schema with a precise one
+        # so the model always knows the exact shape of each question object.
+        if fn.__name__ == "ask_user":
+            props = {
+                "questions": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 2,
+                    "items": {
+                        "type": "object",
+                        "required": ["header", "question", "options"],
+                        "additionalProperties": False,
+                        "properties": {
+                            "header": {
+                                "type": "string",
+                                "description": "简短标题，10 字以内"
+                            },
+                            "question": {
+                                "type": "string",
+                                "description": "完整问题描述"
+                            },
+                            "options": {
+                                "type": "array",
+                                "minItems": 2,
+                                "maxItems": 4,
+                                "items": {
+                                    "type": "object",
+                                    "required": ["label", "description"],
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "label": {
+                                            "type": "string",
+                                            "description": "选项标签，2-5 字"
+                                        },
+                                        "description": {
+                                            "type": "string",
+                                            "description": "一句话解释这个选项的含义"
+                                        }
+                                    }
+                                }
+                            },
+                            "multiple": {
+                                "type": "boolean",
+                                "description": "是否允许多选，默认 false"
+                            }
+                        }
+                    }
+                }
+            }
+
         specs.append(
             {
                 "type": "function",
