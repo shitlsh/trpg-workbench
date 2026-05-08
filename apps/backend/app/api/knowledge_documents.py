@@ -116,14 +116,13 @@ async def upload_document(
     tmp_path = Path(tmp.name)
 
     # Snapshot embedding profile info (id + model details) to persist on library after ingest
-    embedding_snapshot = {
-        "profile_id": embedding_profile.id,
-        "provider_type": embedding_profile.provider_type,
-        "model_name": embedding_profile.model_name,
-        "dimensions": embedding_profile.dimensions,
-    }
-
-    # Launch ingest in background (fire-and-forget)
+     embedding_snapshot = {
+         "profile_id": embedding_profile.id,
+         "provider_type": embedding_profile.provider_type,
+         "model_name": embedding_profile.model_name,
+     }
+ 
+     # Launch ingest in background (fire-and-forget)
     asyncio.create_task(
         _run_ingest_background(
             document_id=doc.id,
@@ -337,7 +336,6 @@ async def reindex_document(
         "profile_id": profile.id,
         "provider_type": profile.provider_type,
         "model_name": model_name,
-        "dimensions": profile.dimensions,
     }
 
     task = IngestTaskORM(
@@ -1374,7 +1372,6 @@ async def ingest_confirmed(
         "profile_id": embedding_profile.id,
         "provider_type": embedding_profile.provider_type,
         "model_name": embedding_profile.model_name,
-        "dimensions": embedding_profile.dimensions,
     }
 
     toc_mapping = [

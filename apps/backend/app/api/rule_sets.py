@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.storage.database import get_db
-from app.models.orm import RuleSetORM, WorkspaceORM
+from app.models.orm import RuleSetORM
 from app.models.schemas import (
     RuleSetSchema, RuleSetCreate, RuleSetUpdate,
 )
@@ -43,12 +43,5 @@ def delete_rule_set(rule_set_id: str, db: Session = Depends(get_db)):
     rs = db.get(RuleSetORM, rule_set_id)
     if not rs:
         raise HTTPException(status_code=404, detail="Rule set not found")
-    dependent = db.query(WorkspaceORM).filter(WorkspaceORM.rule_set_id == rule_set_id).all()
-    if dependent:
-        names = [w.name for w in dependent]
-        raise HTTPException(
-            status_code=409,
-            detail={"message": "Rule set is in use by workspaces", "workspaces": names}
-        )
     db.delete(rs)
     db.commit()
