@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, Fragment } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ModelNameInput } from "../components/ModelNameInput";
@@ -489,7 +490,7 @@ function SetPromptModal({
                   <button
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "2px 4px", flexShrink: 0 }}
                     title="删除"
-                    onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除「${p.name}」？`)) deleteMutation.mutate(p.id); }}
+                    onClick={async (e) => { e.stopPropagation(); if (await confirm(`确认删除「${p.name}」？`)) deleteMutation.mutate(p.id); }}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -1021,8 +1022,6 @@ function DocumentRow({
 }) {
   const summaryEnabled =
     expanded && doc.parse_status !== "pending" && doc.parse_status !== "running";
-  const canPreview =
-    ["success", "partial", "scanned_fallback"].includes(doc.parse_status) && (doc.chunk_count ?? 0) > 0;
   const canReindex = (doc.chunk_count ?? 0) > 0;
 
   const { data: summary } = useQuery({
@@ -1061,7 +1060,7 @@ function DocumentRow({
             预览
           </button>
         )}
-        {canPreview && (
+        {canReindex && (
           <button
             style={{
               fontSize: 11, padding: "2px 8px", borderRadius: 4,
@@ -1078,9 +1077,17 @@ function DocumentRow({
             重建索引
           </button>
         )}
+        {(doc.parse_status === "pending" || doc.parse_status === "failed") && !canReindex && (
+          <span
+            style={{ fontSize: 11, color: "var(--text-muted)", padding: "2px 4px" }}
+            title="导入任务未完成，请删除此记录后重新上传文件"
+          >
+            导入未完成
+          </span>
+        )}
         <button
           style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", color: "var(--text-muted)" }}
-          onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除文档「${doc.filename}」？`)) onDelete(); }}
+          onClick={async (e) => { e.stopPropagation(); if (await confirm(`确认删除文档「${doc.filename}」？`)) onDelete(); }}
           title="删除文档"
         >
           <Trash2 size={13} />
@@ -1664,7 +1671,7 @@ function LibraryDetailPanel({
           </button>
           <button
             className={styles.btnDanger}
-            onClick={() => { if (confirm(`确认删除「${library.name}」？`)) deleteLibMutation.mutate(library.id); }}
+            onClick={async () => { if (await confirm(`确认删除「${library.name}」？`)) deleteLibMutation.mutate(library.id); }}
           >
             <Trash2 size={14} />
           </button>
@@ -2709,8 +2716,8 @@ export default function RuleSetPage() {
                       </span>
                       <button
                         className={styles.btnGhost}
-                        onClick={() => {
-                          if (confirm(`确认删除知识库「${lib.name}」？`)) deleteLibMutation.mutate(lib.id);
+                        onClick={async () => {
+                          if (await confirm(`确认删除知识库「${lib.name}」？`)) deleteLibMutation.mutate(lib.id);
                         }}
                         title="删除"
                       >
@@ -2792,8 +2799,8 @@ export default function RuleSetPage() {
                       </button>
                       <button
                         className={styles.btnGhost}
-                        onClick={() => {
-                          if (confirm(`确认删除类型「${ct.label}」？已有此类型的资产不受影响。`)) {
+                        onClick={async () => {
+                          if (await confirm(`确认删除类型「${ct.label}」？已有此类型的资产不受影响。`)) {
                             deleteTypeMutation.mutate(ct.id);
                           }
                         }}

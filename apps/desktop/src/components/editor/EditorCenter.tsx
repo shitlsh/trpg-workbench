@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import Editor, { DiffEditor, type BeforeMount } from "@monaco-editor/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, History, Save, RotateCcw } from "lucide-react";
@@ -147,8 +148,8 @@ function RevisionSidebar({ tab }: { tab: EditorTab }) {
           </div>
           <div style={{ fontSize: 12, marginTop: 2, color: "var(--text)" }}>{rev.change_summary}</div>
           <button
-            onClick={() => {
-              if (confirm(`回滚到版本 ${rev.version}？`)) rollbackMutation.mutate(rev.version);
+            onClick={async () => {
+              if (await confirm(`回滚到版本 ${rev.version}？`)) rollbackMutation.mutate(rev.version);
             }}
             style={{
               marginTop: 6, fontSize: 11, display: "flex", alignItems: "center", gap: 4,
