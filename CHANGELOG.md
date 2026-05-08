@@ -4,6 +4,20 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
+## v0.1.7 — 2026-05-08
+
+### Features
+
+- **网页抓取工具**：Director Agent 新增 `web_fetch` 工具，当用户在对话中提供 URL 时可直接抓取页面内容作为创作参考，工具调用卡片同步支持展示抓取结果。
+
+- **创作风格提示词生成优化**：PromptProfile 生成逻辑全面改写，明确聚焦叙事风格、场景氛围、NPC 塑造和题材气质，避免凭空捏造规则数值；style_prefix 注入边界同步加固，防止用户编辑的风格内容意外覆盖 Agent 工作流规则。
+
+### Bug Fixes
+
+- **澄清问题触发率修复**：修复 Director 在信息不足时倾向于跳过 `ask_user` 直接创作的问题。新增「开始执行前的澄清判断」章节，修正与 ask_user 规则冲突的示例，将工具描述改为决策性语言并扩展进入 tool schema，同时调整工具列表排位使模型更易选中。
+
+- **一致性检查调用范围修正**：`patch_asset` 局部修改场景不再强制要求先调用 `check_consistency`，减少不必要的延迟和 token 消耗。
+
 ## v0.1.6 — 2026-05-08
 
 ### Features
