@@ -558,6 +558,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   // SSE streaming state
   const [streamingEvents, setStreamingEvents] = useState<StreamEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [pendingQuestion, setPendingQuestion] = useState<AgentQuestion | null>(null);
 
   // Queue for messages sent while a stream is in progress
   const [pendingQueue, setPendingQueue] = useState<Array<{ content: string; mentionedAssetIds: string[] }>>([]);
@@ -615,6 +616,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const switchToSession = useCallback(async (s: ChatSession) => {
     setActiveSession(s, []);
     setTurnScope(s.agent_scope === "explore" ? "explore" : "director");
+    setPendingQuestion(null);
     localStorage.setItem(`last_session_${workspaceId}`, s.id);
     try {
       const msgs = await apiFetch<ChatMessage[]>(`/chat/sessions/${s.id}/messages?workspace_id=${workspaceId}`);
@@ -628,6 +630,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   const createNewSession = useCallback(
     async (agentScope: string | null = null) => {
       setSessionError(null);
+      setPendingQuestion(null);
       try {
         const body: ChatSessionCreate = { workspace_id: workspaceId, agent_scope: agentScope };
         const s = await apiFetch<ChatSession>("/chat/sessions", {
@@ -701,6 +704,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
     setIsStreaming(true);
     setStreamingEvents([]);
+    setPendingQuestion(null);
     setTyping(true);
 
     const ctrl = new AbortController();
@@ -989,6 +993,14 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 // question_interrupt: skip (user reply becomes a separate user message)
                 // plan: skip — UI-only metadata, not stored in message content
               }
+              // Keep question_interrupt alive after stream ends so QuestionCard stays visible
+              const qi = accEvents.find(
+                (e): e is { kind: "question_interrupt"; question: AgentQuestion } =>
+                  e.kind === "question_interrupt"
+              );
+              if (qi) {
+                setPendingQuestion(qi.question);
+              }
               const accText = contentWithPlaceholders.trim();
               const accToolCalls = Object.values(accToolCallsById).map((tc) =>
                 tc.status === "running"
@@ -1129,6 +1141,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
     readerRef.current = null;
     setIsStreaming(false);
     setStreamingEvents([]);
+    setPendingQuestion(null);
     syncQueue([]);
     createNewSession(null);
   };
@@ -1220,6 +1233,20 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               isStreaming={isStreaming}
               onQuestionSubmit={(answers) => {
                 // Format answers as a structured reply and send
+                const lines = Object.entries(answers).map(
+                  ([header, labels]) => `- ${header}：${labels.join("、")}`
+                );
+                const reply = `[问题答复]\n${lines.join("\n")}`;
+                handleSend(reply);
+              }}
+            />
+          )}
+
+          {!isStreaming && pendingQuestion && (
+            <QuestionCard
+              question={pendingQuestion}
+              onSubmit={(answers) => {
+                setPendingQuestion(null);
                 const lines = Object.entries(answers).map(
                   ([header, labels]) => `- ${header}：${labels.join("、")}`
                 );
