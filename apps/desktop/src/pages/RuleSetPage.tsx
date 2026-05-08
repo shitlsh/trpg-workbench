@@ -444,7 +444,7 @@ function SetPromptModal({
   const isSelectMode = initialTab === "select";
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
+    <div className={styles.overlay} onClick={() => { if (!isGenerating) onClose(); }}>
       <div className={styles.modal} style={{ width: 540, maxWidth: "95vw" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 className={styles.modalTitle} style={{ margin: 0 }}>
@@ -1734,8 +1734,10 @@ function LibraryDetailPanel({
 
       {/* TOC-driven import wizard modal */}
       {wizard.step !== "idle" && wizard.step !== "ingesting" && (
-        <div className={styles.overlay} onClick={() => setWizard({ step: "idle" })}>
-          <div className={styles.modal} style={{ width: 560, maxWidth: "95vw" }} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.overlay} onClick={() => {
+          const busy = wizard.step === "uploading" || wizard.step === "detecting_toc" || wizard.step === "analyzing_toc";
+          if (!busy) setWizard({ step: "idle" });
+        }}>          <div className={styles.modal} style={{ width: 560, maxWidth: "95vw" }} onClick={(e) => e.stopPropagation()}>
 
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -3046,7 +3048,7 @@ export default function RuleSetPage() {
 
       {/* Add asset type modal */}
       {showNewTypeForm && (
-        <div className={styles.overlay} onClick={() => { setShowNewTypeForm(false); setNewTypeError(null); }}>
+        <div className={styles.overlay} onClick={() => { if (!typeGenLoading) { setShowNewTypeForm(false); setNewTypeError(null); } }}>
           <div className={styles.modal} style={{ width: 520, maxWidth: "92vw" }} onClick={(e) => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>添加资产类型</h2>
 
