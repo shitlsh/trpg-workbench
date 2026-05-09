@@ -626,11 +626,6 @@ export interface AgentQuestion {
   questions: AgentQuestionItem[]; // max 3 items enforced by backend
 }
 
-export interface AgentQuestion {
-  id: string;
-  questions: AgentQuestionItem[];
-}
-
 export interface SSEAgentQuestion {
   event: "agent_question";
   data: AgentQuestion;

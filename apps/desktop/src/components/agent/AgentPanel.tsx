@@ -683,7 +683,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       return;
     }
     if (configResp && defaultLlmName && !defaultLlmModel && !sessionModel) {
-      setModelWarning("未选择模型。请在下方选择模型或前往工作空间设置选择默好模型。");
+      setModelWarning("未选择模型。请在下方选择模型或前往工作空间设置选择默认模型。");
       return;
     }
     setModelWarning(null);
