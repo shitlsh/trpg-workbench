@@ -263,11 +263,10 @@ function ThinkingBlock({
 }
 
 function StreamingBubble({
-  events, isStreaming, onQuestionSubmit,
+  events, isStreaming,
 }: {
   events: StreamEvent[];
   isStreaming: boolean;
-  onQuestionSubmit: (answers: Record<string, string[]>) => void;
 }) {
   const lastTextIdx = events.reduce((last, e, i) => e.kind === "text_chunk" ? i : last, -1);
 
@@ -377,13 +376,9 @@ function StreamingBubble({
               return <ToolCallCard key={e.toolCall.id} toolCall={e.toolCall} />;
             }
             if (e.kind === "question_interrupt") {
-              return (
-                <QuestionCard
-                  key={`qi_${i}`}
-                  question={e.question}
-                  onSubmit={onQuestionSubmit}
-                />
-              );
+              // QuestionCard is rendered via pendingQuestion state outside StreamingBubble;
+              // skip here to avoid duplicate rendering during streaming.
+              return null;
             }
             if (e.kind === "plan") {
               return (
@@ -1238,38 +1233,46 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           {(() => {
             // Pre-process messages: pair question_answer user messages with their
             // preceding ask_user assistant message, render as inline submitted QuestionCard.
+            // Pairing is done by position: an ask_user assistant message is paired with
+            // the first question_answer user message that follows it.
             type MsgRenderEntry =
               | { kind: "normal"; msg: ChatMessage }
               | { kind: "assistant_with_qa"; msg: ChatMessage; qaMeta: { question: import("@trpg-workbench/shared-schema").AgentQuestion; selected: Record<string, string[]> } }
               | { kind: "skip" };
 
-            const qaByQuestionId = new Map<string, { question: import("@trpg-workbench/shared-schema").AgentQuestion; selected: Record<string, string[]> }>();
-            for (const msg of messages) {
+            // Index question_answer messages by their position
+            const qaByIndex = new Map<number, { question: import("@trpg-workbench/shared-schema").AgentQuestion; selected: Record<string, string[]> }>();
+            messages.forEach((msg, idx) => {
               if (msg.role === "user" && msg.metadata_json) {
                 try {
                   const meta = JSON.parse(msg.metadata_json);
-                  if (meta.type === "question_answer" && meta.question_id) {
-                    qaByQuestionId.set(meta.question_id, { question: meta.question, selected: meta.selected });
+                  if (meta.type === "question_answer") {
+                    qaByIndex.set(idx, { question: meta.question, selected: meta.selected });
                   }
                 } catch {}
               }
-            }
+            });
 
-            const entries: MsgRenderEntry[] = messages.map((msg) => {
-              // Skip question_answer user messages — they are rendered inline below their paired assistant message
+            const entries: MsgRenderEntry[] = messages.map((msg, idx) => {
+              // Skip question_answer user messages — rendered inline below their paired assistant message
               if (msg.role === "user" && msg.metadata_json) {
                 try {
                   const meta = JSON.parse(msg.metadata_json);
                   if (meta.type === "question_answer") return { kind: "skip" };
                 } catch {}
               }
-              // Assistant message with ask_user tool call — attach the QA card
+              // Assistant message with ask_user tool call — find the next question_answer message
               if (msg.role === "assistant" && msg.tool_calls_json) {
                 try {
                   const tcs: ToolCall[] = JSON.parse(msg.tool_calls_json);
-                  const askUserTc = tcs.find((tc) => tc.name === "ask_user");
-                  if (askUserTc && qaByQuestionId.has(askUserTc.id)) {
-                    return { kind: "assistant_with_qa", msg, qaMeta: qaByQuestionId.get(askUserTc.id)! };
+                  const hasAskUser = tcs.some((tc) => tc.name === "ask_user");
+                  if (hasAskUser) {
+                    // Find the first question_answer message after this one
+                    for (let j = idx + 1; j < messages.length; j++) {
+                      if (qaByIndex.has(j)) {
+                        return { kind: "assistant_with_qa", msg, qaMeta: qaByIndex.get(j)! };
+                      }
+                    }
                   }
                 } catch {}
               }
@@ -1299,19 +1302,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             <StreamingBubble
               events={streamingEvents}
               isStreaming={isStreaming}
-              onQuestionSubmit={(answers) => {
-                // Format answers as structured JSON reply for Director to parse
-                const qi = streamingEvents.find(
-                  (e): e is { kind: "question_interrupt"; question: import("@trpg-workbench/shared-schema").AgentQuestion } =>
-                    e.kind === "question_interrupt"
-                );
-                const question = qi?.question;
-                const reply = `[问题答复]\n${JSON.stringify({ question_id: question?.id ?? "", answers })}`;
-                const meta = question
-                  ? JSON.stringify({ type: "question_answer", question_id: question.id, question, selected: answers })
-                  : null;
-                handleSend(reply, [], meta);
-              }}
             />
           )}
 
@@ -1335,7 +1325,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 const q = pendingQuestion;
                 setPendingQuestion(null);
                 const reply = `[问题答复]\n${JSON.stringify({ question_id: q.id, answers })}`;
-                handleSend(reply);
+                const meta = JSON.stringify({ type: "question_answer", question_id: q.id, question: q, selected: answers });
+                handleSend(reply, [], meta);
               }}
             />
           )}
