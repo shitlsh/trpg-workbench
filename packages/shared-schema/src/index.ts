@@ -515,6 +515,8 @@ export interface ChatMessage {
   tool_calls_json: string | null;
   /** Raw reasoning/thinking text from the model (plain string, not JSON) */
   thinking_json: string | null;
+  /** Opaque UI metadata. For question_answer messages: { type, question_id, question, selected } */
+  metadata_json: string | null;
   created_at: string;
 }
 

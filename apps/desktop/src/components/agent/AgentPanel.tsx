@@ -674,7 +674,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
-  const handleSend = async (content: string, mentionedAssetIds: string[] = []) => {
+  const handleSend = async (content: string, mentionedAssetIds: string[] = [], metadataJson: string | null = null) => {
     if (!content.trim()) return;
     // If already streaming, queue the message for later
     if (isStreaming) {
@@ -686,25 +686,28 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
       return;
     }
     if (configResp && defaultLlmName && !defaultLlmModel && !sessionModel) {
-      setModelWarning("未选择模型。请在下方选择模型或前往工作空间设置选择默认模型。");
+      setModelWarning("未选择模型。请在下方选择模型或前往工作空间设置选择默好模型。");
       return;
     }
     setModelWarning(null);
 
     if (!session) return;
 
-    // Optimistic user message display
-    const fakeUserMsg: ChatMessage = {
-      id: `local_${Date.now()}`,
-      session_id: session.id,
-      role: "user",
-      content,
-      references_json: null,
-      tool_calls_json: null,
-      thinking_json: null,
-      created_at: new Date().toISOString(),
-    };
-    addMessage(fakeUserMsg);
+    // Optimistic user message display — skip for question_answer (shown inline via QuestionCard)
+    if (!metadataJson) {
+      const fakeUserMsg: ChatMessage = {
+        id: `local_${Date.now()}`,
+        session_id: session.id,
+        role: "user",
+        content,
+        references_json: null,
+        tool_calls_json: null,
+        thinking_json: null,
+        metadata_json: null,
+        created_at: new Date().toISOString(),
+      };
+      addMessage(fakeUserMsg);
+    }
 
     setIsStreaming(true);
     setStreamingEvents([]);
@@ -736,6 +739,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           ...(sessionModel ? { model: sessionModel } : {}),
           turn_scope: turnScope,
           ...(mentionedAssetIds.length > 0 ? { referenced_asset_ids: mentionedAssetIds } : {}),
+          ...(metadataJson ? { metadata_json: metadataJson } : {}),
         }),
         signal: combinedSignal,
       });
@@ -1023,6 +1027,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                     ? JSON.stringify(accToolCalls)
                     : null,
                 thinking_json: accThinking || null,
+                metadata_json: null,
                 created_at: new Date().toISOString(),
               };
               addMessage(assistantMsg);
@@ -1050,6 +1055,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 references_json: null,
                 tool_calls_json: null,
                 thinking_json: null,
+                metadata_json: null,
                 created_at: new Date().toISOString(),
               };
               addMessage(errMsg);
@@ -1079,6 +1085,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           references_json: null,
           tool_calls_json: null,
           thinking_json: null,
+          metadata_json: null,
           created_at: new Date().toISOString(),
         });
       }
@@ -1125,6 +1132,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             references_json: null,
             tool_calls_json: abortToolCalls.length > 0 ? JSON.stringify(abortToolCalls) : null,
             thinking_json: abortThinking || null,
+            metadata_json: null,
             created_at: new Date().toISOString(),
           });
           // Refresh asset tree if any tool had already written workspace assets
@@ -1227,9 +1235,65 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             </div>
           )}
 
-          {messages.map((msg) => (
-            <StoredMessageBubble key={msg.id} msg={msg} />
-          ))}
+          {(() => {
+            // Pre-process messages: pair question_answer user messages with their
+            // preceding ask_user assistant message, render as inline submitted QuestionCard.
+            type MsgRenderEntry =
+              | { kind: "normal"; msg: ChatMessage }
+              | { kind: "assistant_with_qa"; msg: ChatMessage; qaMeta: { question: import("@trpg-workbench/shared-schema").AgentQuestion; selected: Record<string, string[]> } }
+              | { kind: "skip" };
+
+            const qaByQuestionId = new Map<string, { question: import("@trpg-workbench/shared-schema").AgentQuestion; selected: Record<string, string[]> }>();
+            for (const msg of messages) {
+              if (msg.role === "user" && msg.metadata_json) {
+                try {
+                  const meta = JSON.parse(msg.metadata_json);
+                  if (meta.type === "question_answer" && meta.question_id) {
+                    qaByQuestionId.set(meta.question_id, { question: meta.question, selected: meta.selected });
+                  }
+                } catch {}
+              }
+            }
+
+            const entries: MsgRenderEntry[] = messages.map((msg) => {
+              // Skip question_answer user messages — they are rendered inline below their paired assistant message
+              if (msg.role === "user" && msg.metadata_json) {
+                try {
+                  const meta = JSON.parse(msg.metadata_json);
+                  if (meta.type === "question_answer") return { kind: "skip" };
+                } catch {}
+              }
+              // Assistant message with ask_user tool call — attach the QA card
+              if (msg.role === "assistant" && msg.tool_calls_json) {
+                try {
+                  const tcs: ToolCall[] = JSON.parse(msg.tool_calls_json);
+                  const askUserTc = tcs.find((tc) => tc.name === "ask_user");
+                  if (askUserTc && qaByQuestionId.has(askUserTc.id)) {
+                    return { kind: "assistant_with_qa", msg, qaMeta: qaByQuestionId.get(askUserTc.id)! };
+                  }
+                } catch {}
+              }
+              return { kind: "normal", msg };
+            });
+
+            return entries.map((entry) => {
+              if (entry.kind === "skip") return null;
+              if (entry.kind === "assistant_with_qa") {
+                return (
+                  <div key={entry.msg.id}>
+                    <StoredMessageBubble msg={entry.msg} />
+                    <QuestionCard
+                      question={entry.qaMeta.question}
+                      initialSubmitted={true}
+                      initialSelected={entry.qaMeta.selected}
+                      onSubmit={() => {}}
+                    />
+                  </div>
+                );
+              }
+              return <StoredMessageBubble key={entry.msg.id} msg={entry.msg} />;
+            });
+          })()}
 
           {isStreaming && (
             <StreamingBubble
@@ -1241,8 +1305,25 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                   (e): e is { kind: "question_interrupt"; question: import("@trpg-workbench/shared-schema").AgentQuestion } =>
                     e.kind === "question_interrupt"
                 );
-                const reply = `[问题答复]\n${JSON.stringify({ question_id: qi?.question.id ?? "", answers })}`;
-                handleSend(reply);
+                const question = qi?.question;
+                const reply = `[问题答复]\n${JSON.stringify({ question_id: question?.id ?? "", answers })}`;
+                const meta = question
+                  ? JSON.stringify({ type: "question_answer", question_id: question.id, question, selected: answers })
+                  : null;
+                handleSend(reply, [], meta);
+              }}
+            />
+          )}
+
+          {!isStreaming && pendingQuestion && (
+            <QuestionCard
+              question={pendingQuestion}
+              onSubmit={(answers) => {
+                const q = pendingQuestion;
+                setPendingQuestion(null);
+                const reply = `[问题答复]\n${JSON.stringify({ question_id: q.id, answers })}`;
+                const meta = JSON.stringify({ type: "question_answer", question_id: q.id, question: q, selected: answers });
+                handleSend(reply, [], meta);
               }}
             />
           )}

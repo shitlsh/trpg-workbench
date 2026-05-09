@@ -31,6 +31,7 @@ def append_message(
     tool_calls_json: str | None = None,
     thinking_json: str | None = None,
     message_id: str | None = None,
+    metadata_json: str | None = None,
 ) -> dict:
     """Append a message to a session's JSONL file. Returns the message dict."""
     msg = {
@@ -41,6 +42,7 @@ def append_message(
         "references_json": references_json,
         "tool_calls_json": tool_calls_json,
         "thinking_json": thinking_json,
+        "metadata_json": metadata_json,
         "created_at": _now_iso(),
     }
     filepath = chat_session_path(workspace_path, session_id)

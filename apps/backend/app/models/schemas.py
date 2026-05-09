@@ -305,6 +305,7 @@ class SendMessageRequest(BaseModel):
     referenced_asset_ids: list[str] = []
     model: str | None = None  # optional per-message model override
     turn_scope: Literal["director", "explore"] | None = None
+    metadata_json: str | None = None  # opaque UI metadata (e.g. question_answer)
 
 
 class ApplyPatchRequest(BaseModel):

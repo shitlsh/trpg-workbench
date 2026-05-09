@@ -217,6 +217,7 @@ async def send_message(
         session_id=session_id,
         role="user",
         content=body.content,
+        metadata_json=body.metadata_json,
     )
 
     # Resolve model
