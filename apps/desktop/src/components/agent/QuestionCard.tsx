@@ -131,7 +131,6 @@ export function QuestionCard({ question, onSubmit, initialSubmitted = false, ini
   const chosenLabels = selected[item.header] ?? [];
   const isCustomSelected = chosenLabels.includes("__custom__");
   const canProceed = currentStepAnswered();
-  const allowCustom = item.allow_custom ?? false;
 
   return (
     <div style={{
@@ -284,7 +283,7 @@ export function QuestionCard({ question, onSubmit, initialSubmitted = false, ini
                   </span>
                   {!isChosen && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginTop: 1 }}>
-                      {allowCustom ? "欢迎自由输入你的想法" : "自行输入内容"}
+                      自行输入内容
                     </span>
                   )}
                 </span>
@@ -294,10 +293,10 @@ export function QuestionCard({ question, onSubmit, initialSubmitted = false, ini
 
           {/* Free-text input shown when "其他" is selected */}
           {isCustomSelected && (
-            <input
+              <input
               autoFocus
               type="text"
-              placeholder={allowCustom ? "请输入你的想法..." : "请输入内容..."}
+              placeholder="请输入内容..."
               value={customText[currentStep] ?? ""}
               onChange={(e) =>
                 setCustomText((prev) => ({ ...prev, [currentStep]: e.target.value }))

@@ -619,8 +619,6 @@ export interface AgentQuestionItem {
   question: string;
   options: AgentQuestionOption[];
   multiple?: boolean;
-  /** When true, Director encourages free-text input beyond the preset options */
-  allow_custom?: boolean;
 }
 
 export interface AgentQuestion {

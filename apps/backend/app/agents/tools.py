@@ -1374,11 +1374,10 @@ def ask_user(questions: list[dict]) -> str:
             "options": [
                 {"label": "选项标签（2-5 字）", "description": "一句话解释这个选项的含义"}
             ],
-            "multiple": false,
-            "allow_custom": false
+            "multiple": false
         }
     ]
-    注：allow_custom 设为 true 时，表示此问题鼓励用户超出预设选项自行输入内容，UI 会以更积极的提示语展示"其他"输入框。
+    注：UI 会在每道题末尾自动注入「其他」选项，允许用户超出预设选项自行输入，无需在 options 中手动添加。
     """
     if not questions or not isinstance(questions, list):
         return json.dumps({
