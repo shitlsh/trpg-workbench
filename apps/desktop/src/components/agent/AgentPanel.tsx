@@ -1036,17 +1036,54 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               if (textCarry) {
                 flushTextChunk("", true);
               }
+              // Mark running tool calls as error / interrupted
               accEvents = accEvents.map((e) =>
                 e.kind === "tool_call" && e.toolCall.status === "running"
                   ? { kind: "tool_call", toolCall: { ...e.toolCall, status: "error", result_summary: e.toolCall.result_summary ?? "执行中断" } }
                   : e
               );
-              flushUi(true);
+              // Save accumulated content as assistant message so the user can see
+              // what was already produced before the error
+              const finalEvents = accEvents
+                .filter((ev) => ev.kind !== "agent_status")
+                .map((ev) => ev.kind === "thinking_chunk" ? { ...ev, done: true } : ev);
+              let errorContent = "";
+              let errorThinking = "";
+              for (const ev of finalEvents) {
+                if (ev.kind === "text_chunk") errorContent += ev.text;
+                else if (ev.kind === "tool_call") errorContent += `\n{{tool:${ev.toolCall.id}}}\n`;
+                else if (ev.kind === "thinking_chunk") {
+                  if (errorThinking) errorThinking += "\n\n---\n\n";
+                  errorThinking += ev.text;
+                }
+              }
+              const errorToolCalls = Object.values(accToolCallsById).map((tc) =>
+                tc.status === "running"
+                  ? { ...tc, status: "error" as ToolCall["status"], result_summary: tc.result_summary ?? "执行中断" }
+                  : tc
+              );
+              if (errorContent.trim() || errorToolCalls.length > 0 || errorThinking) {
+                addMessage({
+                  id: `assistant_${Date.now()}`,
+                  session_id: session.id,
+                  role: "assistant",
+                  content: errorContent.trim(),
+                  references_json: null,
+                  tool_calls_json: errorToolCalls.length > 0 ? JSON.stringify(errorToolCalls) : null,
+                  thinking_json: errorThinking || null,
+                  metadata_json: null,
+                  created_at: new Date().toISOString(),
+                });
+                if (errorToolCalls.some((tc) => tc.status === "auto_applied") && workspaceId) {
+                  qc.invalidateQueries({ queryKey: ["assets", workspaceId] });
+                }
+              }
+              // Show friendly error message with retry guidance
               const errMsg: ChatMessage = {
                 id: `error_${Date.now()}`,
                 session_id: session.id,
                 role: "system",
-                content: `⚠ 错误：${(data.message as string) ?? "未知错误"}`,
+                content: `⚠ ${(data.message as string) ?? "模型请求失败，请稍后重试"}`,
                 references_json: null,
                 tool_calls_json: null,
                 thinking_json: null,
@@ -1076,7 +1113,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
           id: `error_${Date.now()}`,
           session_id: session?.id ?? "",
           role: "system",
-          content: `⚠ 发送失败：${(e as Error).message}`,
+          content: `⚠ 请求失败，请检查后端服务是否运行或稍后重试：${(e as Error).message}`,
           references_json: null,
           tool_calls_json: null,
           thinking_json: null,

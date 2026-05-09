@@ -342,7 +342,20 @@ async def send_message(
                     break
 
                 if kind == "exc":
-                    yield _sse("error", {"message": str(payload)})
+                    _save_partial_message(
+                        workspace_path=ws.workspace_path,
+                        session_id=session_id,
+                        text_buffer=text_buffer,
+                        tool_calls_emitted=tool_calls_emitted,
+                        thinking_buffer=thinking_buffer,
+                        content_segments=content_segments,
+                        chat_service=chat_service,
+                        session=session,
+                        body=body,
+                        db=db,
+                    )
+                    friendly = _friendly_error_message(str(payload))
+                    yield _sse("error", {"message": friendly, "detail": str(payload)})
                     yield _sse("done", {})
                     break
 
@@ -438,40 +451,53 @@ async def send_message(
                     yield _sse(event_type, data)
 
                 elif event_type == "error":
-                    yield _sse("error", data)
+                    _save_partial_message(
+                        workspace_path=ws.workspace_path,
+                        session_id=session_id,
+                        text_buffer=text_buffer,
+                        tool_calls_emitted=tool_calls_emitted,
+                        thinking_buffer=thinking_buffer,
+                        content_segments=content_segments,
+                        chat_service=chat_service,
+                        session=session,
+                        body=body,
+                        db=db,
+                    )
+                    raw = data.get("message", "")
+                    friendly = _friendly_error_message(str(raw))
+                    yield _sse("error", {"message": friendly, "detail": raw})
                     yield _sse("done", {})
 
         except asyncio.CancelledError:
             producer.cancel()
-            # Save whatever was accumulated before the user stopped
-            if text_buffer or tool_calls_emitted:
-                parts_out: list[str] = []
-                for seg in content_segments:
-                    if seg.startswith("__tool__:"):
-                        tc_id_seg = seg[len("__tool__:"):]
-                        parts_out.append(f"\n{{{{tool:{tc_id_seg}}}}}\n")
-                    else:
-                        parts_out.append(seg)
-                partial_text = "".join(parts_out).strip()
-                tc_json = json.dumps(tool_calls_emitted, ensure_ascii=False) if tool_calls_emitted else None
-                final_thinking = "".join(thinking_buffer) if thinking_buffer else None
-                try:
-                    chat_service.append_message(
-                        workspace_path=ws.workspace_path,
-                        session_id=session_id,
-                        role="assistant",
-                        content=partial_text,
-                        tool_calls_json=tc_json,
-                        thinking_json=final_thinking,
-                    )
-                    if not session.title and body.content:
-                        session.title = body.content[:100]
-                    db.commit()
-                except Exception:
-                    pass
+            _save_partial_message(
+                workspace_path=ws.workspace_path,
+                session_id=session_id,
+                text_buffer=text_buffer,
+                tool_calls_emitted=tool_calls_emitted,
+                thinking_buffer=thinking_buffer,
+                content_segments=content_segments,
+                chat_service=chat_service,
+                session=session,
+                body=body,
+                db=db,
+            )
             raise
         except Exception as e:
-            yield _sse("error", {"message": str(e)})
+            _save_partial_message(
+                workspace_path=ws.workspace_path,
+                session_id=session_id,
+                text_buffer=text_buffer,
+                tool_calls_emitted=tool_calls_emitted,
+                thinking_buffer=thinking_buffer,
+                content_segments=content_segments,
+                chat_service=chat_service,
+                session=session,
+                body=body,
+                db=db,
+            )
+            friendly = _friendly_error_message(str(e))
+            yield _sse("error", {"message": friendly, "detail": str(e)})
             yield _sse("done", {})
         finally:
             if not producer.done():
@@ -481,6 +507,70 @@ async def send_message(
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+def _save_partial_message(
+    *,
+    workspace_path: str,
+    session_id: str,
+    text_buffer: list[str],
+    tool_calls_emitted: list[dict],
+    thinking_buffer: list[str],
+    content_segments: list[str],
+    chat_service,
+    session,
+    body,
+    db,
+) -> bool:
+    """Save accumulated partial content as an assistant message to JSONL.
+
+    Returns True if any content was saved.
+    """
+    if not text_buffer and not tool_calls_emitted:
+        return False
+    parts_out: list[str] = []
+    for seg in content_segments:
+        if seg.startswith("__tool__:"):
+            tc_id_seg = seg[len("__tool__:"):]
+            parts_out.append(f"\n{{{{tool:{tc_id_seg}}}}}\n")
+        else:
+            parts_out.append(seg)
+    partial_text = "".join(parts_out).strip()
+    tc_json = json.dumps(tool_calls_emitted, ensure_ascii=False) if tool_calls_emitted else None
+    final_thinking = "".join(thinking_buffer) if thinking_buffer else None
+    try:
+        chat_service.append_message(
+            workspace_path=workspace_path,
+            session_id=session_id,
+            role="assistant",
+            content=partial_text,
+            tool_calls_json=tc_json,
+            thinking_json=final_thinking,
+        )
+        if not session.title and body.content:
+            session.title = body.content[:100]
+        db.commit()
+        return True
+    except Exception:
+        return False
+
+
+def _friendly_error_message(raw_message: str) -> str:
+    """Transform raw provider error into a user-friendly Chinese message."""
+    lower = raw_message.lower()
+
+    if any(kw in lower for kw in ("rate_limit", "429", "too many requests", "quota exceeded", "billing")):
+        return "模型请求频率超限，请稍后重试。免费供应商通常每分钟限制 1-3 次调用。"
+    if any(kw in lower for kw in ("503", "502", "500", "server error", "service unavailable", "internal error", "overloaded")):
+        return "模型服务暂时不可用，请稍后重试。"
+    if any(kw in lower for kw in ("401", "403", "unauthorized", "invalid api key", "authentication", "permission")):
+        return "API Key 无效或已过期，请在模型配置中更新。"
+    if any(kw in lower for kw in ("400", "bad request", "invalid_request_error")):
+        return "模型请求失败（可能是供应商限流或参数错误），请稍后重试。"
+    if any(kw in lower for kw in ("timeout", "timed out", "connection")):
+        return "模型请求超时或连接失败，请检查网络后重试。"
+
+    return "模型请求失败，请稍后重试。"
+
 
 def _sse(event: str, data: dict) -> str:
     """Format an SSE event string."""
