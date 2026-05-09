@@ -1236,11 +1236,12 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               events={streamingEvents}
               isStreaming={isStreaming}
               onQuestionSubmit={(answers) => {
-                // Format answers as a structured reply and send
-                const lines = Object.entries(answers).map(
-                  ([header, labels]) => `- ${header}：${labels.join("、")}`
+                // Format answers as structured JSON reply for Director to parse
+                const qi = streamingEvents.find(
+                  (e): e is { kind: "question_interrupt"; question: import("@trpg-workbench/shared-schema").AgentQuestion } =>
+                    e.kind === "question_interrupt"
                 );
-                const reply = `[问题答复]\n${lines.join("\n")}`;
+                const reply = `[问题答复]\n${JSON.stringify({ question_id: qi?.question.id ?? "", answers })}`;
                 handleSend(reply);
               }}
             />
@@ -1250,11 +1251,9 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             <QuestionCard
               question={pendingQuestion}
               onSubmit={(answers) => {
+                const q = pendingQuestion;
                 setPendingQuestion(null);
-                const lines = Object.entries(answers).map(
-                  ([header, labels]) => `- ${header}：${labels.join("、")}`
-                );
-                const reply = `[问题答复]\n${lines.join("\n")}`;
+                const reply = `[问题答复]\n${JSON.stringify({ question_id: q.id, answers })}`;
                 handleSend(reply);
               }}
             />
