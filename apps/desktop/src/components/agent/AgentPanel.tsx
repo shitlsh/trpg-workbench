@@ -78,7 +78,7 @@ function AssistantContent({ content, toolCalls }: { content: string; toolCalls: 
   );
 }
 
-function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
+function StoredMessageBubble({ msg, hideTimestamp }: { msg: ChatMessage; hideTimestamp?: boolean }) {
   const isUser = msg.role === "user";
 
   // System messages (e.g. truncation notices) render as a centered divider
@@ -152,12 +152,14 @@ function StoredMessageBubble({ msg }: { msg: ChatMessage }) {
         )}
         <AssistantContent content={msg.content ?? ""} toolCalls={toolCalls} />
       </div>
-      <div
-        title={new Date(msg.created_at).toLocaleString("zh-CN")}
-        style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 4, paddingInline: 0, cursor: "default" }}
-      >
-        {new Date(msg.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-      </div>
+      {!hideTimestamp && (
+        <div
+          title={new Date(msg.created_at).toLocaleString("zh-CN")}
+          style={{ fontSize: 10, color: "var(--text-subtle)", marginTop: 4, paddingInline: 0, cursor: "default" }}
+        >
+          {new Date(msg.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+        </div>
+      )}
     </div>
   );
 }
@@ -688,21 +690,22 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
 
     if (!session) return;
 
-    // Optimistic user message display — skip for question_answer (shown inline via QuestionCard)
-    if (!metadataJson) {
-      const fakeUserMsg: ChatMessage = {
-        id: `local_${Date.now()}`,
-        session_id: session.id,
-        role: "user",
-        content,
-        references_json: null,
-        tool_calls_json: null,
-        thinking_json: null,
-        metadata_json: null,
-        created_at: new Date().toISOString(),
-      };
-      addMessage(fakeUserMsg);
-    }
+    // Optimistic user message — always add to store immediately.
+    // For normal messages this shows a user bubble; for question_answer messages
+    // the pairing logic will skip the bubble and render a submitted QuestionCard
+    // below the preceding ask_user assistant message instead.
+    const fakeUserMsg: ChatMessage = {
+      id: `local_${Date.now()}`,
+      session_id: session.id,
+      role: "user",
+      content,
+      references_json: null,
+      tool_calls_json: null,
+      thinking_json: null,
+      metadata_json: metadataJson,
+      created_at: new Date().toISOString(),
+    };
+    addMessage(fakeUserMsg);
 
     setIsStreaming(true);
     setStreamingEvents([]);
@@ -1039,24 +1042,8 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 metadata_json: null,
                 created_at: new Date().toISOString(),
               };
-              // If this turn was a question_answer reply, add the user message to the
-              // store now so the pairing logic can find it and render the submitted
-              // QuestionCard inline (without waiting for a full history reload).
-              if (metadataJson) {
-                const qaUserMsg: ChatMessage = {
-                  id: `local_qa_${Date.now()}`,
-                  session_id: session.id,
-                  role: "user",
-                  content,
-                  references_json: null,
-                  tool_calls_json: null,
-                  thinking_json: null,
-                  metadata_json: metadataJson,
-                  created_at: new Date().toISOString(),
-                };
-                addMessage(qaUserMsg);
-              }
               addMessage(assistantMsg);
+
               setIsStreaming(false);
               setStreamingEvents([]);
               setTyping(false);
@@ -1352,7 +1339,7 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               if (entry.kind === "assistant_with_qa") {
                 return (
                   <div key={entry.msg.id}>
-                    <StoredMessageBubble msg={entry.msg} />
+                    <StoredMessageBubble msg={entry.msg} hideTimestamp />
                     <QuestionCard
                       question={entry.qaMeta.question}
                       initialSubmitted={true}
