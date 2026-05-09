@@ -286,6 +286,7 @@ class ChatMessageSchema(BaseModel):
     references_json: str | None = None
     tool_calls_json: str | None = None
     thinking_json: str | None = None
+    metadata_json: str | None = None  # opaque UI metadata (e.g. question_answer)
     created_at: datetime
 
 
