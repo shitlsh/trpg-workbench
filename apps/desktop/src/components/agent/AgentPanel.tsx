@@ -1025,6 +1025,23 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
                 metadata_json: null,
                 created_at: new Date().toISOString(),
               };
+              // If this turn was a question_answer reply, add the user message to the
+              // store now so the pairing logic can find it and render the submitted
+              // QuestionCard inline (without waiting for a full history reload).
+              if (metadataJson) {
+                const qaUserMsg: ChatMessage = {
+                  id: `local_qa_${Date.now()}`,
+                  session_id: session.id,
+                  role: "user",
+                  content,
+                  references_json: null,
+                  tool_calls_json: null,
+                  thinking_json: null,
+                  metadata_json: metadataJson,
+                  created_at: new Date().toISOString(),
+                };
+                addMessage(qaUserMsg);
+              }
               addMessage(assistantMsg);
               setIsStreaming(false);
               setStreamingEvents([]);
