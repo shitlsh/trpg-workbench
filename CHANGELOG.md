@@ -4,6 +4,17 @@ All notable changes to TRPG Workbench will be documented in this file.
 
 <!-- next-release -->
 
+## v0.1.10 — 2026-05-09
+
+### Features
+
+- **问答交互优化**：Agent 提问、用户作答、继续推进的完整流程已打通——作答后立即显示"已回答"卡片并无缝衔接下一轮思考，对话视觉连贯
+
+### Bug Fixes
+
+- **打开工作区失败提示**：打开已有工作区失败时，现在会弹出明确的错误提示，不再静默失败
+- **API 出错时保留内容**：流式响应中途出错时，已生成的部分内容会被保存并提示重试，不再丢失
+
 ## v0.1.9 — 2026-05-08
 
 ### Bug Fixes
