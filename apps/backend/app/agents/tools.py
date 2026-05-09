@@ -1377,7 +1377,6 @@ def ask_user(questions: list[dict]) -> str:
             "multiple": false
         }
     ]
-    注：UI 会在每道题末尾自动注入「其他」选项，允许用户超出预设选项自行输入，无需在 options 中手动添加。
     """
     if not questions or not isinstance(questions, list):
         return json.dumps({
