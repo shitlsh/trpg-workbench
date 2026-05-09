@@ -1355,19 +1355,6 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
             />
           )}
 
-          {!isStreaming && pendingQuestion && (
-            <QuestionCard
-              question={pendingQuestion}
-              onSubmit={(answers) => {
-                const q = pendingQuestion;
-                setPendingQuestion(null);
-                const reply = `[问题答复]\n${JSON.stringify({ question_id: q.id, answers })}`;
-                const meta = JSON.stringify({ type: "question_answer", question_id: q.id, question: q, selected: answers });
-                handleSend(reply, [], meta);
-              }}
-            />
-          )}
-
           <div ref={bottomRef} />
         </div>
 
