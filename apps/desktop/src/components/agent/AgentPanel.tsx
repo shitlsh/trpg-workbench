@@ -936,8 +936,22 @@ export function AgentPanel({ workspaceId }: { workspaceId: string }) {
               flushUi();
 
             } else if (currentEvent === "agent_question") {
-              // Director wants to ask the user a question before continuing
+              // Director wants to ask the user a question before continuing.
+              // The backend does NOT emit a tool_call_start for ask_user, so we
+              // synthesize a tool call here so the assistant message stored in the
+              // store has a non-null tool_calls_json containing ask_user.
+              // This is required for the pairing logic to recognise the message
+              // as assistant_with_qa when rendering history.
               const q = data as unknown as AgentQuestion;
+              const syntheticTc: ToolCall = {
+                id: `ask_user_${q.id}`,
+                name: "ask_user",
+                arguments: JSON.stringify({ questions: q.questions }),
+                status: "done",
+                result_summary: null,
+                trace_logs: [],
+              };
+              accToolCallsById[syntheticTc.id] = syntheticTc;
               accEvents = [...accEvents, { kind: "question_interrupt", question: q }];
               flushUi(true);
               // Stream ends after this (backend emits done next); keep isStreaming=true until done
