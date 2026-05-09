@@ -34,7 +34,9 @@ function toolNameFromWriteResultPayload(data: { action?: string; asset_type?: st
 // Renders assistant content, preserving tool-call ordering via {{tool:id}} placeholders.
 // Falls back to legacy rendering (all tool cards below text) for old messages without placeholders.
 function AssistantContent({ content, toolCalls }: { content: string; toolCalls: ToolCall[] }) {
-  const tcById = Object.fromEntries(toolCalls.map((tc) => [tc.id, tc]));
+  // ask_user tool calls are rendered as QuestionCard — suppress the raw ToolCallCard
+  const visibleToolCalls = toolCalls.filter((tc) => tc.name !== "ask_user");
+  const tcById = Object.fromEntries(visibleToolCalls.map((tc) => [tc.id, tc]));
 
   if (!content.includes("{{tool:")) {
     // Legacy / no-placeholder path
@@ -45,9 +47,9 @@ function AssistantContent({ content, toolCalls }: { content: string; toolCalls: 
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </div>
         )}
-        {toolCalls.length > 0 && (
+        {visibleToolCalls.length > 0 && (
           <div style={{ marginTop: content ? 8 : 0 }}>
-            {toolCalls.map((tc) => <ToolCallCard key={tc.id} toolCall={tc} />)}
+            {visibleToolCalls.map((tc) => <ToolCallCard key={tc.id} toolCall={tc} />)}
           </div>
         )}
       </>
@@ -353,6 +355,8 @@ function StreamingBubble({
               );
             }
             if (e.kind === "tool_call") {
+              // ask_user is rendered as QuestionCard — suppress the raw ToolCallCard
+              if (e.toolCall.name === "ask_user") return null;
               if (e.toolCall.status === "running") {
                 return (
                   <div
