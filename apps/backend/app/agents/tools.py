@@ -1358,7 +1358,7 @@ def ask_user(questions: list[dict]) -> str:
     重要：「创建前必须提供」的信息必须来自用户请求、对话历史或工作空间上下文；
     不得由 Director 自行发明来绕过澄清。
 
-    每次最多 2 个问题，每个问题 2-4 个选项。调用后流程暂停，等用户选择后下一轮继续。
+    每次最多 3 个问题，每个问题 2-5 个选项。调用后流程暂停，等用户选择后下一轮继续。
 
     禁止调用场景：
     - 仅为礼貌确认（"我准备创建 NPC，你确认吗？"）
@@ -1374,16 +1374,18 @@ def ask_user(questions: list[dict]) -> str:
             "options": [
                 {"label": "选项标签（2-5 字）", "description": "一句话解释这个选项的含义"}
             ],
-            "multiple": false
+            "multiple": false,
+            "allow_custom": false
         }
     ]
+    注：allow_custom 设为 true 时，表示此问题鼓励用户超出预设选项自行输入内容，UI 会以更积极的提示语展示"其他"输入框。
     """
     if not questions or not isinstance(questions, list):
         return json.dumps({
             "error": "questions 格式不合法，请不要重试此工具，改用文本直接向用户提出你的问题并等待回答。"
         }, ensure_ascii=False)
-    if len(questions) > 2:
-        questions = questions[:2]  # 强制限制，不报错
+    if len(questions) > 3:
+        questions = questions[:3]  # 强制限制，不报错
     raise AgentQuestionInterrupt(questions)
 
 
